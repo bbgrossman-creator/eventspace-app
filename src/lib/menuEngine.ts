@@ -14,6 +14,7 @@ export type PriceModel = (
   | { model: "per_side_person"; amount: number }   // × that side's guest count (men/women)
   | { model: "flat"; amount: number }              // fixed price
   | { model: "per_tray"; amount: number }          // × quantity entered (any unit)
+  | { model: "per_table"; amount: number }         // × number of tables (rep enters)
   | { model: "per_person_qty"; amount: number }    // × a people-count the rep enters
 ) & { unit?: string };
 
@@ -133,6 +134,7 @@ function priceAmount(
     case "per_side_person":return { qty: ctx.side, unit: p.amount };
     case "flat":           return { qty: 1, unit: p.amount };
     case "per_tray":       return { qty: ctx.qty, unit: p.amount };
+    case "per_table":      return { qty: ctx.qty, unit: p.amount };
     case "per_person_qty": return { qty: ctx.pqty, unit: p.amount };
   }
 }

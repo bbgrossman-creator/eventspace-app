@@ -33,10 +33,20 @@ export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
   const now = Date.now();
 
+  // Calendar sync first — auto-fill menu-call times before reminders compute.
+  let calendar_sync = "skipped";
+  try {
+    const cs = await fetch(`${origin}/api/calendar-sync`, { method: "POST" });
+    const csData = await cs.json();
+    calendar_sync = csData.ok ? `filled ${csData.filled}` : csData.detail;
+  } catch (e) {
+    calendar_sync = `error: ${(e as Error).message}`;
+  }
+
   const { data: autoRows } = await db.from("email_automations")
     .select("*").eq("enabled", true).neq("trigger", "action");
   const automations = (autoRows ?? []) as Automation[];
-  if (automations.length === 0) return NextResponse.json({ ran_at: new Date().toISOString(), sent: 0, note: "No enabled scheduled automations" });
+  if (automations.length === 0) return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, sent: 0, note: "No enabled scheduled automations" });
 
   const { data: bookingRows } = await db.from("bookings").select("*").neq("status", "cancelled");
   const bookings = (bookingRows ?? []) as Booking[];
@@ -141,5 +151,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ran_at: new Date().toISOString(), automations_checked: automations.length, sent: sent + ladderSent, details });
+  return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, automations_checked: automations.length, sent: sent + ladderSent, details });
 }

@@ -374,6 +374,7 @@ function priceTag(p?: { model: string; amount: number; unit?: string }) {
     p.model === "per_adult" ? "/adult" :
     p.model === "per_side_person" ? "/pp (this side)" :
     p.model === "per_tray" ? "/tray" :
+    p.model === "per_table" ? "/table" :
     p.model === "per_person_qty" ? "/person" : "";
   return <span className="text-navy font-semibold"> (+${p.amount}{suffix})</span>;
 }

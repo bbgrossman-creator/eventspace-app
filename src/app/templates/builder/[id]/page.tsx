@@ -21,6 +21,7 @@ const PRICE_CHOICES: { value: string; label: string }[] = [
   { value: "per_side_person", label: "Per person (this side only)" },
   { value: "flat", label: "Flat price" },
   { value: "per_tray", label: "Per unit × quantity (tray, station, hour…)" },
+  { value: "per_table", label: "Per table × number of tables" },
   { value: "per_person_qty", label: "Per person × a count the rep enters" },
 ];
 
@@ -545,6 +546,7 @@ function Preview({ s }: { s: MenuSection }) {
     const suffix = p.unit ? `/${p.unit}` :
       p.model === "per_person" ? "/pp" : p.model === "per_adult" ? "/adult" :
       p.model === "per_side_person" ? "/pp (side)" : p.model === "per_tray" ? "/tray" :
+      p.model === "per_table" ? "/table" :
       p.model === "per_person_qty" ? "/person" : "";
     return <span className="text-navy font-semibold"> (+${p.amount}{suffix})</span>;
   };

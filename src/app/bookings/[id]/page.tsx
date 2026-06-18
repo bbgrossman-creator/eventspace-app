@@ -340,6 +340,21 @@ export default function BookingDetail() {
                   onClick={() => setPanel(panel === "schedulecall" ? "" : "schedulecall")}>
                   📅 Record Scheduled Call
                 </button>
+                <button className="btn-ghost"
+                  onClick={async () => {
+                    setMsg({ ok: true, text: "Checking the calendar…" });
+                    try {
+                      const res = await fetch("/api/calendar-sync", { method: "POST" });
+                      const data = await res.json();
+                      if (!data.ok) { setMsg({ ok: false, text: data.detail }); return; }
+                      if (data.filled > 0) { load(); setMsg({ ok: true, text: `Found and filled ${data.filled} call time(s) ✓` }); }
+                      else setMsg({ ok: true, text: `No matching calendar appointment found yet (scanned ${data.events_scanned}).` });
+                    } catch (e) {
+                      setMsg({ ok: false, text: `Sync failed: ${(e as Error).message}` });
+                    }
+                  }}>
+                  🔄 Sync from Calendar
+                </button>
                 <button className="btn-warn"
                   onClick={async () => {
                     await setStatus("send_menu_form",
