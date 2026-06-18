@@ -75,3 +75,4 @@ src/lib/pricing.ts       ← all pricing constants and math
 src/app/                 ← pages
 src/components/          ← Sidebar, StatusPipeline
 ```
+
