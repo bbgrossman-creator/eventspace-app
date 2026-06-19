@@ -397,14 +397,25 @@ function Section({ s, answers, guests, onChange, onQtyChange }: {
         {(s.type === "multi") && (s.options ?? []).map((o) => {
           const arr = Array.isArray(v) ? (v as string[]) : [];
           const checked = arr.includes(o.label);
+          const atMax = max > 0 && arr.length >= max;
+          const blocked = atMax && !checked;
           return (
-            <label key={o.label} className="flex items-start gap-2.5 text-sm cursor-pointer rounded-lg px-2 py-1.5 hover:bg-slate-50">
-              <input type="checkbox" className="mt-0.5" checked={checked}
-                onChange={() => onChange(checked ? arr.filter((x) => x !== o.label) : [...arr, o.label])} />
+            <label key={o.label}
+              className={`flex items-start gap-2.5 text-sm rounded-lg px-2 py-1.5 ${blocked ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:bg-slate-50"}`}>
+              <input type="checkbox" className="mt-0.5" checked={checked} disabled={blocked}
+                onChange={() => {
+                  if (blocked) return;
+                  onChange(checked ? arr.filter((x) => x !== o.label) : [...arr, o.label]);
+                }} />
               <span>{o.label}{priceTag(o.price)}</span>
             </label>
           );
         })}
+        {s.type === "multi" && max > 0 && Array.isArray(v) && (v as string[]).length >= max && (
+          <p className="text-[11px] text-slate-400 mt-1 pl-2">
+            Maximum reached ({max}). For additional {cleanLabel(s.title)}, use <b>Add Charge</b> on the booking to price the extra.
+          </p>
+        )}
 
         {(s.type === "toggle") && (s.options ?? []).map((o) => (
           <label key={o.label} className="flex items-start gap-2.5 text-sm cursor-pointer rounded-lg px-2 py-1.5 hover:bg-slate-50">
@@ -427,6 +438,11 @@ function Section({ s, answers, guests, onChange, onQtyChange }: {
       </div>
     </div>
   );
+}
+
+function cleanLabel(title: string): string {
+  // "Appetizers — Choose 4 (chafing dishes)" → "appetizers"
+  return title.replace(/\s*—.*$/, "").replace(/\s*\(.*?\)\s*/g, "").replace(/^choose\s+\d+\s*/i, "").trim().toLowerCase() || "items";
 }
 
 function priceTag(p?: { model: string; amount: number; unit?: string }) {
