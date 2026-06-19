@@ -87,6 +87,9 @@ export default function MenuForm() {
   // ─── validation: every visible required/counted section satisfied ───
   const visAnswers = useMemo(() => ({ ...answers, __children: guests.children }), [answers, guests.children]);
 
+  const adultHeads = guests.adults > 0 ? guests.adults : guests.men + guests.women;
+  const partyTotal = adultHeads + guests.children;
+
   const problems = useMemo(() => {
     if (!template) return [];
     const g = { men: guests.adults > 0 ? guests.adults : guests.men, women: guests.adults > 0 ? 0 : guests.women, total: adultHeads + guests.children };
@@ -106,8 +109,6 @@ export default function MenuForm() {
     return out;
   }, [template, visAnswers, guests]);
 
-  const adultHeads = guests.adults > 0 ? guests.adults : guests.men + guests.women;
-  const partyTotal = adultHeads + guests.children;
   const minGuests = template?.base.min_guests ?? 0;
   const belowMin = minGuests > 0 && partyTotal > 0 && partyTotal < minGuests;
 
