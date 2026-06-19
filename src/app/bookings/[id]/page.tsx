@@ -654,6 +654,7 @@ function DepositForm({ b, done }: { b: Booking; done: () => void }) {
     await logActivity(b.id, b.invoice_num, "Deposit Received",
       `$${amt.toFixed(2)} via ${method} (applied $${cc.applied.toFixed(2)}) by ${by}`);
     await runActionAutomation("deposit_received", b, { deposit_amount: `$${cc.applied.toFixed(2)}` });
+    await runActionAutomation("menu_scheduling_invite", b);
     done();
   }
 

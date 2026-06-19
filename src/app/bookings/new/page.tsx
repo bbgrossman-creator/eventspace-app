@@ -85,7 +85,6 @@ export default function NewInquiry() {
     );
     if (!hasConflict) {
       await runActionAutomation("hold_confirmation", data);
-      await runActionAutomation("menu_scheduling_invite", data);
     }
     await runActionAutomation("internal_new_booking", data);
     router.push(`/bookings/${data.id}`);
