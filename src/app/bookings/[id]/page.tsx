@@ -524,6 +524,9 @@ export default function BookingDetail() {
               <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => router.push(`/bookings/${b.id}/worksheet`)}>
                 📋 Staff Worksheet
               </button>
+              <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => router.push(`/bookings/${b.id}/menu-card`)}>
+                🍽️ Menu Card
+              </button>
             </div>
           </div>
           <div className="space-y-1.5 text-sm">
