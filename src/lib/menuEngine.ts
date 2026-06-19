@@ -35,6 +35,7 @@ export interface VisibleIf {
   equals?: string;
   any?: string[];
   not_equals?: string;
+  exists?: boolean;
 }
 
 export interface MenuSection {
@@ -101,6 +102,7 @@ export function isVisible(s: MenuSection, answers: Record<string, unknown>): boo
   if (s.visible_if.equals !== undefined) return val === s.visible_if.equals;
   if (s.visible_if.not_equals !== undefined) return val !== s.visible_if.not_equals && val !== "";
   if (s.visible_if.any) return s.visible_if.any.includes(val);
+  if (s.visible_if.exists) return val !== "" && val !== "undefined" && val !== "null";
   return true;
 }
 

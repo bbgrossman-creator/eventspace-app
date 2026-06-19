@@ -8,9 +8,11 @@ import { templateSlugFor } from "@/lib/menuCharges";
 
 // Keys that belong to setup vs. service vs. kitchen, so the sheet reads
 // in the order staff actually work.
-const SETUP_KEYS = ["mechitzah", "centerpieces", "head_table", "setup_notes", "child_table"];
+const SETUP_KEYS = ["mechitzah", "centerpieces", "centerpiece_detail", "head_table", "setup_notes",
+  "child_table", "decor_extras", "decor_detail"];
 const ALERT_KEYS = ["dietary", "child_allergy", "child_allergy_details", "child_requests"];
-const VENDOR_KEYS = ["vendors", "vendor_details", "notes"];
+const VENDOR_KEYS = ["has_vendors", "vendor_photographer", "vendor_entertainment", "vendor_florist",
+  "vendor_balloons", "vendor_decorations", "vendor_other", "vendors", "vendor_details", "notes"];
 
 export default function Worksheet() {
   const { id } = useParams<{ id: string }>();
@@ -138,6 +140,21 @@ export default function Worksheet() {
                 "Beverages stocked", "Children's table set (if required)", "Dessert prepped", "Final walkthrough with host"].map((c) => (
                 <div key={c} className="flex items-center gap-2">
                   <span className="inline-block w-4 h-4 border-2 border-ink rounded-sm shrink-0" /> {c}
+                </div>
+              ))}
+            </div>
+          </Block>
+
+          {/* Approval signatures */}
+          <Block title="Approvals">
+            <div className="grid sm:grid-cols-2 gap-x-10 gap-y-8 pt-2">
+              {["Manager Approval", "Head Waiter Approval"].map((role) => (
+                <div key={role}>
+                  <div className="border-b-2 border-ink h-8" />
+                  <div className="flex justify-between text-[11px] text-slate-500 mt-1">
+                    <span className="font-semibold">{role}</span>
+                    <span>Date: __________</span>
+                  </div>
                 </div>
               ))}
             </div>
