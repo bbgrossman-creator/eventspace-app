@@ -227,7 +227,7 @@ export default function Dashboard() {
                   </td>
                   <td className="px-3 py-2">{b.contact_name}</td>
                   <td className="px-3 py-2">{b.event_type ?? "—"}</td>
-                  <td className="px-3 py-2 text-center">{g.men + g.women + g.children || "—"}</td>
+                  <td className="px-3 py-2 text-center">{(g.gendered ? g.men + g.women : g.adults) + g.children || "—"}</td>
                   <td className="px-3 py-2 text-right">{fmtMoney(fin.subtotal)}</td>
                   <td className="px-3 py-2 text-right">{fmtMoney(fin.tax)}</td>
                   <td className="px-3 py-2 text-right font-medium">{fmtMoney(fin.total)}</td>

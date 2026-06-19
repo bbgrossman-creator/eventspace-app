@@ -223,6 +223,8 @@ export function computeMenuCharges(
 // ─── Base package total from template ───
 export function menuBaseTotal(template: MenuTemplate, sel: MenuSelections): number {
   const g = sel.guests ?? { men: 0, women: 0, children: 0 };
-  const adults = (g.men || 0) + (g.women || 0);
+  // Adult heads come from either the gendered fields (men+women) or the
+  // non-gendered "adults" field — whichever the rep used.
+  const adults = (g.adults || 0) > 0 ? (g.adults || 0) : (g.men || 0) + (g.women || 0);
   return adults * template.base.adult_pp + (g.children || 0) * template.base.child_pp;
 }
