@@ -14,6 +14,9 @@ export interface BookingFinancials {
   subtotal: number;
   tax: number;
   total: number;
+  billedToMinimum: boolean;
+  minGuests: number;
+  actualHeads: number;
 }
 
 /** One source of truth for a booking's invoice math, shared by the
@@ -22,9 +25,24 @@ export function bookingFinancials(b: Booking, charges: ChargeLike[]): BookingFin
   const guests = deriveGuests(b);
   // For non-gendered counts, route adult heads through the "men" slot — both
   // men and women bill the same adult per-person rate, so the total is identical.
-  const adultM = guests.gendered ? guests.men : guests.adults;
-  const adultW = guests.gendered ? guests.women : 0;
-  const base = buffetBaseTotal(b.menu_type, adultM, adultW, guests.children);
+  let adultM = guests.gendered ? guests.men : guests.adults;
+  let adultW = guests.gendered ? guests.women : 0;
+  let children = guests.children;
+
+  // ── Minimum-billing mode ──
+  // When the booking is flagged bill_at_minimum and the actual party is below the
+  // menu's guest minimum, charge the minimum headcount instead. The actual counts
+  // are unchanged everywhere else (kitchen/worksheet still see real numbers).
+  const minGuests = (b.menu as unknown as { min_guests?: number })?.min_guests ?? 0;
+  const actualHeads = adultM + adultW + children;
+  let billedToMinimum = false;
+  if (b.bill_at_minimum && minGuests > 0 && actualHeads > 0 && actualHeads < minGuests) {
+    // Bill the shortfall as additional adult heads (cheapest-correct: minimum at adult rate).
+    const shortfall = minGuests - actualHeads;
+    adultM += shortfall;
+    billedToMinimum = true;
+  }
+  const base = buffetBaseTotal(b.menu_type, adultM, adultW, children);
   const { subtotal, tax, total } = invoiceTotals(base, charges);
-  return { guests, base, subtotal, tax, total };
+  return { guests, base, subtotal, tax, total, billedToMinimum, minGuests, actualHeads };
 }

@@ -84,6 +84,7 @@ export interface Booking {
   event_time: string | null;     // 'HH:MM'
   event_type: string | null;
   menu_type: string;
+  bill_at_minimum?: boolean | null;
   est_guests: number | null;
   notes: string | null;
   status: Status;

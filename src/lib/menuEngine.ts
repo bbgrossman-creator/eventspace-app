@@ -84,8 +84,9 @@ export interface MenuTemplate {
 // }
 export interface MenuSelections {
   template: string;
-  guests: { men: number; women: number; children: number };
+  guests: { men: number; women: number; children: number; adults?: number };
   answers: Record<string, unknown>;
+  min_guests?: number;
 }
 
 export interface MenuChargeLine {

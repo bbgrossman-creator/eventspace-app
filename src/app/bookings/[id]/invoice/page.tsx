@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
 import { Booking, fmtDate, fmtTime, fmtMoney, deriveGuests, menuBadge } from "@/lib/workflow";
-import { PRICING, buffetBaseTotal, invoiceTotals, grossUpForCC } from "@/lib/pricing";
+import { PRICING, grossUpForCC } from "@/lib/pricing";
+import { bookingFinancials } from "@/lib/finance";
 import { MenuTemplate, isVisible } from "@/lib/menuEngine";
 import { templateSlugFor } from "@/lib/menuCharges";
 import { sendEmail } from "@/lib/sendEmail";
@@ -40,15 +41,15 @@ export default function InvoicePage() {
 
   const inv = useMemo(() => {
     if (!b) return null;
-    const g = deriveGuests(b);
+    const f = bookingFinancials(b, charges);
+    const g = f.guests;
     const adults = g.gendered ? g.men + g.women : g.adults;
     const adultPP = b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP;
-    const base = buffetBaseTotal(b.menu_type, g.gendered ? g.men : g.adults, g.gendered ? g.women : 0, g.children);
-    const { subtotal, tax, total } = invoiceTotals(base, charges);
     const paid = payments.reduce((s, p) => s + Number(p.amount_applied), 0);
-    const balance = Math.max(0, total - paid);
+    const balance = Math.max(0, f.total - paid);
     const version = b.invoice_version ?? (g.source === "confirmed" ? "Final" : "Estimated");
-    return { g, adults, adultPP, base, subtotal, tax, total, paid, balance, version };
+    return { g, adults, adultPP, base: f.base, subtotal: f.subtotal, tax: f.tax, total: f.total,
+      paid, balance, version, billedToMinimum: f.billedToMinimum, minGuests: f.minGuests, actualHeads: f.actualHeads };
   }, [b, charges, payments]);
 
   if (!b || !inv) return <p className="text-slate-500">Loading…</p>;
@@ -134,6 +135,12 @@ export default function InvoicePage() {
                   <td className="py-2.5 text-center">{inv.adults}</td>
                   <td className="py-2.5 text-right">{fmtMoney(inv.adultPP)}</td>
                   <td className="py-2.5 text-right">{fmtMoney(inv.adults * inv.adultPP)}</td>
+                </tr>
+              )}
+              {inv.billedToMinimum && (
+                <tr className="border-b border-slate-100">
+                  <td className="py-2.5 text-slate-500 italic" colSpan={3}>Minimum guarantee ({inv.minGuests} guests; actual {inv.actualHeads})</td>
+                  <td className="py-2.5 text-right">{fmtMoney((inv.minGuests - inv.actualHeads) * inv.adultPP)}</td>
                 </tr>
               )}
               {inv.g.children > 0 && (

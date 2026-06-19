@@ -20,6 +20,7 @@ export default function MenuForm() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [overrideMin, setOverrideMin] = useState(false);
+  const [billAtMin, setBillAtMin] = useState(false);
   const [eventName, setEventName] = useState("");
   const [allTemplates, setAllTemplates] = useState<{ slug: string; name: string; category: string | null }[]>([]);
   const [chosenSlug, setChosenSlug] = useState<string | null>(null);
@@ -32,6 +33,7 @@ export default function MenuForm() {
     setB(booking);
 
     setEventName(booking.event_name ?? "");
+    setBillAtMin(!!booking.bill_at_minimum);
 
     // Determine the template: explicit menu_type, or a previously chosen slug in menu jsonb.
     const existing = (booking.menu ?? {}) as Partial<MenuSelections> & { template?: string };
@@ -70,7 +72,7 @@ export default function MenuForm() {
   }
 
   const sel: MenuSelections | null = useMemo(
-    () => template ? { template: chosenSlug ?? template.slug, guests, answers } : null,
+    () => template ? { template: chosenSlug ?? template.slug, guests, answers, min_guests: template.base.min_guests ?? 0 } : null,
     [template, chosenSlug, guests, answers]
   );
 
@@ -132,6 +134,7 @@ export default function MenuForm() {
       menu: sel,
       event_name: eventName.trim() || b.event_name,
       menu_type: menuTypeFromSlug,
+      bill_at_minimum: belowMin && overrideMin ? billAtMin : false,
       ...(markComplete ? { menu_completed: true, menu_discussion_status: "Completed", status: "send_est_invoice" } : {}),
     }).eq("id", b.id);
     if (error) { setMsg({ ok: false, text: error.message }); setBusy(false); return; }
@@ -143,7 +146,7 @@ export default function MenuForm() {
       `${template.name} — ${regen.lineCount} priced add-on line(s)`);
     if (markComplete && belowMin && overrideMin) {
       await logActivity(b.id, b.invoice_num, "Guest Minimum Overridden",
-        `Completed with ${partyTotal} guests (minimum ${minGuests})`, "WARNING");
+        `Completed with ${partyTotal} guests (minimum ${minGuests}) — billing: ${billAtMin ? `charge minimum ${minGuests}` : "charge actual"}`, "WARNING");
     }
     setBusy(false);
     if (markComplete) router.push(`/bookings/${b.id}`);
@@ -295,8 +298,23 @@ export default function MenuForm() {
           <b>⚠️ Below minimum:</b> {partyTotal} guests entered; this menu requires {minGuests}.
           <label className="flex items-center gap-2 mt-2 font-medium cursor-pointer">
             <input type="checkbox" checked={overrideMin} onChange={(e) => setOverrideMin(e.target.checked)} />
-            Override the minimum for this booking (logged to the activity record)
+            Override the minimum for this booking (logged)
           </label>
+          {overrideMin && (
+            <div className="mt-3 pl-6 space-y-2">
+              <p className="font-semibold text-ink">How should this be billed?</p>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="radio" name="billmode" className="mt-0.5" checked={!billAtMin}
+                  onChange={() => setBillAtMin(false)} />
+                <span><b>Charge actual count</b> — bill {partyTotal} guests as entered.</span>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="radio" name="billmode" className="mt-0.5" checked={billAtMin}
+                  onChange={() => setBillAtMin(true)} />
+                <span><b>Charge the {minGuests}-guest minimum</b> — bill the minimum; the kitchen and worksheet still see the actual {partyTotal}.</span>
+              </label>
+            </div>
+          )}
         </div>
       )}
       {problems.length > 0 && (

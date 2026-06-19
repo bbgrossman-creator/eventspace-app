@@ -16,6 +16,7 @@ import {
 } from "@/lib/workflow";
 import { PRICING, calcCCFee, grossUpForCC, buffetBaseTotal, invoiceTotals } from "@/lib/pricing";
 import { regenerateMenuCharges } from "@/lib/menuCharges";
+import { bookingFinancials } from "@/lib/finance";
 import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
@@ -85,15 +86,16 @@ export default function BookingDetail() {
   // ─── Financials ───
   const fin = useMemo(() => {
     if (!b) return null;
-    const g = deriveGuests(b);
-    const base = buffetBaseTotal(b.menu_type, g.gendered ? g.men : g.adults, g.gendered ? g.women : 0, g.children);
-    const { subtotal, tax, total } = invoiceTotals(base, charges);
+    const f = bookingFinancials(b, charges);
     const paid = payments.reduce((s, p) => s + Number(p.amount_applied), 0);
     return {
-      base, subtotal, tax, total, paid,
-      balance: Math.max(0, total - paid),
-      guests: g,
-      estimated: g.source !== "confirmed",
+      base: f.base, subtotal: f.subtotal, tax: f.tax, total: f.total, paid,
+      balance: Math.max(0, f.total - paid),
+      guests: f.guests,
+      estimated: f.guests.source !== "confirmed",
+      billedToMinimum: f.billedToMinimum,
+      minGuests: f.minGuests,
+      actualHeads: f.actualHeads,
     };
   }, [b, charges, payments]);
 
@@ -507,6 +509,11 @@ export default function BookingDetail() {
               {fin.estimated && (
                 <span className="text-xs font-normal text-amber-600">
                   (estimated — counts from {fin.guests.source === "menu" ? "menu form" : fin.guests.source === "estimate" ? "inquiry estimate" : "nothing yet"})
+                </span>
+              )}
+              {fin.billedToMinimum && (
+                <span className="text-xs font-normal text-navy block">
+                  💡 Billed at the {fin.minGuests}-guest minimum (actual: {fin.actualHeads})
                 </span>
               )}
             </h2>
