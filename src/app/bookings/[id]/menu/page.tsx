@@ -85,12 +85,14 @@ export default function MenuForm() {
   }, [template, sel]);
 
   // ─── validation: every visible required/counted section satisfied ───
+  const visAnswers = useMemo(() => ({ ...answers, __children: guests.children }), [answers, guests.children]);
+
   const problems = useMemo(() => {
     if (!template) return [];
     const g = { men: guests.men, women: guests.women, total: guests.men + guests.women + guests.children };
     const out: string[] = [];
     for (const s of template.sections) {
-      if (!isVisible(s, answers)) continue;
+      if (!isVisible(s, visAnswers)) continue;
       const v = answers[s.key];
       if (s.type === "choose" && s.required && !v) out.push(`${s.title}: selection required`);
       if (s.type === "multi" && s.count) {
@@ -102,7 +104,7 @@ export default function MenuForm() {
       }
     }
     return out;
-  }, [template, answers, guests]);
+  }, [template, visAnswers, guests]);
 
   const partyTotal = guests.men + guests.women + guests.children;
   const minGuests = template?.base.min_guests ?? 0;
@@ -231,7 +233,7 @@ export default function MenuForm() {
       </div>
 
       {/* Sections */}
-      {template.sections.map((s) => isVisible(s, answers) && (
+      {template.sections.map((s) => isVisible(s, visAnswers) && (
         <Section key={s.key} s={s} answers={answers} guests={g}
           onChange={(v) => setAnswers((p) => ({ ...p, [s.key]: v }))}
           onQtyChange={(label, qty) => setAnswers((p) => {
