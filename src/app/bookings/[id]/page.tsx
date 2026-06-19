@@ -86,7 +86,7 @@ export default function BookingDetail() {
   const fin = useMemo(() => {
     if (!b) return null;
     const g = deriveGuests(b);
-    const base = buffetBaseTotal(b.menu_type, g.men, g.women, g.children);
+    const base = buffetBaseTotal(b.menu_type, g.gendered ? g.men : g.adults, g.gendered ? g.women : 0, g.children);
     const { subtotal, tax, total } = invoiceTotals(base, charges);
     const paid = payments.reduce((s, p) => s + Number(p.amount_applied), 0);
     return {
@@ -478,7 +478,7 @@ export default function BookingDetail() {
             </div>
             {m.guests && (
               <p className="text-xs text-slate-500 mb-2">
-                Guests at menu time: {m.guests.men} men · {m.guests.women} women · {m.guests.children} children
+                Guests at menu time: {(m.guests as {adults?: number}).adults ? `${(m.guests as {adults?: number}).adults} adults` : `${m.guests.men} men · ${m.guests.women} women`} · {m.guests.children} children
               </p>
             )}
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
@@ -520,9 +520,9 @@ export default function BookingDetail() {
             </div>
           </div>
           <div className="space-y-1.5 text-sm">
-            {fin.guests.men + fin.guests.women > 0 && (
-              <Row label={`Adults ${fin.guests.men + fin.guests.women} × ${fmtMoney(b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP)}`}
-                value={fmtMoney((fin.guests.men + fin.guests.women) * (b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP))} />
+            {(fin.guests.gendered ? fin.guests.men + fin.guests.women : fin.guests.adults) > 0 && (
+              <Row label={`${fin.guests.gendered ? `Adults (${fin.guests.men}M/${fin.guests.women}W)` : "Adults"} ${fin.guests.gendered ? fin.guests.men + fin.guests.women : fin.guests.adults} × ${fmtMoney(b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP)}`}
+                value={fmtMoney((fin.guests.gendered ? fin.guests.men + fin.guests.women : fin.guests.adults) * (b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP))} />
             )}
             {fin.guests.children > 0 && (
               <Row label={`Children ${fin.guests.children} × ${fmtMoney(PRICING.BUFFET_CHILDREN_PP)}`}

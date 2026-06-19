@@ -41,9 +41,9 @@ export default function InvoicePage() {
   const inv = useMemo(() => {
     if (!b) return null;
     const g = deriveGuests(b);
-    const adults = g.men + g.women;
+    const adults = g.gendered ? g.men + g.women : g.adults;
     const adultPP = b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP;
-    const base = buffetBaseTotal(b.menu_type, g.men, g.women, g.children);
+    const base = buffetBaseTotal(b.menu_type, g.gendered ? g.men : g.adults, g.gendered ? g.women : 0, g.children);
     const { subtotal, tax, total } = invoiceTotals(base, charges);
     const paid = payments.reduce((s, p) => s + Number(p.amount_applied), 0);
     const balance = Math.max(0, total - paid);
@@ -130,7 +130,7 @@ export default function InvoicePage() {
             <tbody>
               {inv.adults > 0 && (
                 <tr className="border-b border-slate-100">
-                  <td className="py-2.5">{b.menu_type} — Adults {inv.g.source !== "confirmed" && <span className="text-amber-600 text-xs">(est.)</span>}</td>
+                  <td className="py-2.5">{b.menu_type} — {inv.g.gendered ? `Adults (${inv.g.men} men, ${inv.g.women} women)` : "Adults"} {inv.g.source !== "confirmed" && <span className="text-amber-600 text-xs">(est.)</span>}</td>
                   <td className="py-2.5 text-center">{inv.adults}</td>
                   <td className="py-2.5 text-right">{fmtMoney(inv.adultPP)}</td>
                   <td className="py-2.5 text-right">{fmtMoney(inv.adults * inv.adultPP)}</td>

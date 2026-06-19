@@ -116,17 +116,30 @@ export function isHoldExpired(b: Booking): boolean {
 // ─── Guest count resolution: confirmed → menu form → inquiry estimate ───
 export interface DerivedGuests {
   men: number; women: number; children: number;
+  adults: number;           // non-gendered adult count (0 when gendered)
+  gendered: boolean;        // true = show men/women; false = show combined "Adults"
   source: "confirmed" | "menu" | "estimate" | "none";
 }
 export function deriveGuests(b: Booking): DerivedGuests {
   const cm = b.confirmed_men ?? 0, cw = b.confirmed_women ?? 0, cc = b.confirmed_children ?? 0;
-  if (cm + cw + cc > 0) return { men: cm, women: cw, children: cc, source: "confirmed" };
-  const mg = (b.menu as unknown as { guests?: { men?: number; women?: number; children?: number } })?.guests;
-  if (mg && (mg.men ?? 0) + (mg.women ?? 0) + (mg.children ?? 0) > 0)
-    return { men: mg.men ?? 0, women: mg.women ?? 0, children: mg.children ?? 0, source: "menu" };
+  if (cm + cw + cc > 0)
+    return { men: cm, women: cw, children: cc, adults: 0, gendered: true, source: "confirmed" };
+  const mg = (b.menu as unknown as { guests?: { men?: number; women?: number; children?: number; adults?: number } })?.guests;
+  if (mg) {
+    const ad = mg.adults ?? 0;
+    if (ad > 0)
+      return { men: 0, women: 0, children: mg.children ?? 0, adults: ad, gendered: false, source: "menu" };
+    if ((mg.men ?? 0) + (mg.women ?? 0) + (mg.children ?? 0) > 0)
+      return { men: mg.men ?? 0, women: mg.women ?? 0, children: mg.children ?? 0, adults: 0, gendered: true, source: "menu" };
+  }
   if (b.est_guests && b.est_guests > 0)
-    return { men: Math.ceil(b.est_guests / 2), women: Math.floor(b.est_guests / 2), children: 0, source: "estimate" };
-  return { men: 0, women: 0, children: 0, source: "none" };
+    return { men: Math.ceil(b.est_guests / 2), women: Math.floor(b.est_guests / 2), children: 0, adults: 0, gendered: true, source: "estimate" };
+  return { men: 0, women: 0, children: 0, adults: 0, gendered: true, source: "none" };
+}
+
+/** Adult heads regardless of path — for pricing (both bill the adult rate). */
+export function adultHeadcount(g: DerivedGuests): number {
+  return g.gendered ? g.men + g.women : g.adults;
 }
 
 // ─── Menu discussion sub-states ───

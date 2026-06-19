@@ -15,7 +15,7 @@ export default function MenuForm() {
   const router = useRouter();
   const [b, setB] = useState<Booking | null>(null);
   const [template, setTemplate] = useState<MenuTemplate | null>(null);
-  const [guests, setGuests] = useState({ men: 0, women: 0, children: 0 });
+  const [guests, setGuests] = useState({ men: 0, women: 0, children: 0, adults: 0 });
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -46,7 +46,7 @@ export default function MenuForm() {
     if (!slug) {
       // No template yet — show the chooser (template stays null until picked)
       if (existing.answers) setAnswers(existing.answers);
-      if (existing.guests) setGuests(existing.guests as { men: number; women: number; children: number });
+      if (existing.guests) setGuests({ men: 0, women: 0, children: 0, adults: 0, ...(existing.guests as object) });
       return;
     }
     setChosenSlug(slug);
@@ -56,8 +56,8 @@ export default function MenuForm() {
     setTemplate(tpl.config as MenuTemplate);
 
     if (existing.answers) setAnswers(existing.answers);
-    if (existing.guests) setGuests(existing.guests as { men: number; women: number; children: number });
-    else if (booking.est_guests) setGuests({ men: Math.ceil(booking.est_guests / 2), women: Math.floor(booking.est_guests / 2), children: 0 });
+    if (existing.guests) setGuests({ men: 0, women: 0, children: 0, adults: 0, ...(existing.guests as object) });
+    else if (booking.est_guests) setGuests({ men: Math.ceil(booking.est_guests / 2), women: Math.floor(booking.est_guests / 2), children: 0, adults: 0 });
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
@@ -89,7 +89,7 @@ export default function MenuForm() {
 
   const problems = useMemo(() => {
     if (!template) return [];
-    const g = { men: guests.men, women: guests.women, total: guests.men + guests.women + guests.children };
+    const g = { men: guests.adults > 0 ? guests.adults : guests.men, women: guests.adults > 0 ? 0 : guests.women, total: adultHeads + guests.children };
     const out: string[] = [];
     for (const s of template.sections) {
       if (!isVisible(s, visAnswers)) continue;
@@ -106,7 +106,8 @@ export default function MenuForm() {
     return out;
   }, [template, visAnswers, guests]);
 
-  const partyTotal = guests.men + guests.women + guests.children;
+  const adultHeads = guests.adults > 0 ? guests.adults : guests.men + guests.women;
+  const partyTotal = adultHeads + guests.children;
   const minGuests = template?.base.min_guests ?? 0;
   const belowMin = minGuests > 0 && partyTotal > 0 && partyTotal < minGuests;
 
@@ -185,7 +186,7 @@ export default function MenuForm() {
   }
   if (!totals) return <p className="text-slate-500">Loading…</p>;
 
-  const g = { men: guests.men, women: guests.women, total: guests.men + guests.women + guests.children };
+  const g = { men: guests.adults > 0 ? guests.adults : guests.men, women: guests.adults > 0 ? 0 : guests.women, total: adultHeads + guests.children };
 
   return (
     <div className="max-w-3xl pb-32">
@@ -217,15 +218,55 @@ export default function MenuForm() {
       {/* Guest counts drive tiers and per-person pricing */}
       <div className="card p-5 mb-5">
         <h2 className="font-display font-bold text-sm mb-3">👥 Guest count</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {(["men", "women", "children"] as const).map((k) => (
-            <div key={k}>
-              <label className="label capitalize">{k}</label>
-              <input className="field" type="number" min="0" value={guests[k] || ""}
-                onChange={(e) => setGuests((p) => ({ ...p, [k]: parseInt(e.target.value) || 0 }))} />
-            </div>
-          ))}
-        </div>
+        {(() => {
+          const genderedFilled = guests.men > 0 || guests.women > 0;
+          const adultsFilled = guests.adults > 0;
+          const isDouble = template.slug === "double_buffet";
+          return (
+            <>
+              {/* Gendered path — hidden once the non-gendered Adults field is in use */}
+              {!adultsFilled && (
+                <div className="grid grid-cols-3 gap-3">
+                  {(["men", "women", "children"] as const).map((k) => (
+                    <div key={k}>
+                      <label className="label capitalize">{k}</label>
+                      <input className="field" type="number" min="0" value={guests[k] || ""}
+                        onChange={(e) => setGuests((p) => ({ ...p, [k]: parseInt(e.target.value) || 0 }))} />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Non-gendered path — only offered when not Double Buffet, and hidden
+                  once the gendered fields are in use. */}
+              {!isDouble && !genderedFilled && (
+                <div className={adultsFilled ? "" : "mt-3 pt-3 border-t border-slate-100"}>
+                  {!adultsFilled && <p className="text-[11px] text-slate-400 mb-2">…or enter a combined count (no gender split):</p>}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">Adults</label>
+                      <input className="field" type="number" min="0" value={guests.adults || ""}
+                        onChange={(e) => setGuests((p) => ({ ...p, adults: parseInt(e.target.value) || 0 }))} />
+                    </div>
+                    <div>
+                      <label className="label">Children</label>
+                      <input className="field" type="number" min="0" value={guests.children || ""}
+                        onChange={(e) => setGuests((p) => ({ ...p, children: parseInt(e.target.value) || 0 }))} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Reset hint when one path is locked in */}
+              {(genderedFilled || adultsFilled) && (
+                <button className="text-[11px] text-slate-400 hover:text-navy mt-2"
+                  onClick={() => setGuests({ men: 0, women: 0, children: 0, adults: 0 })}>
+                  ↺ Clear counts {adultsFilled ? "(switch to men/women split)" : "(switch to combined count)"}
+                </button>
+              )}
+            </>
+          );
+        })()}
         <p className="text-xs text-slate-500 mt-2">
           Adults ${template.base.adult_pp}/pp · Children ${template.base.child_pp}/pp
           {template.base.min_guests ? ` · ${template.base.min_guests} guest minimum` : ""}

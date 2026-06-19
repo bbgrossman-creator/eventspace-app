@@ -80,10 +80,13 @@ export default function Worksheet() {
 
         <div className="px-8 py-6 space-y-6">
           {/* Counts — big and unmissable */}
-          <div className="grid grid-cols-4 gap-3 text-center">
+          <div className={`grid gap-3 text-center ${g.gendered ? "grid-cols-4" : "grid-cols-3"}`}>
             {[
-              ["Men", g.men], ["Women", g.women], ["Children", g.children],
-              ["TOTAL", g.men + g.women + g.children],
+              ...(g.gendered
+                ? [["Men", g.men], ["Women", g.women]] as [string, number][]
+                : [["Adults", g.adults]] as [string, number][]),
+              ["Children", g.children],
+              ["TOTAL", (g.gendered ? g.men + g.women : g.adults) + g.children],
             ].map(([label, n]) => (
               <div key={label as string} className={`rounded-xl py-3 ${label === "TOTAL" ? "bg-ink text-white" : "bg-goldsoft"}`}>
                 <div className="font-display font-bold text-2xl">{n as number}</div>
