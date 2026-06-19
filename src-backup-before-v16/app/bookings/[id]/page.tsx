@@ -19,7 +19,6 @@ import { regenerateMenuCharges } from "@/lib/menuCharges";
 import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
-import { STAGE_TO_STATUS, hasMenu, TIMELINE_MILESTONES, STAGES } from "@/lib/workflow";
 
 interface Payment {
   id: string; payment_type: string; method: string;
@@ -224,22 +223,7 @@ export default function BookingDetail() {
       {/* Pipeline + current status */}
       {stage.stageIndex >= 0 && (
         <div className="card p-5 mb-5">
-          <StatusPipeline currentStage={stage.stageIndex} onStageClick={(i) => {
-            const target = STAGE_TO_STATUS[i];
-            if (target === b.status) return;
-            // Guard: can't jump to invoice/count steps without a completed menu
-            const needsMenu = ["send_est_invoice", "confirm_guest_count", "send_final_invoice", "completed"];
-            if (needsMenu.includes(target) && !hasMenu(b)) {
-              setMsg({ ok: false, text: "Complete the menu first — this booking has no menu selections yet." });
-              return;
-            }
-            const forward = STAGES[target].stageIndex > stage.stageIndex;
-            const verb = forward ? "Advance" : "Move back";
-            if (confirm(`${verb} this booking to "${TIMELINE_MILESTONES[i]}"?`)) {
-              setStatus(target, `Moved to ${TIMELINE_MILESTONES[i]}`, forward ? "Advanced manually" : "Moved back manually");
-            }
-          }} />
-          <p className="text-[11px] text-slate-400 mt-2">Tap any stage to move this booking forward or back.</p>
+          <StatusPipeline currentStage={stage.stageIndex} />
         </div>
       )}
       <div className="rounded-2xl px-5 py-4 mb-5 flex items-center justify-between"
@@ -404,7 +388,6 @@ export default function BookingDetail() {
                 subtotal: fin.subtotal, tax_amount: fin.tax, total_with_tax: fin.total,
                 invoice_version: "Estimated", invoice_sent_at: new Date().toISOString(),
               }).eq("id", b.id);
-              if (!hasMenu(b)) { setMsg({ ok: false, text: "Complete the menu before creating an invoice." }); return; }
               await setStatus("confirm_guest_count", "Estimated Invoice Created", `Total ${fmtMoney(fin.total)}`);
               router.push(`/bookings/${b.id}/invoice`);
             }}>
@@ -568,7 +551,7 @@ export default function BookingDetail() {
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs text-slate-500 border-b border-slate-200">
               <th className="py-2">Date</th><th>Type</th><th>Method</th>
-              <th className="text-right">Received</th><th className="text-right">Applied</th><th></th>
+              <th className="text-right">Received</th><th className="text-right">Applied</th>
             </tr></thead>
             <tbody>{payments.map((p) => (
               <tr key={p.id} className="border-b border-slate-100">
@@ -576,26 +559,6 @@ export default function BookingDetail() {
                 <td>{p.payment_type}</td><td>{p.method}</td>
                 <td className="text-right">{fmtMoney(p.amount_received)}</td>
                 <td className="text-right font-medium">{fmtMoney(p.amount_applied)}</td>
-                <td className="text-right">
-                  {Number(p.amount_applied) >= 0 && (
-                    <button className="text-red-400 hover:text-red-600 text-xs font-medium"
-                      onClick={async () => {
-                        if (!confirm(`Reverse this ${fmtMoney(p.amount_applied)} ${p.method} payment? This records an offsetting reversal entry.`)) return;
-                        await supabase.from("payments").insert({
-                          booking_id: b.id, payment_type: "Reversal", method: p.method,
-                          amount_received: -Number(p.amount_received), amount_applied: -Number(p.amount_applied),
-                          cc_fee: -Number(p.cc_fee ?? 0), received_by: "Ben",
-                          notes: `Reversal of ${p.payment_type} from ${new Date(p.created_at).toLocaleDateString()}`,
-                        });
-                        await logActivity(b.id, b.invoice_num, "Payment Reversed", `${fmtMoney(p.amount_applied)} ${p.method} reversed`, "WARNING");
-                        load();
-                        setMsg({ ok: true, text: "Payment reversed ✓" });
-                      }}>
-                      ↩ Reverse
-                    </button>
-                  )}
-                  {Number(p.amount_applied) < 0 && <span className="text-[11px] text-slate-400">reversal</span>}
-                </td>
               </tr>
             ))}</tbody>
           </table>

@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-paper text-ink font-body antialiased;
+}
+
+/* The signature element: workflow pipeline */
+.pipeline-stage {
+  @apply flex-1 text-center text-[11px] font-medium py-1.5 px-1 rounded-full transition-colors;
+}
+.pipeline-done    { @apply bg-emerald-100 text-emerald-800; }
+.pipeline-current { @apply bg-navy text-white shadow-md; }
+.pipeline-pending { @apply bg-slate-100 text-slate-400; }
+
+.btn         { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none; }
+.btn-primary { @apply btn bg-navy text-white hover:bg-navylight; }
+.btn-success { @apply btn bg-emerald-600 text-white hover:bg-emerald-500; }
+.btn-warn    { @apply btn bg-amber-400 text-amber-950 hover:bg-amber-300; }
+.btn-danger  { @apply btn bg-red-600 text-white hover:bg-red-500; }
+.btn-ghost   { @apply btn bg-white text-ink border border-slate-200 hover:border-navy hover:text-navy; }
+
+.card  { @apply bg-white rounded-2xl shadow-card; }
+.field { @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-navy focus:ring-2 focus:ring-navy/20 focus:outline-none bg-white; }
+.label { @apply block text-xs font-semibold text-slate-600 mb-1; }
+
+.gold-rule { @apply h-[3px] w-10 rounded-full bg-gold; }
+
+/* Print: hide chrome, show only the invoice document */
+@media print {
+  aside, .no-print { display: none !important; }
+  main { max-width: none !important; padding: 0 !important; }
+  body { background: white !important; }
+  .card { box-shadow: none !important; border-radius: 0 !important; }
+}

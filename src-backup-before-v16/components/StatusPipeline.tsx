@@ -6,11 +6,9 @@ import { TIMELINE_MILESTONES } from "@/lib/workflow";
 export default function StatusPipeline({
   currentStage,
   compact = false,
-  onStageClick,
 }: {
   currentStage: number;
   compact?: boolean;
-  onStageClick?: (stageIndex: number) => void;
 }) {
   if (currentStage < 0) return null;
 
@@ -32,19 +30,17 @@ export default function StatusPipeline({
   }
 
   return (
-    <div className="flex gap-1.5 flex-wrap">
-      {TIMELINE_MILESTONES.map((m, i) => {
-        const cls = `pipeline-stage ${i < currentStage ? "pipeline-done" : i === currentStage ? "pipeline-current" : "pipeline-pending"}`;
-        if (onStageClick) {
-          return (
-            <button key={m} className={`${cls} cursor-pointer hover:ring-2 hover:ring-navy/40`}
-              title={`Go to ${m}`} onClick={() => onStageClick(i)}>
-              {m}
-            </button>
-          );
-        }
-        return <span key={m} className={cls}>{m}</span>;
-      })}
+    <div className="flex gap-1.5">
+      {TIMELINE_MILESTONES.map((m, i) => (
+        <span
+          key={m}
+          className={`pipeline-stage ${
+            i < currentStage ? "pipeline-done" : i === currentStage ? "pipeline-current" : "pipeline-pending"
+          }`}
+        >
+          {m}
+        </span>
+      ))}
     </div>
   );
 }

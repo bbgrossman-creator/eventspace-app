@@ -45,25 +45,6 @@ export const TIMELINE_MILESTONES = [
   "Deposit", "Schedule Call", "Menu", "Est. Invoice", "Count & Menu", "Final Invoice", "Complete",
 ];
 
-// The canonical status that each timeline stage maps to, for click-to-navigate.
-// (stageIndex → the Status a user lands on when they click that milestone.)
-export const STAGE_TO_STATUS: Status[] = [
-  "schedule_menu_discussion", // 0 deposit done → next is schedule call
-  "schedule_menu_discussion", // 1 Schedule Call
-  "send_menu_form",           // 2 Menu
-  "send_est_invoice",         // 3 Est. Invoice
-  "confirm_guest_count",      // 4 Count & Menu
-  "send_final_invoice",       // 5 Final Invoice
-  "completed",                // 6 Complete
-];
-
-/** Has a menu actually been completed? Used to guard the invoice steps so a
- *  booking can't advance past "Menu" with nothing selected. */
-export function hasMenu(b: Booking): boolean {
-  const m = b.menu as unknown as { answers?: Record<string, unknown> } | null;
-  return !!(b.menu_completed || (m?.answers && Object.keys(m.answers).length > 0));
-}
-
 export function stageFor(status: string): StageInfo {
   return STAGES[status as Status] ?? { ...STAGES.on_hold, label: status, action: "Unknown", icon: "❓" };
 }
