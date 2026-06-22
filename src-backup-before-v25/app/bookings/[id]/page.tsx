@@ -740,10 +740,18 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
   const [by, setBy] = useState("Ben");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [cashSettle, setCashSettle] = useState(false);
+  // Cash settlement (ported Apps Script rule): remaining balance is settled
+  // at the subtotal level; the open tax portion is written off as a
+  // visible adjustment line on the invoice.
+  const cashSettleAmount = Math.max(0, fin.subtotal - fin.paid);
+  const taxAdjustment = Math.max(0, balance - cashSettleAmount);
 
   useEffect(() => {
-    setAmount(method === "Credit Card" ? grossUpForCC(balance).total.toFixed(2) : balance.toFixed(2));
-  }, [method, balance]);
+    if (method === "Credit Card") setAmount(grossUpForCC(balance).total.toFixed(2));
+    else if (method === "Cash" && cashSettle) setAmount(cashSettleAmount.toFixed(2));
+    else setAmount(balance.toFixed(2));
+  }, [method, balance, cashSettle, cashSettleAmount]);
 
   async function save() {
     setErr("");
@@ -751,14 +759,24 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
     if (amt <= 0) { setErr("Enter a valid amount."); return; }
     setBusy(true);
 
+    if (method === "Cash" && cashSettle && taxAdjustment > 0) {
+      const adj = await supabase.from("charges").insert({
+        booking_id: b.id, description: "Cash settlement — tax adjustment",
+        quantity: 1, unit_price: -taxAdjustment, taxable: false,
+        is_adjustment: true, source: "manual", added_by: by,
+      });
+      if (adj.error) { setErr(adj.error.message); setBusy(false); return; }
+    }
+
     const cc = method === "Credit Card" ? calcCCFee(amt) : { applied: amt, fee: 0 };
     const { error } = await supabase.from("payments").insert({
       booking_id: b.id, payment_type: "Additional Payment", method,
       amount_received: amt, amount_applied: cc.applied, cc_fee: cc.fee, received_by: by,
+      notes: method === "Cash" && cashSettle ? `Cash settlement — tax adjusted $${taxAdjustment.toFixed(2)}` : null,
     });
     if (error) { setErr(error.message); setBusy(false); return; }
     await logActivity(b.id, b.invoice_num, "Payment Recorded",
-      `$${amt.toFixed(2)} via ${method} by ${by}`);
+      `$${amt.toFixed(2)} via ${method} by ${by}${method === "Cash" && cashSettle ? ` (cash settlement, tax adj −$${taxAdjustment.toFixed(2)})` : ""}`);
     done();
   }
 
@@ -778,6 +796,15 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
         <p className="text-xs text-amber-700 mt-2">
           Customer pays {fmtMoney(grossUpForCC(balance).total)} (incl. {fmtMoney(grossUpForCC(balance).fee)} fee) to clear the balance.
         </p>
+      )}
+      {method === "Cash" && taxAdjustment > 0 && (
+        <label className="flex items-start gap-2 text-sm mt-3 cursor-pointer rounded-lg bg-white border border-slate-200 px-3 py-2.5">
+          <input type="checkbox" className="mt-0.5" checked={cashSettle} onChange={(e) => setCashSettle(e.target.checked)} />
+          <span>
+            <b>Cash settlement</b> — settle the balance at {fmtMoney(cashSettleAmount)} (subtotal basis).
+            A −{fmtMoney(taxAdjustment)} tax adjustment line is added to the invoice.
+          </span>
+        </label>
       )}
       {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
       <button onClick={save} disabled={busy} className="btn-success mt-3 w-full">{busy ? "Saving…" : "Record Payment"}</button>

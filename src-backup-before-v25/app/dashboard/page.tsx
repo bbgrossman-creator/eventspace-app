@@ -54,8 +54,6 @@ export default function Dashboard() {
     });
 
     // ── Grand totals ──
-    const totalSubtotal = rows.reduce((s, r) => s + r.fin.subtotal, 0);
-    const totalTax = rows.reduce((s, r) => s + r.fin.tax, 0);
     const totalRevenue = rows.reduce((s, r) => s + r.fin.total, 0);
     const totalCollected = payments.reduce((s, p) => s + Number(p.amount_applied), 0);
     const outstandingAR = rows.reduce((s, r) => s + r.balance, 0);
@@ -101,7 +99,6 @@ export default function Dashboard() {
       sumApplied(payments.filter((p) => p.booking_id === bid && methods.includes(p.method)));
 
     return {
-      totalSubtotal, totalTax,
       totalRevenue, totalCollected, outstandingAR, cashCollected, ccFees,
       methods: ["Cash", "Check", "Zelle", "Credit Card"].map((m) => ({
         m, count: byMethod(m).length, sum: sumApplied(byMethod(m)),
@@ -123,27 +120,6 @@ export default function Dashboard() {
         <p className="text-sm text-slate-500 mt-1">Live from bookings, charges, and payments — nothing to refresh.</p>
         <div className="gold-rule mt-3" />
       </header>
-
-      {/* ── REVENUE BREAKDOWN ── */}
-      <SectionTitle>Revenue (contracted)</SectionTitle>
-      <div className="card p-5 mb-6">
-        <table className="w-full text-sm max-w-md">
-          <tbody>
-            <tr className="border-b border-slate-100">
-              <td className="py-2 text-slate-600">Subtotal (all charges)</td>
-              <td className="py-2 text-right font-medium">{fmtMoney(D.totalSubtotal)}</td>
-            </tr>
-            <tr className="border-b border-slate-100">
-              <td className="py-2 text-slate-600">NJ Sales Tax (6.625%)</td>
-              <td className="py-2 text-right font-medium">{fmtMoney(D.totalTax)}</td>
-            </tr>
-            <tr>
-              <td className="py-2 font-display font-bold">Total Revenue</td>
-              <td className="py-2 text-right font-display font-bold text-navy">{fmtMoney(D.totalRevenue)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
 
       {/* ── GRAND TOTALS ── */}
       <SectionTitle>Grand Totals</SectionTitle>
@@ -230,12 +206,7 @@ export default function Dashboard() {
       </div>
 
       {/* All orders */}
-      <div className="flex items-center justify-between mb-3">
-        <SectionTitle>All Orders (most recent event first)</SectionTitle>
-        <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => exportOrdersCSV(D.orders, D.methodPaid)}>
-          ⬇️ Export CSV
-        </button>
-      </div>
+      <SectionTitle>All Orders (most recent event first)</SectionTitle>
       <div className="card overflow-x-auto">
         <table className="w-full text-xs whitespace-nowrap">
           <thead>
@@ -281,38 +252,6 @@ export default function Dashboard() {
       </div>
     </div>
   );
-}
-
-function exportOrdersCSV(
-  orders: { b: Booking; fin: { subtotal: number; tax: number; total: number; guests: { gendered: boolean; men: number; women: number; adults: number; children: number } }; paid: number; balance: number }[],
-  methodPaid: (bid: string, methods: string[]) => number
-) {
-  const esc = (v: string | number) => {
-    const s = String(v ?? "");
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const headers = ["Event Date", "Invoice #", "Customer", "Type", "Guests", "Subtotal", "Tax", "Total", "Cash", "Check/Zelle", "Credit Card", "Total Paid", "Balance", "Status"];
-  const lines = [headers.join(",")];
-  for (const { b, fin, paid, balance } of orders) {
-    const g = fin.guests;
-    const guestCount = (g.gendered ? g.men + g.women : g.adults) + g.children;
-    lines.push([
-      esc(fmtDate(b.event_date)), esc(b.invoice_num), esc(b.contact_name ?? ""),
-      esc(b.event_type ?? ""), esc(guestCount || ""),
-      fin.subtotal.toFixed(2), fin.tax.toFixed(2), fin.total.toFixed(2),
-      methodPaid(b.id, ["Cash"]).toFixed(2),
-      methodPaid(b.id, ["Check", "Zelle"]).toFixed(2),
-      methodPaid(b.id, ["Credit Card"]).toFixed(2),
-      paid.toFixed(2), balance.toFixed(2), esc(stageFor(b.status).label),
-    ].join(","));
-  }
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `event-space-orders-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
