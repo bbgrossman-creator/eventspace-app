@@ -6,7 +6,6 @@ export async function sendEmail(args: {
   to: string | null | undefined;
   subject: string;
   text: string;
-  html?: string;
   bookingId?: string;
   invoiceNum?: string;
   action?: string;

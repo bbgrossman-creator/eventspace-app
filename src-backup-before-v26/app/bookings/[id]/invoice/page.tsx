@@ -56,7 +56,6 @@ export default function InvoicePage() {
 
   const menuLines = buildMenuLines(b, template);
   const emailBody = buildEmailBody(b, inv, charges, menuLines);
-  const emailHtml = buildInvoiceHtml(b, inv, charges, menuLines);
 
   return (
     <div className="max-w-3xl">
@@ -70,7 +69,7 @@ export default function InvoicePage() {
           <button className="btn-primary" onClick={async () => {
             const subject = `${inv.version} Invoice #${b.invoice_num} — Event Space by Burger Bar`;
             const sent = await sendEmail({
-              to: b.email, subject, text: emailBody, html: emailHtml,
+              to: b.email, subject, text: emailBody,
               bookingId: b.id, invoiceNum: b.invoice_num, action: `${inv.version} Invoice Emailed`,
             });
             if (!sent.ok) {
@@ -252,118 +251,6 @@ function buildMenuLines(b: Booking, template: MenuTemplate | null): MenuLine[] {
     if (value) out.push({ title: s.title.replace(/\s*\(.*?\)\s*$/, ""), value });
   }
   return out;
-}
-
-// ─── Branded HTML invoice for the email body (inline styles for email clients) ───
-function buildInvoiceHtml(
-  b: Booking,
-  inv: { g: { men: number; women: number; children: number; adults: number; gendered: boolean; source: string }; adults: number; adultPP: number; subtotal: number; tax: number; total: number; paid: number; balance: number; version: string; billedToMinimum: boolean; minGuests: number; actualHeads: number },
-  charges: Charge[],
-  menuLines: MenuLine[]
-): string {
-  const money = (n: number) => "$" + n.toFixed(2);
-  const navy = "#16314F", gold = "#B08A3E", ink = "#1F4E79";
-  const row = (label: string, qty: string, unit: string, amt: string, opts: { bold?: boolean; adj?: boolean } = {}) =>
-    `<tr>
-      <td style="padding:8px 0;border-bottom:1px solid #eee;${opts.bold ? "font-weight:bold;" : ""}${opts.adj ? "color:" + gold + ";" : ""}">${label}</td>
-      <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:center;">${qty}</td>
-      <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;">${unit}</td>
-      <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;${opts.bold ? "font-weight:bold;" : ""}">${amt}</td>
-    </tr>`;
-
-  const lineRows: string[] = [];
-  if (inv.adults > 0) {
-    const lbl = inv.g.gendered ? `${b.menu_type} — Adults (${inv.g.men} men, ${inv.g.women} women)` : `${b.menu_type} — Adults`;
-    lineRows.push(row(lbl, String(inv.adults), money(inv.adultPP), money(inv.adults * inv.adultPP)));
-  }
-  if (inv.billedToMinimum) {
-    lineRows.push(row(`Minimum guarantee (${inv.minGuests} guests; actual ${inv.actualHeads})`, "", "", money((inv.minGuests - inv.actualHeads) * inv.adultPP), { adj: true }));
-  }
-  if (inv.g.children > 0) {
-    lineRows.push(row("Children's Menu", String(inv.g.children), money(50), money(inv.g.children * 50)));
-  }
-  for (const c of charges) {
-    lineRows.push(row(`${c.is_adjustment ? "[ADJ] " : ""}${c.description}`, String(c.quantity), money(Number(c.unit_price)), money(c.quantity * Number(c.unit_price)), { adj: c.is_adjustment }));
-  }
-
-  const menuBlock = menuLines.length === 0 ? "" : `
-    <div style="margin-top:28px;">
-      <div style="font-size:11px;letter-spacing:2px;color:${gold};text-transform:uppercase;font-weight:bold;border-bottom:2px solid ${navy};padding-bottom:4px;">Menu Selections</div>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:8px;">
-        ${menuLines.map((m) => `<tr><td style="padding:5px 0;color:#666;border-bottom:1px solid #f0f0f0;">${m.title}</td><td style="padding:5px 0;text-align:right;font-weight:500;border-bottom:1px solid #f0f0f0;">${m.value}</td></tr>`).join("")}
-      </table>
-      <p style="font-size:12px;color:#888;margin-top:8px;">Please review carefully and reply with any corrections.</p>
-    </div>`;
-
-  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#222;">
-  <div style="max-width:640px;margin:0 auto;background:#fff;">
-    <!-- header -->
-    <div style="background:${navy};padding:28px 32px;color:#fff;">
-      <table style="width:100%;"><tr>
-        <td>
-          <div style="font-size:20px;font-weight:bold;letter-spacing:0.5px;">EVENT SPACE</div>
-          <div style="font-size:11px;letter-spacing:3px;color:${gold};font-weight:bold;">BY BURGER BAR</div>
-          <div style="font-size:12px;color:#cbd5e1;margin-top:8px;">Jackson, NJ · (848) 299-9079</div>
-        </td>
-        <td style="text-align:right;vertical-align:top;">
-          <div style="font-size:22px;font-weight:bold;color:${gold};">${inv.version.toUpperCase()} INVOICE</div>
-          <div style="font-size:16px;font-weight:bold;margin-top:4px;">#${b.invoice_num}</div>
-          <div style="font-size:12px;color:#cbd5e1;margin-top:4px;">${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</div>
-        </td>
-      </tr></table>
-    </div>
-
-    <div style="padding:28px 32px;">
-      <!-- bill to / event -->
-      <table style="width:100%;font-size:14px;margin-bottom:20px;"><tr>
-        <td style="vertical-align:top;">
-          <div style="font-size:11px;font-weight:bold;color:${gold};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Billed To</div>
-          <div style="font-weight:bold;">${b.contact_name ?? ""}</div>
-          ${b.email ? `<div style="color:#666;">${b.email}</div>` : ""}
-          ${b.phone ? `<div style="color:#666;">${b.phone}</div>` : ""}
-        </td>
-        <td style="text-align:right;vertical-align:top;">
-          <div style="font-size:11px;font-weight:bold;color:${gold};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Event</div>
-          <div style="font-weight:bold;">${b.event_name || b.event_type || ""}</div>
-          <div style="color:#666;">${fmtDate(b.event_date)} · ${fmtTime(b.event_time)}</div>
-        </td>
-      </tr></table>
-
-      <!-- line items -->
-      <table style="width:100%;border-collapse:collapse;font-size:14px;">
-        <tr style="border-bottom:2px solid ${navy};text-align:left;">
-          <th style="padding:8px 0;">Description</th>
-          <th style="padding:8px 0;text-align:center;">Qty</th>
-          <th style="padding:8px 0;text-align:right;">Unit</th>
-          <th style="padding:8px 0;text-align:right;">Amount</th>
-        </tr>
-        ${lineRows.join("")}
-      </table>
-
-      <!-- totals -->
-      <table style="width:100%;margin-top:18px;font-size:14px;"><tr><td></td><td style="width:280px;">
-        <table style="width:100%;">
-          <tr><td style="padding:3px 0;color:#666;">Subtotal</td><td style="padding:3px 0;text-align:right;">${money(inv.subtotal)}</td></tr>
-          <tr><td style="padding:3px 0;color:#666;">NJ Sales Tax (6.625%)</td><td style="padding:3px 0;text-align:right;">${money(inv.tax)}</td></tr>
-          <tr style="border-top:1px solid ${navy};"><td style="padding:6px 0;font-weight:bold;">Total</td><td style="padding:6px 0;text-align:right;font-weight:bold;">${money(inv.total)}</td></tr>
-          ${inv.paid !== 0 ? `<tr><td style="padding:3px 0;color:#16a34a;">Payments received</td><td style="padding:3px 0;text-align:right;color:#16a34a;">−${money(inv.paid)}</td></tr>` : ""}
-          <tr style="border-top:2px solid ${navy};"><td style="padding:8px 0;font-size:17px;font-weight:bold;">Balance Due</td><td style="padding:8px 0;text-align:right;font-size:17px;font-weight:bold;color:${inv.balance <= 0.01 ? "#16a34a" : ink};">${inv.balance <= 0.01 ? "PAID IN FULL" : money(inv.balance)}</td></tr>
-        </table>
-      </td></tr></table>
-
-      ${menuBlock}
-
-      <!-- footer -->
-      <div style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:16px;font-size:12px;color:#888;line-height:1.6;">
-        ${inv.version === "Estimated" ? "<p style='margin:4px 0;'>This is an estimated invoice. Final totals are confirmed after your guest count and menu are finalized.</p>" : ""}
-        ${inv.balance > 0.01 ? `<p style='margin:4px 0;'>Credit card payments include a 3% processing fee — balance via card: ${money(grossUpForCC(inv.balance).total)}.</p>` : ""}
-        <p style="margin:4px 0;">Payment accepted by cash, check, Zelle, or credit card. Thank you for celebrating with us!</p>
-        <p style="margin:4px 0;">Questions? Call us at (848) 299-9079.</p>
-      </div>
-    </div>
-    <div style="height:8px;background:${gold};"></div>
-  </div>
-  </body></html>`;
 }
 
 // ─── Plain-text invoice for the Gmail compose body ───
