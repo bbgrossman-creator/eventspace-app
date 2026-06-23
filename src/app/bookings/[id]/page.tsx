@@ -390,13 +390,14 @@ export default function BookingDetail() {
                 📋 Fill Out Menu Form
               </button>
               <button className="btn-ghost" onClick={async () => {
+                if (!confirm("Skip the menu form and go straight to the estimated invoice? Use this only if you're billing without itemized menu selections.")) return;
                 await supabase.from("bookings").update({
                   menu_completed: true,
                   menu_discussion_status: "Completed",
                 }).eq("id", b.id);
-                setStatus("send_est_invoice", "Menu Completed", "Marked complete without menu form");
+                setStatus("send_est_invoice", "Menu Skipped", "Proceeding without itemized menu");
               }}>
-                ✓ Mark Complete (no priced menu)
+                ⏭️ Skip Menu &amp; Invoice Directly
               </button>
             </>
           ) : b.status === "menu_completed" || b.status === "send_est_invoice" ? (
@@ -447,10 +448,14 @@ export default function BookingDetail() {
             <span className="font-display font-bold text-slate-500 text-lg py-1">❌ Cancelled</span>
           )}
 
-          {/* Always-available secondary actions */}
+          {/* Secondary actions — Payment only where a balance payment makes sense
+              (after the deposit). At the hold/deposit and menu stages it would be
+              redundant with Record Deposit / out of place. */}
           {b.status !== "cancelled" && b.status !== "completed" && (
             <>
-              <button className="btn-ghost" onClick={() => setPanel(panel === "payment" ? "" : "payment")}>💳 Payment</button>
+              {["confirm_guest_count", "send_final_invoice", "collect_payment", "paid_awaiting_event"].includes(b.status) && (
+                <button className="btn-ghost" onClick={() => setPanel(panel === "payment" ? "" : "payment")}>💳 Payment</button>
+              )}
               <button className="btn-ghost" onClick={() => setPanel(panel === "charge" ? "" : "charge")}>➕ Add Charge</button>
               <button className="btn-ghost" onClick={() => setPanel(panel === "cancel" ? "" : "cancel")}>❌ Cancel</button>
             </>

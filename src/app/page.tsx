@@ -3,8 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
-  Booking, Task, buildTasks, daysLabel, fmtDate, fmtTime, menuBadge,
-} from "@/lib/workflow";
+  Booking, Task, buildTasks, daysLabel, fmtDate, fmtTime, menuBadge, parseLocalDate } from "@/lib/workflow";
 import StatusPipeline from "@/components/StatusPipeline";
 
 export default function DailyOps() {
@@ -42,6 +41,21 @@ export default function DailyOps() {
   const week = tasks.filter((t) => t.priority === "MEDIUM");
   const later = tasks.filter((t) => t.priority === "LOW");
 
+  // Tile counts are EVENT-date based (so they match the calendar), distinct from
+  // the task-priority sections below.
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const in7 = new Date(now); in7.setDate(in7.getDate() + 7);
+  const activeBookings = tasks.filter((t) => t.booking.status !== "completed" && t.booking.status !== "cancelled");
+  const eventsThisWeek = activeBookings.filter((t) => {
+    if (!t.booking.event_date) return false;
+    const d = parseLocalDate(t.booking.event_date);
+    return d >= now && d < in7;
+  });
+  const eventsUpcoming = activeBookings.filter((t) => {
+    if (!t.booking.event_date) return false;
+    return parseLocalDate(t.booking.event_date) >= in7;
+  });
+
   return (
     <div>
       <header className="mb-8">
@@ -53,10 +67,10 @@ export default function DailyOps() {
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Stat label="Urgent" value={urgent.length} tone="text-red-600" />
-        <Stat label="This week" value={week.length} tone="text-amber-600" />
-        <Stat label="Upcoming" value={later.length} tone="text-emerald-600" />
-        <Stat label="Active bookings" value={tasks.length} tone="text-navy" />
+        <Stat label="Urgent tasks" value={urgent.length} tone="text-red-600" />
+        <Stat label="Events this week" value={eventsThisWeek.length} tone="text-amber-600" />
+        <Stat label="Events upcoming" value={eventsUpcoming.length} tone="text-emerald-600" />
+        <Stat label="Active bookings" value={activeBookings.length} tone="text-navy" />
       </div>
 
       {callsToday.length > 0 && (
