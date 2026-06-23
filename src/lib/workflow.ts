@@ -143,6 +143,18 @@ export function adultHeadcount(g: DerivedGuests): number {
   return g.gendered ? g.men + g.women : g.adults;
 }
 
+/** True if the event's date+time is in the past. Used to decide whether a
+ *  full payment is pre-event (needs override, stays open) or post-event
+ *  (can auto-complete). Falls back to end-of-day if no time is set. */
+export function eventHasPassed(b: Booking): boolean {
+  if (!b.event_date) return false;
+  const [y, mo, d] = b.event_date.split("-").map(Number);
+  let hh = 23, mm = 59;
+  if (b.event_time) { const [h, m] = b.event_time.split(":").map(Number); hh = h; mm = m; }
+  const eventDt = new Date(y, mo - 1, d, hh, mm);
+  return Date.now() >= eventDt.getTime();
+}
+
 // ─── Menu discussion sub-states ───
 export type DiscussionState = "not_sent" | "link_sent" | "scheduled" | "overdue";
 export const DISCUSSION_OVERDUE_HOURS = 1;

@@ -12,11 +12,11 @@ import {
   menuBadge,
   discussionState,
   deriveGuests,
-  isHoldExpired,
-} from "@/lib/workflow";
+  isHoldExpired, eventHasPassed } from "@/lib/workflow";
 import { PRICING, calcCCFee, grossUpForCC, buffetBaseTotal, invoiceTotals } from "@/lib/pricing";
 import { regenerateMenuCharges } from "@/lib/menuCharges";
 import { bookingFinancials } from "@/lib/finance";
+import ApprovalField from "@/components/ApprovalField";
 import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
@@ -746,18 +746,29 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
   const [checkNum, setCheckNum] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [preApprover, setPreApprover] = useState<string | null>(null);
+  const [showPreWarn, setShowPreWarn] = useState(false);
 
   useEffect(() => {
     setAmount(method === "Credit Card" ? grossUpForCC(balance).total.toFixed(2) : balance.toFixed(2));
   }, [method, balance]);
 
+  const amt = parseFloat(amount) || 0;
+  const cc0 = method === "Credit Card" ? calcCCFee(amt) : { applied: amt, fee: 0 };
+  const clearsBalance = cc0.applied >= balance - 0.01;     // this payment pays it off
+  const preEvent = !eventHasPassed(b);
+  const needsOverride = clearsBalance && preEvent;          // paying in full before the event
+
   async function save() {
     setErr("");
-    const amt = parseFloat(amount) || 0;
     if (amt <= 0) { setErr("Enter a valid amount."); return; }
     if (method === "Check" && !checkNum.trim()) { setErr("Enter the check number."); return; }
-    setBusy(true);
 
+    // Pre-event full payment: require explicit acknowledgement + approval.
+    if (needsOverride && !showPreWarn) { setShowPreWarn(true); return; }
+    if (needsOverride && !preApprover) { setErr("Approval is required to accept full payment before the event."); return; }
+
+    setBusy(true);
     const cc = method === "Credit Card" ? calcCCFee(amt) : { applied: amt, fee: 0 };
     const { error } = await supabase.from("payments").insert({
       booking_id: b.id, payment_type: "Additional Payment", method,
@@ -767,6 +778,18 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
     if (error) { setErr(error.message); setBusy(false); return; }
     await logActivity(b.id, b.invoice_num, "Payment Recorded",
       `$${amt.toFixed(2)} via ${method}${method === "Check" ? ` #${checkNum.trim()}` : ""} by ${by}`);
+
+    if (needsOverride) {
+      await supabase.from("bookings").update({ prepay_override_by: preApprover }).eq("id", b.id);
+      await logActivity(b.id, b.invoice_num, "Pre-Event Full Payment Approved",
+        `Paid in full before the event — approved by ${preApprover}. Booking stays open for post-event amendments.`, "WARNING");
+    }
+
+    // Auto-complete ONLY when the event has passed AND the balance is cleared.
+    if (clearsBalance && !preEvent) {
+      await supabase.from("bookings").update({ status: "completed" }).eq("id", b.id);
+      await logActivity(b.id, b.invoice_num, "Event Completed", "Balance cleared after the event — auto-completed.");
+    }
     done();
   }
 
@@ -793,8 +816,25 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
           Customer pays {fmtMoney(grossUpForCC(balance).total)} (incl. {fmtMoney(grossUpForCC(balance).fee)} fee) to clear the balance.
         </p>
       )}
+
+      {/* Pre-event full-payment warning + approval */}
+      {showPreWarn && needsOverride && (
+        <div className="mt-3 rounded-lg bg-amber-50 border border-amber-300 px-4 py-3">
+          <p className="text-sm text-amber-900 font-medium">⚠️ This event hasn&apos;t happened yet.</p>
+          <p className="text-sm text-amber-800 mt-1">
+            Accepting payment in full now means additional charges (extra guests, day-of additions) may still apply afterward.
+            This booking will stay open until after the event so an amendment can be added if needed. Approval required to proceed.
+          </p>
+          <div className="mt-3">
+            <ApprovalField label="Approved by" onChange={setPreApprover} />
+          </div>
+        </div>
+      )}
+
       {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
-      <button onClick={save} disabled={busy} className="btn-success mt-3 w-full">{busy ? "Saving…" : "Record Payment"}</button>
+      <button onClick={save} disabled={busy} className="btn-success mt-3 w-full">
+        {busy ? "Saving…" : needsOverride && !showPreWarn ? "Continue…" : "Record Payment"}
+      </button>
     </Panel>
   );
 }
@@ -876,14 +916,21 @@ function ScheduleCallForm({ b, done }: { b: Booking; done: () => void }) {
 
 // ─── Guest count confirmation ───
 function GuestCountForm({ b, done, advance }: { b: Booking; done: () => void; advance: () => void }) {
+  // Match the mode chosen at menu time: if the menu used non-gendered "adults",
+  // confirm with Adults/Children; otherwise Men/Women/Children.
+  const menuGuests = (b.menu as unknown as { guests?: { adults?: number } })?.guests;
+  const nonGendered = (menuGuests?.adults ?? 0) > 0;
+
   const [men, setMen] = useState(String(b.confirmed_men ?? ""));
   const [women, setWomen] = useState(String(b.confirmed_women ?? ""));
+  const [adults, setAdults] = useState(String((menuGuests?.adults ?? "") || ""));
   const [children, setChildren] = useState(String(b.confirmed_children ?? ""));
-  const [by, setBy] = useState("Ben");
+  const [approver, setApprover] = useState<string | null>(null);
   const [err, setErr] = useState("");
   const [minGuests, setMinGuests] = useState(0);
   const [overrideMin, setOverrideMin] = useState(false);
-  const total = (parseInt(men) || 0) + (parseInt(women) || 0) + (parseInt(children) || 0);
+  const adultHeads = nonGendered ? (parseInt(adults) || 0) : (parseInt(men) || 0) + (parseInt(women) || 0);
+  const total = adultHeads + (parseInt(children) || 0);
 
   useEffect(() => {
     const slug = b.menu_type === "Full Service" ? "full_service"
@@ -899,21 +946,25 @@ function GuestCountForm({ b, done, advance }: { b: Booking; done: () => void; ad
   async function save() {
     setErr("");
     if (total <= 0) { setErr("Enter at least one guest."); return; }
+    if (!approver) { setErr("Confirmed by is required."); return; }
     if (belowMin && !overrideMin) {
       setErr(`${total} guests is below the ${minGuests}-guest minimum for ${b.menu_type}. Check the override box to confirm anyway.`);
       return;
     }
-    const m = parseInt(men) || 0, w = parseInt(women) || 0, c = parseInt(children) || 0;
+    // For non-gendered, store adults in the men slot (both bill adult rate) so
+    // confirmed_* stays consistent; the menu's guests.adults preserves display.
+    const m = nonGendered ? (parseInt(adults) || 0) : (parseInt(men) || 0);
+    const w = nonGendered ? 0 : (parseInt(women) || 0);
+    const c = parseInt(children) || 0;
+    const by = approver;
     await supabase.from("bookings").update({
       confirmed_men: m, confirmed_women: w, confirmed_children: c,
       guest_count_confirmed_at: new Date().toISOString(), guest_count_confirmed_by: by,
     }).eq("id", b.id);
 
-    // If a priced menu exists, update its guest counts and re-price all
-    // per-person menu charges so the final invoice reflects the real count.
     const sel = b.menu as unknown as { template?: string; guests?: object; answers?: Record<string, unknown> };
     if (sel?.template && sel?.answers) {
-      const updated = { ...sel, guests: { men: m, women: w, children: c } };
+      const updated = { ...sel, guests: nonGendered ? { men: 0, women: 0, children: c, adults: m } : { men: m, women: w, children: c } };
       await supabase.from("bookings").update({ menu: updated }).eq("id", b.id);
       const { data: tpl } = await supabase.from("menu_templates")
         .select("config").eq("slug", sel.template).single();
@@ -925,7 +976,8 @@ function GuestCountForm({ b, done, advance }: { b: Booking; done: () => void; ad
       }
     }
 
-    await logActivity(b.id, b.invoice_num, "Guest Count Confirmed", `${total} total (${men}M/${women}W/${children}C) by ${by}`);
+    const desc = nonGendered ? `${total} total (${m} adults / ${c} children)` : `${total} total (${m}M/${w}W/${c}C)`;
+    await logActivity(b.id, b.invoice_num, "Guest Count Confirmed", `${desc} by ${by}`);
     if (belowMin && overrideMin) {
       await logActivity(b.id, b.invoice_num, "Guest Minimum Overridden",
         `Confirmed ${total} guests (minimum ${minGuests}) by ${by}`, "WARNING");
@@ -936,11 +988,19 @@ function GuestCountForm({ b, done, advance }: { b: Booking; done: () => void; ad
 
   return (
     <Panel title="👥 Confirm final guest count">
-      <div className="grid grid-cols-4 gap-3">
-        <div><label className="label">Men</label><input className="field" type="number" min="0" value={men} onChange={(e) => setMen(e.target.value)} /></div>
-        <div><label className="label">Women</label><input className="field" type="number" min="0" value={women} onChange={(e) => setWomen(e.target.value)} /></div>
-        <div><label className="label">Children</label><input className="field" type="number" min="0" value={children} onChange={(e) => setChildren(e.target.value)} /></div>
-        <div><label className="label">Confirmed by</label><input className="field" value={by} onChange={(e) => setBy(e.target.value)} /></div>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className={`grid ${nonGendered ? "grid-cols-2" : "grid-cols-3"} gap-3`}>
+          {nonGendered ? (
+            <div><label className="label">Adults</label><input className="field" type="number" min="0" value={adults} onChange={(e) => setAdults(e.target.value)} /></div>
+          ) : (
+            <>
+              <div><label className="label">Men</label><input className="field" type="number" min="0" value={men} onChange={(e) => setMen(e.target.value)} /></div>
+              <div><label className="label">Women</label><input className="field" type="number" min="0" value={women} onChange={(e) => setWomen(e.target.value)} /></div>
+            </>
+          )}
+          <div><label className="label">Children</label><input className="field" type="number" min="0" value={children} onChange={(e) => setChildren(e.target.value)} /></div>
+        </div>
+        <ApprovalField label="Confirmed by" onChange={setApprover} />
       </div>
       <div className="flex justify-between items-center mt-3 rounded-lg bg-white border border-slate-200 px-4 py-2">
         <span className="text-sm text-slate-600">Total guests</span>
@@ -953,7 +1013,7 @@ function GuestCountForm({ b, done, advance }: { b: Booking; done: () => void; ad
         </label>
       )}
       {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
-      <button onClick={save} className="btn-primary mt-3 w-full">✅ Confirm & Move to Final Invoice</button>
+      <button onClick={save} className="btn-primary mt-3 w-full">✅ Confirm &amp; Move to Final Invoice</button>
     </Panel>
   );
 }
