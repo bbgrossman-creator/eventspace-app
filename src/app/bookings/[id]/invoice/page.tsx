@@ -78,8 +78,18 @@ export default function InvoicePage() {
                 `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(b.email ?? "")}` +
                   `&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`, "_blank");
             }
-            await supabase.from("bookings").update({ invoice_sent_at: new Date().toISOString() }).eq("id", b.id);
-            alert(sent.ok ? `Invoice emailed ✓ ${sent.detail}` : `Auto-send unavailable (${sent.detail}) — Gmail opened instead.`);
+            // Mark sent, and advance the workflow only now (emailing is what advances).
+            const patch: Record<string, unknown> = { invoice_sent_at: new Date().toISOString() };
+            if (b.status === "send_est_invoice" || b.status === "menu_completed") patch.status = "confirm_guest_count";
+            if (b.status === "send_final_invoice") patch.status = "collect_payment";
+            await supabase.from("bookings").update(patch).eq("id", b.id);
+            await supabase.from("activity_log").insert({
+              booking_id: b.id, invoice_num: b.invoice_num,
+              action: `${inv.version} Invoice Emailed`, result: "SUCCESS",
+              details: sent.ok ? `Sent to ${b.email}` : "Gmail fallback opened",
+            });
+            // Auto-return to the booking — landing back here proves it sent and advanced.
+            router.push(`/bookings/${b.id}`);
           }}>
             📧 Email Invoice
           </button>

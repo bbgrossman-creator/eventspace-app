@@ -402,15 +402,16 @@ export default function BookingDetail() {
           ) : b.status === "menu_completed" || b.status === "send_est_invoice" ? (
             <button className="btn-primary" onClick={async () => {
               if (!fin) return;
+              if (!hasMenu(b)) { setMsg({ ok: false, text: "Complete the menu before creating an invoice." }); return; }
               await supabase.from("bookings").update({
                 subtotal: fin.subtotal, tax_amount: fin.tax, total_with_tax: fin.total,
-                invoice_version: "Estimated", invoice_sent_at: new Date().toISOString(),
+                invoice_version: "Estimated",
               }).eq("id", b.id);
-              if (!hasMenu(b)) { setMsg({ ok: false, text: "Complete the menu before creating an invoice." }); return; }
-              await setStatus("confirm_guest_count", "Estimated Invoice Created", `Total ${fmtMoney(fin.total)}`);
+              // Go to the invoice to review & email. The workflow advances only
+              // when the invoice is actually emailed (which returns you here).
               router.push(`/bookings/${b.id}/invoice`);
             }}>
-              📧 Create Estimated Invoice ({fin ? fmtMoney(fin.total) : ""})
+              📄 Review &amp; Email Estimated Invoice ({fin ? fmtMoney(fin.total) : ""})
             </button>
           ) : b.status === "confirm_guest_count" ? (
             <button className="btn-primary" onClick={() => setPanel(panel === "guestcount" ? "" : "guestcount")}>
@@ -421,12 +422,12 @@ export default function BookingDetail() {
               if (!fin) return;
               await supabase.from("bookings").update({
                 subtotal: fin.subtotal, tax_amount: fin.tax, total_with_tax: fin.total,
-                invoice_version: "Final", invoice_sent_at: new Date().toISOString(),
+                invoice_version: "Final",
               }).eq("id", b.id);
-              await setStatus("collect_payment", "Final Invoice Created", `Total ${fmtMoney(fin.total)}`);
+              // Review & email the final (pre-event) invoice. Emailing advances to payment.
               router.push(`/bookings/${b.id}/invoice`);
             }}>
-              📨 Create Final Invoice ({fin ? fmtMoney(fin.total) : ""})
+              📨 Review &amp; Email Final Invoice ({fin ? fmtMoney(fin.total) : ""})
             </button>
           ) : b.status === "collect_payment" ? (
             <>
@@ -459,7 +460,11 @@ export default function BookingDetail() {
           if (b.status === "completed") await setStatus("collect_payment", "Invoice Adjusted", "Reopened for payment");
           setPanel(""); load();
         }} />}
-        {panel === "guestcount" && <GuestCountForm b={b} done={() => { setPanel(""); load(); }} advance={() => setStatus("send_final_invoice", "Guest Count Confirmed")} />}
+        {panel === "guestcount" && <GuestCountForm b={b} done={() => { setPanel(""); load(); }} advance={async () => {
+          await setStatus("send_final_invoice", "Guest Count Confirmed");
+          // Auto-prompt the final (pre-event) invoice so it can be sent before the party.
+          router.push(`/bookings/${b.id}/invoice`);
+        }} />}
         {panel === "schedulecall" && <ScheduleCallForm b={b} done={() => { setPanel(""); load(); }} />}
         {panel === "cancel" && <CancelForm b={b} done={() => { setPanel(""); load(); }} />}
       </div>
