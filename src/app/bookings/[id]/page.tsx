@@ -220,7 +220,15 @@ export default function BookingDetail() {
         <Info label="Contact" value={b.contact_name} />
         <Info label="Phone" value={b.phone || "—"} link={b.phone ? `tel:${b.phone}` : undefined} />
         <Info label="Email" value={b.email || "—"} link={b.email ? `mailto:${b.email}` : undefined} />
-        <Info label="Guests (est.)" value={String(b.est_guests ?? "TBD")} />
+        <Info label="Guests" value={(() => {
+          const g = deriveGuests(b);
+          const heads = (g.gendered ? g.men + g.women : g.adults) + g.children;
+          if (heads <= 0) return "TBD";
+          const suffix = g.source === "confirmed" ? "" : " (est.)";
+          return g.gendered
+            ? `${heads}${suffix}`
+            : `${heads}${suffix}`;
+        })()} />
       </div>
 
       {/* Pipeline + current status */}

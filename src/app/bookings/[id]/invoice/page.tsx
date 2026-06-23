@@ -256,7 +256,10 @@ export default function InvoicePage() {
           {/* Footer terms */}
           <div className="border-t border-slate-200 pt-4 text-[11px] text-slate-500 space-y-1">
             {inv.version === "Estimated" && (
-              <p>This is an estimated invoice. Final totals are confirmed after your guest count and menu are finalized.</p>
+              <>
+                <p>This is an estimated invoice. Final totals are confirmed after your guest count and menu are finalized.</p>
+                <p>We&apos;ll reach out about 48 hours before your event to confirm your final guest count and menu.</p>
+              </>
             )}
             {inv.balance > 0.01 && (
               <p>Credit card charges incur an additional 3% processing fee (balance via card: {fmtMoney(grossUpForCC(inv.balance).total)}).</p>
@@ -278,7 +281,13 @@ function buildMenuLines(b: Booking, template: MenuTemplate | null): MenuLine[] {
   if (!sel?.answers || !template) return [];
   const a = sel.answers;
   const out: MenuLine[] = [];
-  if (sel.guests) out.push({ title: "Guest Count", value: `${sel.guests.men} men · ${sel.guests.women} women · ${sel.guests.children} children` });
+  if (sel.guests) {
+    const gg = sel.guests as { men?: number; women?: number; children?: number; adults?: number };
+    const gv = (gg.adults ?? 0) > 0
+      ? `${gg.adults} adults · ${gg.children ?? 0} children`
+      : `${gg.men ?? 0} men · ${gg.women ?? 0} women · ${gg.children ?? 0} children`;
+    out.push({ title: "Guest Count", value: gv });
+  }
   for (const s of template.sections) {
     if (s.type === "info" || !isVisible(s, a)) continue;
     const v = a[s.key];
@@ -395,7 +404,7 @@ function buildInvoiceHtml(
 
       <!-- footer -->
       <div style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:16px;font-size:12px;color:#888;line-height:1.6;">
-        ${inv.version === "Estimated" ? "<p style='margin:4px 0;'>This is an estimated invoice. Final totals are confirmed after your guest count and menu are finalized.</p>" : ""}
+        ${inv.version === "Estimated" ? "<p style='margin:4px 0;'>This is an estimated invoice. Final totals are confirmed after your guest count and menu are finalized.</p><p style='margin:4px 0;'>We'll reach out about 48 hours before your event to confirm your final guest count and menu.</p>" : ""}
         ${inv.balance > 0.01 ? `<p style='margin:4px 0;'>Credit card charges incur an additional 3% processing fee (balance via card: ${money(grossUpForCC(inv.balance).total)}).</p>` : ""}
         <p style="margin:4px 0;">Payment accepted by cash, check, Zelle, or credit card.</p>
         <p style="margin:8px 0 4px;">Thank you for celebrating with us!</p>
@@ -442,7 +451,7 @@ function buildEmailBody(
     L.push("Please review carefully and reply with any corrections.");
   }
   L.push("");
-  if (inv.version === "Estimated") L.push("This is an estimate — final totals are confirmed after your guest count and menu are finalized.");
+  if (inv.version === "Estimated") { L.push("This is an estimate — final totals are confirmed after your guest count and menu are finalized."); L.push("We'll reach out about 48 hours before your event to confirm your final guest count and menu."); }
   if (inv.balance > 0.01) L.push(`Credit card charges incur an additional 3% processing fee (balance via card: ${money(grossUpForCC(inv.balance).total)}).`);
   L.push("Payment accepted by cash, check, Zelle, or credit card.");
   L.push("");
