@@ -661,10 +661,10 @@ export default function BookingDetail() {
 
 function Info({ label, value, link }: { label: string; value: string; link?: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{label}</div>
-      {link ? <a href={link} className="font-medium text-navy hover:underline">{value}</a>
-        : <div className="font-medium">{value}</div>}
+      {link ? <a href={link} className="font-medium text-navy hover:underline block truncate" title={value}>{value}</a>
+        : <div className="font-medium truncate" title={value}>{value}</div>}
     </div>
   );
 }
