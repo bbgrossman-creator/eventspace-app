@@ -23,7 +23,7 @@ import StatusPipeline from "@/components/StatusPipeline";
 import { STAGE_TO_STATUS, hasMenu, TIMELINE_MILESTONES, STAGES } from "@/lib/workflow";
 
 interface Payment {
-  id: string; payment_type: string; method: string;
+  id: string; payment_type: string; method: string; check_number?: string | null;
   amount_received: number; amount_applied: number; cc_fee: number;
   received_by: string | null; notes: string | null; created_at: string;
 }
@@ -583,7 +583,7 @@ export default function BookingDetail() {
             <tbody>{payments.map((p) => (
               <tr key={p.id} className="border-b border-slate-100">
                 <td className="py-2">{new Date(p.created_at).toLocaleDateString()}</td>
-                <td>{p.payment_type}</td><td>{p.method}</td>
+                <td>{p.payment_type}</td><td>{p.method}{p.check_number ? ` #${p.check_number}` : ""}</td>
                 <td className="text-right">{fmtMoney(p.amount_received)}</td>
                 <td className="text-right font-medium">{fmtMoney(p.amount_applied)}</td>
                 <td className="text-right">
@@ -738,6 +738,7 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
   const [method, setMethod] = useState("Cash");
   const [amount, setAmount] = useState(balance.toFixed(2));
   const [by, setBy] = useState("Ben");
+  const [checkNum, setCheckNum] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -749,16 +750,18 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
     setErr("");
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) { setErr("Enter a valid amount."); return; }
+    if (method === "Check" && !checkNum.trim()) { setErr("Enter the check number."); return; }
     setBusy(true);
 
     const cc = method === "Credit Card" ? calcCCFee(amt) : { applied: amt, fee: 0 };
     const { error } = await supabase.from("payments").insert({
       booking_id: b.id, payment_type: "Additional Payment", method,
       amount_received: amt, amount_applied: cc.applied, cc_fee: cc.fee, received_by: by,
+      check_number: method === "Check" ? checkNum.trim() : null,
     });
     if (error) { setErr(error.message); setBusy(false); return; }
     await logActivity(b.id, b.invoice_num, "Payment Recorded",
-      `$${amt.toFixed(2)} via ${method} by ${by}`);
+      `$${amt.toFixed(2)} via ${method}${method === "Check" ? ` #${checkNum.trim()}` : ""} by ${by}`);
     done();
   }
 
@@ -774,6 +777,12 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
         <div><label className="label">Received by</label>
           <input className="field" value={by} onChange={(e) => setBy(e.target.value)} /></div>
       </div>
+      {method === "Check" && (
+        <div className="mt-3">
+          <label className="label">Check number</label>
+          <input className="field" value={checkNum} onChange={(e) => setCheckNum(e.target.value)} placeholder="e.g. 1042" />
+        </div>
+      )}
       {method === "Credit Card" && (
         <p className="text-xs text-amber-700 mt-2">
           Customer pays {fmtMoney(grossUpForCC(balance).total)} (incl. {fmtMoney(grossUpForCC(balance).fee)} fee) to clear the balance.

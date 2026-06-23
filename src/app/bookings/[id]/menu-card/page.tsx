@@ -72,35 +72,46 @@ export default function MenuCard() {
           No menu selections yet — complete the menu form first, then the card generates automatically.
         </div>
       ) : (
-        <div className="card overflow-hidden print:shadow-none">
-          {/* Decorative menu card */}
-          <div className="px-10 py-12 text-center" style={{ background: "linear-gradient(180deg,#fdfcfa,#f7f3ec)" }}>
-            <div className="text-[11px] tracking-[0.3em] text-gold font-semibold mb-1">EVENT SPACE BY BURGER BAR</div>
-            <div className="w-16 h-px bg-gold mx-auto my-4" />
-            <h1 className="font-display text-3xl font-bold text-ink">{b.event_name || b.event_type}</h1>
-            <p className="text-sm text-slate-500 mt-1">{fmtDate(b.event_date)}</p>
-            <div className="w-16 h-px bg-gold mx-auto my-4" />
+        <div className="menu-card-print">
+          {[0, 1].map((copy) => (
+            <div key={copy} className={`card overflow-hidden print:shadow-none menu-card-one ${copy === 1 ? "no-screen" : ""}`}>
+              {/* Decorative menu card */}
+              <div className="px-10 py-12 text-center" style={{ background: "linear-gradient(180deg,#fdfcfa,#f7f3ec)" }}>
+                <div className="text-[11px] tracking-[0.3em] text-gold font-semibold mb-1">EVENT SPACE BY BURGER BAR</div>
+                <div className="w-16 h-px bg-gold mx-auto my-4" />
+                <h1 className="font-display text-3xl font-bold text-ink">{b.event_name || b.event_type}</h1>
+                <p className="text-sm text-slate-500 mt-1">{fmtDate(b.event_date)}</p>
+                <div className="w-16 h-px bg-gold mx-auto my-4" />
 
-            <div className="text-left max-w-md mx-auto mt-8 space-y-5">
-              {courses.map((c) => (
-                <div key={c.title} className="text-center">
-                  <div className="text-[11px] tracking-[0.2em] text-gold uppercase font-semibold">{c.title}</div>
-                  {c.items.map((it) => (
-                    <div key={it} className="font-display text-lg text-ink mt-0.5">{it}</div>
+                <div className="text-left max-w-md mx-auto mt-8 space-y-5">
+                  {courses.map((c) => (
+                    <div key={c.title} className="text-center">
+                      <div className="text-[11px] tracking-[0.2em] text-gold uppercase font-semibold">{c.title}</div>
+                      {c.items.map((it) => (
+                        <div key={it} className="font-display text-lg text-ink mt-0.5">{it}</div>
+                      ))}
+                    </div>
                   ))}
                 </div>
-              ))}
-            </div>
 
-            <div className="w-16 h-px bg-gold mx-auto mt-10 mb-3" />
-            <p className="text-[11px] text-slate-400 tracking-wider">Under the strict Hashgacha of the KCL</p>
-          </div>
+                <div className="w-16 h-px bg-gold mx-auto mt-10 mb-3" />
+                <p className="text-[11px] text-slate-400 tracking-wider">Under the strict Hashgacha of the KCL</p>
+              </div>
+            </div>
+          ))}
+          <style>{`
+            .no-screen { display: none; }
+            @media print {
+              .no-screen { display: block !important; }
+              .menu-card-one { page-break-inside: avoid; margin: 0 auto 0.4in; max-width: 6.5in; }
+            }
+          `}</style>
         </div>
       )}
 
       {hasMenu && (
         <p className="no-print text-[11px] text-slate-400 mt-3">
-          Generated from the menu selections. Tip: print on cardstock; use your browser&apos;s print scaling to fit your card size.
+          Prints two cards per page. To remove the date/URL at the page edges, in the print dialog open <b>More settings</b> and uncheck <b>Headers and footers</b>. Print on cardstock for best results.
         </p>
       )}
     </div>

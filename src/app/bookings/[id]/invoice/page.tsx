@@ -220,9 +220,10 @@ export default function InvoicePage() {
               <p>This is an estimated invoice. Final totals are confirmed after your guest count and menu are finalized.</p>
             )}
             {inv.balance > 0.01 && (
-              <p>Credit card payments include a 3% processing fee — balance via card: {fmtMoney(grossUpForCC(inv.balance).total)}.</p>
+              <p>Credit card charges incur an additional 3% processing fee (balance via card: {fmtMoney(grossUpForCC(inv.balance).total)}).</p>
             )}
-            <p>Payment accepted by cash, check, Zelle, or credit card. Thank you for celebrating with us!</p>
+            <p>Payment accepted by cash, check, Zelle, or credit card.</p>
+            <p style={{ marginTop: "6px" }}>Thank you for celebrating with us!</p>
           </div>
         </div>
         <div className="h-2 bg-gold" />
@@ -356,8 +357,9 @@ function buildInvoiceHtml(
       <!-- footer -->
       <div style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:16px;font-size:12px;color:#888;line-height:1.6;">
         ${inv.version === "Estimated" ? "<p style='margin:4px 0;'>This is an estimated invoice. Final totals are confirmed after your guest count and menu are finalized.</p>" : ""}
-        ${inv.balance > 0.01 ? `<p style='margin:4px 0;'>Credit card payments include a 3% processing fee — balance via card: ${money(grossUpForCC(inv.balance).total)}.</p>` : ""}
-        <p style="margin:4px 0;">Payment accepted by cash, check, Zelle, or credit card. Thank you for celebrating with us!</p>
+        ${inv.balance > 0.01 ? `<p style='margin:4px 0;'>Credit card charges incur an additional 3% processing fee (balance via card: ${money(grossUpForCC(inv.balance).total)}).</p>` : ""}
+        <p style="margin:4px 0;">Payment accepted by cash, check, Zelle, or credit card.</p>
+        <p style="margin:8px 0 4px;">Thank you for celebrating with us!</p>
         <p style="margin:4px 0;">Questions? Call us at (848) 299-9079.</p>
       </div>
     </div>
@@ -402,7 +404,7 @@ function buildEmailBody(
   }
   L.push("");
   if (inv.version === "Estimated") L.push("This is an estimate — final totals are confirmed after your guest count and menu are finalized.");
-  if (inv.balance > 0.01) L.push(`Payment by credit card adds a 3% processing fee (balance via card: ${money(grossUpForCC(inv.balance).total)}).`);
+  if (inv.balance > 0.01) L.push(`Credit card charges incur an additional 3% processing fee (balance via card: ${money(grossUpForCC(inv.balance).total)}).`);
   L.push("Payment accepted by cash, check, Zelle, or credit card.");
   L.push("");
   L.push("Questions? Call us at (848) 299-9079.");
