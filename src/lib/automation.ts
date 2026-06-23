@@ -146,10 +146,27 @@ export async function runActionAutomation(
   b: Booking,
   extras: Partial<Record<(typeof PLACEHOLDERS)[number], string>> = {}
 ): Promise<{ sent: boolean; detail: string }> {
-  const { data } = await supabase.from("email_automations")
-    .select("*").eq("key", key).eq("enabled", true).single();
-  if (!data) return { sent: false, detail: `Automation "${key}" disabled or not found` };
+  // Fetch the automation. Use maybeSingle so a missing row doesn't throw.
+  const { data, error } = await supabase.from("email_automations")
+    .select("*").eq("key", key).maybeSingle();
+
+  async function logSkip(reason: string) {
+    await supabase.from("activity_log").insert({
+      booking_id: b.id, invoice_num: b.invoice_num,
+      action: `Email NOT sent: ${key}`, result: "WARNING",
+      details: reason,
+    });
+  }
+
+  if (error) { await logSkip(`Lookup error: ${error.message}`); return { sent: false, detail: error.message }; }
+  if (!data) { await logSkip(`No automation row found for "${key}" — re-seed email automations.`); return { sent: false, detail: "not found" }; }
+
   const a = data as Automation;
+  if (!a.enabled) {
+    await logSkip(`Automation "${a.name}" is toggled OFF in Email Automations. Enable it to send this email.`);
+    return { sent: false, detail: "disabled" };
+  }
+
   const values = placeholderValues(b, extras);
   const res = await sendEmail({
     to: a.recipient === "internal" ? "__internal__" : b.email,
@@ -159,5 +176,12 @@ export async function runActionAutomation(
     invoiceNum: b.invoice_num,
     action: `Automation: ${a.name}`,
   });
+  if (!res.ok) {
+    await supabase.from("activity_log").insert({
+      booking_id: b.id, invoice_num: b.invoice_num,
+      action: `Email FAILED: ${a.name}`, result: "WARNING",
+      details: res.detail,
+    });
+  }
   return { sent: res.ok, detail: res.detail };
 }
