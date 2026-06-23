@@ -9,7 +9,7 @@ import { MenuTemplate, isVisible } from "@/lib/menuEngine";
 import { templateSlugFor } from "@/lib/menuCharges";
 import { sendEmail } from "@/lib/sendEmail";
 
-interface Charge { id: string; description: string; quantity: number; unit_price: number; taxable: boolean; is_adjustment: boolean; source: string | null; }
+interface Charge { id: string; description: string; quantity: number; unit_price: number; taxable: boolean; is_adjustment: boolean; is_supplemental?: boolean; source: string | null; }
 interface Payment { id: string; payment_type: string; method: string; amount_received: number; amount_applied: number; created_at: string; }
 
 export default function InvoicePage() {
@@ -47,7 +47,8 @@ export default function InvoicePage() {
     const adultPP = b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP;
     const paid = payments.reduce((s, p) => s + Number(p.amount_applied), 0);
     const balance = Math.max(0, f.total - paid);
-    const version = b.invoice_version ?? (g.source === "confirmed" ? "Final" : "Estimated");
+    const hasSupplemental = charges.some((c) => c.is_supplemental);
+    const version = hasSupplemental ? "Amended" : (b.invoice_version ?? (g.source === "confirmed" ? "Final" : "Estimated"));
     return { g, adults, adultPP, base: f.base, subtotal: f.subtotal, tax: f.tax, total: f.total,
       paid, balance, version, billedToMinimum: f.billedToMinimum, minGuests: f.minGuests, actualHeads: f.actualHeads };
   }, [b, charges, payments]);
@@ -192,6 +193,34 @@ export default function InvoicePage() {
               </div>
             </div>
           )}
+
+          {/* Amendment summary — shown when supplemental (post-event) charges exist */}
+          {(() => {
+            const supp = charges.filter((c) => c.is_supplemental);
+            if (supp.length === 0) return null;
+            const suppSubtotal = supp.reduce((s, c) => s + c.quantity * Number(c.unit_price), 0);
+            const suppTax = supp.filter((c) => c.taxable).reduce((s, c) => s + c.quantity * Number(c.unit_price), 0) * 0.06625;
+            const suppTotal = suppSubtotal + suppTax;
+            const originalTotal = inv.total - suppTotal;
+            return (
+              <div className="mb-6 rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
+                <div className="text-[11px] font-bold text-amber-700 uppercase tracking-wider mb-2">Amendment — additional charges after the event</div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-600">Original Event Total</span><span>{fmtMoney(originalTotal)}</span></div>
+                  <div className="flex justify-between text-emerald-700"><span>Paid to Date</span><span>−{fmtMoney(inv.paid)}</span></div>
+                  <div className="pt-1 mt-1 border-t border-amber-200 font-semibold text-amber-900">Supplemental Charges:</div>
+                  {supp.map((c) => (
+                    <div key={c.id} className="flex justify-between pl-3"><span className="text-slate-600">{c.description}</span><span>{fmtMoney(c.quantity * Number(c.unit_price))}</span></div>
+                  ))}
+                  <div className="flex justify-between text-slate-500 pl-3"><span>Tax on supplemental</span><span>{fmtMoney(suppTax)}</span></div>
+                  <div className="flex justify-between font-display font-bold text-base border-t-2 border-amber-300 pt-2 mt-1">
+                    <span>New Balance Due</span>
+                    <span className={inv.balance <= 0.01 ? "text-emerald-600" : "text-amber-900"}>{inv.balance <= 0.01 ? "PAID IN FULL" : fmtMoney(inv.balance)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Totals */}
           <div className="flex justify-end mb-6">

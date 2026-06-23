@@ -54,7 +54,7 @@ export default function BookingDetail() {
   const [log, setLog] = useState<LogRow[]>([]);
   const [priorBookings, setPriorBookings] = useState(0);
   const [panel, setPanel] = useState<
-    "" | "deposit" | "payment" | "charge" | "guestcount" | "cancel" | "edit" | "schedulecall"
+    "" | "deposit" | "payment" | "charge" | "guestcount" | "cancel" | "edit" | "schedulecall" | "amend"
   >("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -460,8 +460,8 @@ export default function BookingDetail() {
               <button className="btn-ghost" onClick={() => setPanel(panel === "cancel" ? "" : "cancel")}>❌ Cancel</button>
             </>
           )}
-          {b.status === "completed" && (
-            <button className="btn-warn" onClick={() => setPanel(panel === "charge" ? "" : "charge")}>📝 Post-Event Adjustment</button>
+          {(b.status === "completed" || b.status === "paid_awaiting_event") && (
+            <button className="btn-warn" onClick={() => setPanel(panel === "amend" ? "" : "amend")}>📝 Add Amendment (extra guests/charges)</button>
           )}
         </div>
 
@@ -479,6 +479,7 @@ export default function BookingDetail() {
         }} />}
         {panel === "schedulecall" && <ScheduleCallForm b={b} done={() => { setPanel(""); load(); }} />}
         {panel === "cancel" && <CancelForm b={b} done={() => { setPanel(""); load(); }} />}
+        {panel === "amend" && <AmendmentForm b={b} adultPP={b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP} done={() => { setPanel(""); load(); setMsg({ ok: true, text: "Amendment added — booking reopened for payment ✓" }); }} />}
       </div>
 
       {/* Menu selections summary */}
@@ -852,6 +853,86 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
 }
 
 // ─── Charge / adjustment form (unlimited slots) ───
+// ─── Amendment: post-event extra guests + extra charges, with PIN approval ───
+function AmendmentForm({ b, adultPP, done }: { b: Booking; adultPP: number; done: () => void }) {
+  const [extraGuests, setExtraGuests] = useState("");
+  const [extraDesc, setExtraDesc] = useState("");
+  const [extraAmt, setExtraAmt] = useState("");
+  const [reason, setReason] = useState("");
+  const [approver, setApprover] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const guestCount = parseInt(extraGuests) || 0;
+  const guestCharge = guestCount * adultPP;
+  const otherCharge = parseFloat(extraAmt) || 0;
+  const totalAmend = guestCharge + otherCharge;
+
+  async function save() {
+    setErr("");
+    if (totalAmend <= 0) { setErr("Add extra guests and/or an extra charge."); return; }
+    if (!reason.trim()) { setErr("A reason is required for the amendment."); return; }
+    if (!approver) { setErr("Approval is required."); return; }
+    setBusy(true);
+
+    const rows: Record<string, unknown>[] = [];
+    if (guestCount > 0) rows.push({
+      booking_id: b.id, description: `Additional guests (${guestCount} @ ${fmtMoney(adultPP)})`,
+      quantity: guestCount, unit_price: adultPP, taxable: true, is_supplemental: true, source: "manual", added_by: approver,
+    });
+    if (otherCharge !== 0) rows.push({
+      booking_id: b.id, description: extraDesc.trim() || "Additional event charge",
+      quantity: 1, unit_price: otherCharge, taxable: true, is_supplemental: true, source: "manual", added_by: approver,
+    });
+    const ins = await supabase.from("charges").insert(rows);
+    if (ins.error) { setErr(ins.error.message); setBusy(false); return; }
+
+    const wasCompleted = b.status === "completed";
+    const patch: Record<string, unknown> = { status: "collect_payment" };
+    if (wasCompleted) patch.reopened_at = new Date().toISOString();
+    await supabase.from("bookings").update(patch).eq("id", b.id);
+
+    await logActivity(b.id, b.invoice_num,
+      wasCompleted ? "Booking Reopened (Amendment)" : "Amendment Added",
+      `${guestCount > 0 ? `+${guestCount} guests ` : ""}${otherCharge ? `+${fmtMoney(otherCharge)} ${extraDesc.trim()} ` : ""}— ${reason.trim()} — approved by ${approver}`,
+      "WARNING");
+    done();
+  }
+
+  return (
+    <Panel title="📝 Amendment — additional guests or charges">
+      <p className="text-sm text-slate-500 mb-3">
+        For extras discovered at or after the event. This adds supplemental charges and {b.status === "completed" ? "reopens the booking" : "updates the balance"} so the difference can be collected. A new (amended) invoice can then be sent.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="label">Additional guests (billed at {fmtMoney(adultPP)}/guest)</label>
+          <input className="field" type="number" min="0" value={extraGuests} onChange={(e) => setExtraGuests(e.target.value)} placeholder="0" />
+          {guestCount > 0 && <p className="text-xs text-slate-500 mt-1">= {fmtMoney(guestCharge)}</p>}
+        </div>
+        <div>
+          <label className="label">Other extra charge ($)</label>
+          <input className="field" type="number" step="0.01" value={extraAmt} onChange={(e) => setExtraAmt(e.target.value)} placeholder="0.00" />
+          <input className="field mt-2" value={extraDesc} onChange={(e) => setExtraDesc(e.target.value)} placeholder="Description (e.g. extra soda package)" />
+        </div>
+      </div>
+      <div className="mt-3">
+        <label className="label">Reason for amendment <span className="text-red-500">*</span></label>
+        <input className="field" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. 8 extra guests arrived; added bar service" />
+      </div>
+      <div className="mt-3"><ApprovalField label="Approved by" onChange={setApprover} /></div>
+      {totalAmend > 0 && (
+        <div className="flex justify-between items-center mt-3 rounded-lg bg-amber-50 border border-amber-200 px-4 py-2">
+          <span className="text-sm text-amber-800">Supplemental subtotal (before tax)</span>
+          <span className="font-display font-bold text-lg text-amber-900">{fmtMoney(totalAmend)}</span>
+        </div>
+      )}
+      {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
+      <button onClick={save} disabled={busy} className="btn-warn mt-3 w-full">{busy ? "Saving…" : "Add Amendment & Reopen for Payment"}</button>
+    </Panel>
+  );
+}
+
 function ChargeForm({ b, isAdjustment, done }: { b: Booking; isAdjustment: boolean; done: () => void }) {
   const [desc, setDesc] = useState("");
   const [qty, setQty] = useState("1");
