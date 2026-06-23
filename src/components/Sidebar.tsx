@@ -17,6 +17,7 @@ const BACKOFFICE = [
   { href: "/templates", label: "Menu Templates", icon: "🧩" },
   { href: "/automations", label: "Email Automations", icon: "✉️" },
   { href: "/package-guides", label: "Package Guides", icon: "📣" },
+  { href: "/staff", label: "Staff & Approvals", icon: "🔑" },
 ];
 
 export default function Sidebar() {
