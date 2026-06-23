@@ -1061,6 +1061,7 @@ function GuestCountForm({ b, done, advance }: { b: Booking; done: () => void; ad
     await supabase.from("bookings").update({
       confirmed_men: m, confirmed_women: w, confirmed_children: c,
       guest_count_confirmed_at: new Date().toISOString(), guest_count_confirmed_by: by,
+      invoice_version: "Final",
     }).eq("id", b.id);
 
     const sel = b.menu as unknown as { template?: string; guests?: object; answers?: Record<string, unknown> };

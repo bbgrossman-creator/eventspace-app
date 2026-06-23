@@ -48,7 +48,11 @@ export default function InvoicePage() {
     const paid = payments.reduce((s, p) => s + Number(p.amount_applied), 0);
     const balance = Math.max(0, f.total - paid);
     const hasSupplemental = charges.some((c) => c.is_supplemental);
-    const version = hasSupplemental ? "Amended" : (b.invoice_version ?? (g.source === "confirmed" ? "Final" : "Estimated"));
+    // Confirmed guest count means this IS the final invoice — let that win over any
+    // stale stored "Estimated" value. Falls back to stored version, then source.
+    const version = hasSupplemental ? "Amended"
+      : g.source === "confirmed" ? "Final"
+      : (b.invoice_version ?? "Estimated");
     return { g, adults, adultPP, base: f.base, subtotal: f.subtotal, tax: f.tax, total: f.total,
       paid, balance, version, billedToMinimum: f.billedToMinimum, minGuests: f.minGuests, actualHeads: f.actualHeads };
   }, [b, charges, payments]);
