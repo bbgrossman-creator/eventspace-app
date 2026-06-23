@@ -13,6 +13,7 @@ export type Status =
   | "confirm_guest_count"
   | "send_final_invoice"
   | "collect_payment"
+  | "paid_awaiting_event"
   | "completed"
   | "cancelled";
 
@@ -37,6 +38,7 @@ export const STAGES: Record<Status, StageInfo> = {
   confirm_guest_count: { status: "confirm_guest_count", label: "Booked — Confirm Count & Menu", action: "Confirm Count & Menu", icon: "👥", color: "#FCE7F3", textColor: "#9D174D", stageIndex: 4 },
   send_final_invoice: { status: "send_final_invoice", label: "Booked — Send Final Invoice", action: "Send Final Invoice", icon: "📨", color: "#D1FAE5", textColor: "#065F46", stageIndex: 5 },
   collect_payment: { status: "collect_payment", label: "Booked — Collect Payment", action: "Collect Payment",          icon: "💵", color: "#D1FAE5", textColor: "#065F46", stageIndex: 5 },
+  paid_awaiting_event: { status: "paid_awaiting_event", label: "Paid in Full — Awaiting Event", action: "Awaiting Event", icon: "✅", color: "#FEF9C3", textColor: "#854D0E", stageIndex: 5 },
   completed:      { status: "completed",      label: "Completed",                  action: "Complete",                 icon: "☑️", color: "#E0F2FE", textColor: "#0C4A6E", stageIndex: 6 },
   cancelled:      { status: "cancelled",      label: "Cancelled",                  action: "Cancelled",                icon: "❌", color: "#E5E7EB", textColor: "#374151", stageIndex: -1 },
 };

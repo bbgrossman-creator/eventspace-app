@@ -434,6 +434,13 @@ export default function BookingDetail() {
               <button className="btn-success" onClick={() => setPanel(panel === "payment" ? "" : "payment")}>💵 Record Payment</button>
               <button className="btn-primary" onClick={() => setStatus("completed", "Event Completed")}>☑️ Mark Complete</button>
             </>
+          ) : b.status === "paid_awaiting_event" ? (
+            <>
+              <span className="font-display font-bold text-amber-700 text-base py-1 pr-2">✅ Paid in full — awaiting event {fmtDate(b.event_date)}</span>
+              {eventHasPassed(b) && (
+                <button className="btn-primary" onClick={() => setStatus("completed", "Event Completed")}>☑️ Mark Complete</button>
+              )}
+            </>
           ) : b.status === "completed" ? (
             <span className="font-display font-bold text-emerald-700 text-lg py-1">☑️ Completed</span>
           ) : (
@@ -780,7 +787,7 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
       `$${amt.toFixed(2)} via ${method}${method === "Check" ? ` #${checkNum.trim()}` : ""} by ${by}`);
 
     if (needsOverride) {
-      await supabase.from("bookings").update({ prepay_override_by: preApprover }).eq("id", b.id);
+      await supabase.from("bookings").update({ prepay_override_by: preApprover, status: "paid_awaiting_event" }).eq("id", b.id);
       await logActivity(b.id, b.invoice_num, "Pre-Event Full Payment Approved",
         `Paid in full before the event — approved by ${preApprover}. Booking stays open for post-event amendments.`, "WARNING");
     }
