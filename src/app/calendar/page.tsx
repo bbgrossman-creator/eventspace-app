@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { Booking, fmtTime, menuBadge, parseLocalDate, stageFor } from "@/lib/workflow";
+import { Booking, fmtTime, menuBadge, parseLocalDate, stageFor, deriveGuests } from "@/lib/workflow";
 import StatusPipeline from "@/components/StatusPipeline";
 
 const DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"];
@@ -143,7 +143,11 @@ function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, Bookin
                     </div>
                     <div className="text-sm font-medium truncate">{b.contact_name}</div>
                     <div className="text-[11px] text-slate-600 truncate">{b.event_name || b.event_type}</div>
-                    <div className="text-[11px] mt-1">{menuBadge(b.menu_type)} · {b.est_guests ?? "?"} guests</div>
+                    <div className="text-[11px] mt-1">{menuBadge(b.menu_type)} · {(() => {
+                      const g = deriveGuests(b);
+                      const heads = (g.gendered ? g.men + g.women : g.adults) + g.children;
+                      return heads > 0 ? `${heads} guests` : "? guests";
+                    })()}</div>
                     <div className="mt-2 flex items-center justify-between">
                       <StatusPipeline currentStage={st.stageIndex} compact />
                       <span className="text-[10px] font-semibold" style={{ color: st.textColor }}>{st.icon} {st.action}</span>

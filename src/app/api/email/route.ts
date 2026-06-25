@@ -47,7 +47,12 @@ export async function POST(req: Request) {
   let detail = "";
   if (!ok) {
     const err = await res.json().catch(() => ({}));
-    detail = (err as { message?: string }).message ?? `Resend error ${res.status}`;
+    const raw = (err as { message?: string }).message ?? `Resend error ${res.status}`;
+    // The classic "works to my own inbox, fails to customers" case: the default
+    // sender can't deliver to outside addresses until a domain is verified.
+    detail = /verif|own email|testing email|domain/i.test(raw)
+      ? `${raw} — FIX: verify a sending domain in Resend and set EMAIL_FROM to an address at that domain (see RESEND_DOMAIN_SETUP.md).`
+      : raw;
   } else {
     detail = betaMode ? `Sent (beta-routed to ${betaAddress})` : `Sent to ${resolvedTo}`;
   }
