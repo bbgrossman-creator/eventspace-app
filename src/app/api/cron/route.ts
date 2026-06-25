@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { syncCalendar } from "@/lib/googleCalendar";
 import { Booking } from "@/lib/workflow";
 import {
   Automation, resolveAnchor, DEFAULT_ELIGIBLE, placeholderValues, renderTemplate,
@@ -30,15 +31,20 @@ export async function GET(req: Request) {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return NextResponse.json({ detail: "SUPABASE_SERVICE_ROLE_KEY not set" }, { status: 500 });
   const db = createClient(url, key);
-  const origin = new URL(req.url).origin;
+  // Build a reliable public origin. req.url can be an internal address when the
+  // cron is triggered by Vercel, which would break internal fetches. Prefer an
+  // explicit base URL, then VERCEL_URL, then fall back to req.url.
+  const origin =
+    process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, "") ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : new URL(req.url).origin);
   const now = Date.now();
 
-  // Calendar sync first — auto-fill menu-call times before reminders compute.
+  // Calendar sync first — call the shared routine DIRECTLY (no internal HTTP
+  // hop, which previously failed when Vercel's cron passed an internal origin).
   let calendar_sync = "skipped";
   try {
-    const cs = await fetch(`${origin}/api/calendar-sync`, { method: "POST" });
-    const csData = await cs.json();
-    calendar_sync = csData.ok ? `filled ${csData.filled}` : csData.detail;
+    const csData = await syncCalendar();
+    calendar_sync = csData.ok ? `filled ${csData.filled}` : (csData.detail ?? "error");
   } catch (e) {
     calendar_sync = `error: ${(e as Error).message}`;
   }

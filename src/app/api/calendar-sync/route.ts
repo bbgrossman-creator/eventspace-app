@@ -66,5 +66,18 @@ async function run(req: Request) {
   return NextResponse.json({
     ok: true, events_scanned: events.length, awaiting_call: bookings.length + filled,
     filled, matches,
+    ...(new URL(req.url).searchParams.get("debug") ? {
+      debug: {
+        events: events.map((e) => ({
+          title: e.summary, start: e.start,
+          attendeeEmails: e.attendeeEmails,
+          scanText: e.scanText.slice(0, 300),
+        })),
+        awaiting_bookings: bookings.map((b) => ({
+          invoice: b.invoice_num, name: b.contact_name,
+          email: b.email, phone: b.phone,
+        })),
+      },
+    } : {}),
   });
 }
