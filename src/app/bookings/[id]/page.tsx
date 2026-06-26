@@ -17,6 +17,8 @@ import { PRICING, calcCCFee, grossUpForCC, buffetBaseTotal, invoiceTotals } from
 import { regenerateMenuCharges } from "@/lib/menuCharges";
 import { bookingFinancials } from "@/lib/finance";
 import ApprovalField from "@/components/ApprovalField";
+import { loadPolicies, Policies } from "@/lib/policies";
+import { billableHours } from "@/lib/billingHours";
 import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
@@ -595,6 +597,9 @@ export default function BookingDetail() {
         </div>
       )}
 
+      {/* Event hours & overtime */}
+      <EventHoursPanel b={b} onChange={load} />
+
       {/* Payment history */}
       <div className="card p-5 mb-5">
         <h2 className="font-display font-bold text-sm mb-3">📋 Payment history</h2>
@@ -950,6 +955,105 @@ function AmendmentForm({ b, adultPP, done }: { b: Booking; adultPP: number; done
       {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
       <button onClick={save} disabled={busy} className="btn-warn mt-3 w-full">{busy ? "Saving…" : "Add Amendment & Reopen for Payment"}</button>
     </Panel>
+  );
+}
+
+// ─── Event hours & overtime — billable time per the Policies settings ───
+function EventHoursPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
+  const [policies, setPolicies] = useState<Policies | null>(null);
+  const [start, setStart] = useState((b as { actual_start?: string }).actual_start ?? "");
+  const [end, setEnd] = useState((b as { actual_end?: string }).actual_end ?? "");
+  const [override, setOverride] = useState(
+    (b as { hours_override?: number | null }).hours_override != null
+      ? String((b as { hours_override?: number | null }).hours_override) : "");
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => { loadPolicies().then(setPolicies); }, []);
+  if (!policies) return null;
+
+  // Compute against the CURRENT field values (live preview before saving).
+  const preview = billableHours({
+    ...b,
+    actual_start: start || null, actual_end: end || null,
+    hours_override: override ? Number(override) : null,
+  } as Booking, policies);
+
+  async function save() {
+    await supabase.from("bookings").update({
+      actual_start: start || null,
+      actual_end: end || null,
+      hours_override: override ? Number(override) : null,
+    }).eq("id", b.id);
+    setMsg("Saved ✓");
+    setTimeout(() => setMsg(""), 1500);
+    onChange();
+  }
+
+  async function addOvertime() {
+    if (preview.overtimeAmount <= 0) return;
+    if (!confirm(`Add ${fmtMoney(preview.overtimeAmount)} overtime charge (${preview.overtimeUnits} × ${fmtMoney(policies!.overtime_rate)})?`)) return;
+    await supabase.from("charges").insert({
+      booking_id: b.id,
+      description: `Overtime — ${preview.overtimeHours} hr beyond ${policies!.default_event_hours} hr (${preview.overtimeUnits} × ${policies!.overtime_increment_min} min)`,
+      quantity: 1, unit_price: preview.overtimeAmount, taxable: true, source: "manual",
+    });
+    await logActivity(b.id, b.invoice_num, "Overtime Charge Added",
+      `${fmtMoney(preview.overtimeAmount)} for ${preview.overtimeHours} hr overtime`);
+    setMsg("Overtime charge added ✓");
+    setTimeout(() => setMsg(""), 1500);
+    onChange();
+  }
+
+  return (
+    <div className="card p-5 mb-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-display font-bold text-sm">⏱️ Event hours</h2>
+        <div className="text-right">
+          <span className="font-display font-bold text-xl text-navy">{preview.hours}</span>
+          <span className="text-sm text-slate-500"> billable hr</span>
+          <div className="text-[11px] text-slate-400">
+            {preview.source === "override" ? "manual override"
+              : preview.source === "actual" ? "from actual times"
+              : `default (${policies.default_event_hours} hr)`}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-3 gap-3">
+        <div>
+          <label className="label">Actual start</label>
+          <input className="field" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Actual end</label>
+          <input className="field" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Override hours</label>
+          <input className="field" type="number" step="0.25" min="0" value={override}
+            onChange={(e) => setOverride(e.target.value)} placeholder="—" />
+        </div>
+      </div>
+
+      {preview.incomplete && (
+        <p className="text-xs text-amber-700 mt-2">⚠️ Only one actual time entered — using the {policies.default_event_hours}-hr default until both are set.</p>
+      )}
+
+      <div className="flex items-center gap-3 mt-3 flex-wrap">
+        <button className="btn-ghost" onClick={save}>Save times</button>
+        {preview.overtimeAmount > 0 && (
+          <button className="btn-warn" onClick={addOvertime}>
+            ➕ Add overtime charge — {fmtMoney(preview.overtimeAmount)} ({preview.overtimeHours} hr)
+          </button>
+        )}
+        {msg && <span className="text-sm text-emerald-600">{msg}</span>}
+      </div>
+      {preview.overtimeAmount > 0 && (
+        <p className="text-[11px] text-slate-400 mt-2">
+          {preview.overtimeHours} hr beyond the {policies.default_event_hours}-hr default = {preview.overtimeUnits} × {fmtMoney(policies.overtime_rate)} per {policies.overtime_increment_min} min. Overtime is only added when you confirm.
+        </p>
+      )}
+    </div>
   );
 }
 
