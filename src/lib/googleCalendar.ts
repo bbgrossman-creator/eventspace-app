@@ -108,31 +108,49 @@ export async function fetchCalendarEvents(
 const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
 export function matchEventToBooking(ev: GCalEvent, bookings: Booking[]): Booking | null {
-  // 1. Email match (strongest)
+  const evText = ev.scanText.toLowerCase();
+  const evDigits = digits(ev.scanText);
+
+  // Score every booking against this event. Higher = more confident.
+  // Email is decisive; phone is supporting; name only breaks ties.
+  type Scored = { b: Booking; score: number; emailMatch: boolean };
+  const scored: Scored[] = [];
+
   for (const b of bookings) {
     const be = (b.email ?? "").toLowerCase();
-    if (be && ev.attendeeEmails.includes(be)) return b;
-    if (be && ev.scanText.toLowerCase().includes(be)) return b;
-  }
-  // 2. Phone match — last 10 digits appearing anywhere in the event text
-  const evDigits = digits(ev.scanText);
-  for (const b of bookings) {
     const bp = digits(b.phone);
-    if (bp.length >= 10 && evDigits.includes(bp.slice(-10))) return b;
-  }
-  // 3. Name fallback — Google appointment pages put the booker's name in the
-  //    event title (e.g. "Menu Discussion … (Leah Weber)") but often DON'T expose
-  //    the email/phone via the API. Match on full name, but ONLY when it's
-  //    unambiguous (exactly one awaiting booking has that name) to avoid
-  //    attaching to the wrong booking.
-  const text = ev.scanText.toLowerCase();
-  const nameMatches = bookings.filter((b) => {
-    const nm = (b.contact_name ?? "").trim().toLowerCase();
-    return nm.length >= 4 && text.includes(nm);
-  });
-  if (nameMatches.length === 1) return nameMatches[0];
+    let score = 0;
+    let emailMatch = false;
 
-  return null;
+    // Email — strongest signal. Attendee field is most reliable; body text next.
+    if (be && ev.attendeeEmails.includes(be)) { score += 100; emailMatch = true; }
+    else if (be && evText.includes(be)) { score += 80; emailMatch = true; }
+
+    // Phone — supporting signal only.
+    if (bp.length >= 10 && evDigits.includes(bp.slice(-10))) score += 20;
+
+    // Name — weak tiebreaker only (truncation/dupes make it unreliable alone).
+    const nm = (b.contact_name ?? "").trim().toLowerCase();
+    if (nm.length >= 4 && evText.includes(nm)) score += 5;
+
+    if (score > 0) scored.push({ b, score, emailMatch });
+  }
+
+  if (scored.length === 0) return null;
+
+  // CRITICAL disambiguation: if ANY candidate matches by email, only consider
+  // email-matched candidates. This prevents a phone-only match from stealing an
+  // event that actually belongs to a different booking (the same-phone bug).
+  const anyEmail = scored.some((s) => s.emailMatch);
+  const pool = anyEmail ? scored.filter((s) => s.emailMatch) : scored;
+
+  // Highest score wins. Ties (e.g. two phone-only matches) are ambiguous —
+  // refuse rather than guess wrong. Email matches are allowed to win outright.
+  pool.sort((a, b) => b.score - a.score);
+  if (pool.length >= 2 && pool[0].score === pool[1].score && !pool[0].emailMatch) {
+    return null; // ambiguous phone/name-only match — don't risk the wrong booking
+  }
+  return pool[0].b;
 }
 
 // Only bookings awaiting a scheduled call are eligible to be matched/filled.
