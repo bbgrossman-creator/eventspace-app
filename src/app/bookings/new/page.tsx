@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
 import { runActionAutomation } from "@/lib/automation";
+import { loadPolicies } from "@/lib/policies";
 import { Booking, findConflicts, fmtTime, HOLD_HOURS } from "@/lib/workflow";
 import { PRICING } from "@/lib/pricing";
 import { sendEmail } from "@/lib/sendEmail";
@@ -55,6 +56,18 @@ export default function NewInquiry() {
     const holdExpires = new Date();
     holdExpires.setHours(holdExpires.getHours() + HOLD_HOURS);
 
+    // How conflicts are handled depends on the owner's policy.
+    const pol = await loadPolicies();
+    const holder = hasConflict ? conflicts[0] : null; // first-right-of-refusal holder
+    const useRefusal = hasConflict && pol.conflict_mode === "first_refusal";
+
+    let newStatus: string = "on_hold";
+    let newHoldExpires: string | null = holdExpires.toISOString();
+    if (hasConflict) {
+      newStatus = useRefusal ? "waitlisted" : "conflict";
+      newHoldExpires = null;
+    }
+
     const { data, error } = await supabase
       .from("bookings")
       .insert({
@@ -67,19 +80,34 @@ export default function NewInquiry() {
         event_time: f.event_time || null,
         menu_type: "Not Sure Yet",
         notes: f.notes.trim() || null,
-        status: hasConflict ? "conflict" : "on_hold",
-        hold_expires: hasConflict ? null : holdExpires.toISOString(),
+        status: newStatus,
+        hold_expires: newHoldExpires,
+        waitlisted_for: useRefusal && holder ? holder.id : null,
       })
       .select()
       .single();
 
     if (error) { setErr(error.message); setSaving(false); return; }
 
+    // Under first-right-of-refusal, start the holder's decision clock.
+    if (useRefusal && holder) {
+      const deadline = new Date();
+      deadline.setHours(deadline.getHours() + pol.refusal_deadline_hours);
+      await supabase.from("bookings").update({
+        refusal_deadline: deadline.toISOString(),
+        refusal_challenger: data.id,
+      }).eq("id", holder.id);
+      await logActivity(holder.id, holder.invoice_num, "First Right of Refusal Started",
+        `${f.contact_name.trim()} wants this date. Holder has until ${deadline.toLocaleString()} to commit.`, "WARNING");
+    }
+
     await logActivity(
       data.id, invoice_num,
-      hasConflict ? "Conflict Detected" : "Booking Created",
+      hasConflict ? (useRefusal ? "Waitlisted (Date Held)" : "Conflict Detected") : "Booking Created",
       hasConflict
-        ? `Conflicts with ${conflicts.length} event(s) — needs review`
+        ? (useRefusal
+            ? `Date held by ${holder?.contact_name ?? "another party"} — waitlisted pending their decision`
+            : `Conflicts with ${conflicts.length} event(s) — needs review`)
         : `Hold created, expires ${holdExpires.toLocaleString()}`,
       hasConflict ? "WARNING" : "SUCCESS"
     );
@@ -87,6 +115,8 @@ export default function NewInquiry() {
       await runActionAutomation("hold_confirmation", data);
     }
     await runActionAutomation("internal_new_booking", data);
+    // Under first-right-of-refusal, take the rep to the HOLDER's page to act.
+    if (useRefusal && holder) { router.push(`/bookings/${holder.id}`); return; }
     router.push(`/bookings/${data.id}`);
   }
 

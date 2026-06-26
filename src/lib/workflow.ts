@@ -4,6 +4,7 @@
 
 export type Status =
   | "on_hold"
+  | "waitlisted"
   | "conflict"
   | "hold_expired"
   | "schedule_menu_discussion"
@@ -30,6 +31,7 @@ export interface StageInfo {
 export const STAGES: Record<Status, StageInfo> = {
   on_hold:        { status: "on_hold",        label: "On Hold — Collect Deposit",  action: "Collect Deposit",          icon: "💰", color: "#FEF3C7", textColor: "#92400E", stageIndex: 0 },
   conflict:       { status: "conflict",       label: "Conflict — Review Required", action: "Review Conflict",          icon: "⚠️", color: "#FEE2E2", textColor: "#991B1B", stageIndex: 0 },
+  waitlisted:     { status: "waitlisted",     label: "Waitlisted — Awaiting Holder", action: "Awaiting Holder Decision", icon: "⏳", color: "#FEF3C7", textColor: "#92400E", stageIndex: 0 },
   hold_expired:   { status: "hold_expired",   label: "Hold Expired",               action: "Rebook or Delete",         icon: "🔄", color: "#FECACA", textColor: "#991B1B", stageIndex: 0 },
   schedule_menu_discussion: { status: "schedule_menu_discussion", label: "Booked — Schedule Menu Call", action: "Schedule Menu Discussion", icon: "📞", color: "#FCE7F3", textColor: "#9D174D", stageIndex: 1 },
   send_menu_form: { status: "send_menu_form", label: "Booked — Menu Pending",      action: "Complete Menu",            icon: "📋", color: "#DCFCE7", textColor: "#166534", stageIndex: 2 },
@@ -91,6 +93,9 @@ export interface Booking {
   notes: string | null;
   status: Status;
   hold_expires: string | null;
+  waitlisted_for?: string | null;
+  refusal_deadline?: string | null;
+  refusal_challenger?: string | null;
   deposit_date: string | null;
   deposit_amount: number | null;
   deposit_method: string | null;

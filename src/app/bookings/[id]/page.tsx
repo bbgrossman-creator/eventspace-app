@@ -273,6 +273,9 @@ export default function BookingDetail() {
         </div>
       )}
 
+      {/* First-right-of-refusal: this booking holds a date someone else wants */}
+      {b.refusal_challenger && <RefusalPanel b={b} onChange={load} setMsg={setMsg} />}
+
       {/* ─── Action buttons by status ─── */}
       <div className="card p-5 mb-5">
         {/* Menu discussion sub-state banners */}
@@ -637,7 +640,13 @@ export default function BookingDetail() {
                         const totalApplied = (pays ?? []).reduce((s, x) => s + Number(x.amount_applied), 0);
                         const wasDeposit = p.payment_type === "Deposit";
                         if (wasDeposit && totalApplied <= 0.01 && b.status !== "on_hold") {
-                          await supabase.from("bookings").update({ status: "on_hold" }).eq("id", b.id);
+                          // Clear the deposit marker too, so a fresh deposit can be
+                          // recorded (the reversed original record remains for audit).
+                          const holdExpires = new Date(); holdExpires.setHours(holdExpires.getHours() + 24);
+                          await supabase.from("bookings").update({
+                            status: "on_hold", deposit_date: null, deposit_method: null,
+                            hold_expires: holdExpires.toISOString(),
+                          }).eq("id", b.id);
                           await logActivity(b.id, b.invoice_num, "Reverted to Deposit Stage",
                             "Deposit reversed — booking returned to awaiting deposit.", "WARNING");
                         }
@@ -723,7 +732,17 @@ function DepositForm({ b, done }: { b: Booking; done: () => void }) {
 
   async function save() {
     setErr("");
-    if (b.deposit_date) { setErr("Deposit already recorded for this booking."); return; }
+    // Block only if there's an ACTIVE deposit (net positive). A reversed deposit
+    // nets to zero and should allow recording a fresh one.
+    const { data: deps } = await supabase.from("payments")
+      .select("amount_applied,payment_type").eq("booking_id", b.id)
+      .eq("payment_type", "Deposit");
+    const { data: revs } = await supabase.from("payments")
+      .select("amount_applied,payment_type").eq("booking_id", b.id)
+      .eq("payment_type", "Reversal");
+    const depTotal = (deps ?? []).reduce((s, x) => s + Number(x.amount_applied), 0);
+    const revTotal = (revs ?? []).reduce((s, x) => s + Number(x.amount_applied), 0);
+    if (depTotal + revTotal > 0.01) { setErr("An active deposit is already recorded for this booking."); return; }
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) { setErr("Enter a valid amount."); return; }
     setBusy(true);
@@ -955,6 +974,86 @@ function AmendmentForm({ b, adultPP, done }: { b: Booking; adultPP: number; done
       {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
       <button onClick={save} disabled={busy} className="btn-warn mt-3 w-full">{busy ? "Saving…" : "Add Amendment & Reopen for Payment"}</button>
     </Panel>
+  );
+}
+
+// ─── First Right of Refusal panel (shown on the HOLDER's booking) ───
+function RefusalPanel({ b, onChange, setMsg }: {
+  b: Booking; onChange: () => void; setMsg: (m: { ok: boolean; text: string }) => void;
+}) {
+  const [challenger, setChallenger] = useState<Booking | null>(null);
+  useEffect(() => {
+    if (!b.refusal_challenger) return;
+    supabase.from("bookings").select("*").eq("id", b.refusal_challenger).maybeSingle()
+      .then(({ data }) => setChallenger((data as Booking) ?? null));
+  }, [b.refusal_challenger]);
+
+  const deadline = b.refusal_deadline ? new Date(b.refusal_deadline) : null;
+  const passed = deadline ? Date.now() > deadline.getTime() : false;
+
+  // Holder commits: clear the challenge; the challenger is declined (cancelled).
+  async function holderCommits() {
+    if (!confirm("Confirm the holder is committing to this date? The waitlisted party will be declined.")) return;
+    await supabase.from("bookings").update({ refusal_deadline: null, refusal_challenger: null }).eq("id", b.id);
+    if (challenger) {
+      await supabase.from("bookings").update({ status: "cancelled", waitlisted_for: null }).eq("id", challenger.id);
+      await logActivity(challenger.id, challenger.invoice_num, "Waitlist Declined",
+        `Date holder (${b.contact_name}) committed — waitlist released.`, "WARNING");
+    }
+    await logActivity(b.id, b.invoice_num, "Holder Committed (First Refusal)",
+      "Holder is keeping the date. Proceed to collect deposit.");
+    setMsg({ ok: true, text: "Holder committed — collect their deposit to confirm." });
+    onChange();
+  }
+
+  // Holder passes: release this hold; promote the challenger to on_hold.
+  async function holderPasses() {
+    if (!confirm("Holder is releasing this date? It will pass to the waitlisted party.")) return;
+    await supabase.from("bookings").update({
+      status: "cancelled", refusal_deadline: null, refusal_challenger: null,
+    }).eq("id", b.id);
+    if (challenger) {
+      const holdExpires = new Date(); holdExpires.setHours(holdExpires.getHours() + 24);
+      await supabase.from("bookings").update({
+        status: "on_hold", waitlisted_for: null, hold_expires: holdExpires.toISOString(),
+      }).eq("id", challenger.id);
+      await logActivity(challenger.id, challenger.invoice_num, "Promoted from Waitlist",
+        `Date released by ${b.contact_name} — now holding (24h).`);
+      await runActionAutomation("hold_confirmation", { ...challenger, status: "on_hold", hold_expires: holdExpires.toISOString() } as Booking);
+    }
+    await logActivity(b.id, b.invoice_num, "Holder Passed (First Refusal)",
+      `Holder released the date${challenger ? ` to ${challenger.contact_name}` : ""}.`, "WARNING");
+    setMsg({ ok: true, text: "Date released and passed to the waitlisted party." });
+    onChange();
+  }
+
+  return (
+    <div className={`card p-5 mb-5 border-2 ${passed ? "border-red-300" : "border-amber-300"}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div>
+          <h2 className="font-display font-bold text-sm">📞 First Right of Refusal</h2>
+          <p className="text-sm text-slate-600 mt-1">
+            <b>{challenger?.contact_name ?? "Another party"}</b> wants this date.
+            {challenger?.phone && <> Call them: <a href={`tel:${challenger.phone}`} className="text-navy underline">{challenger.phone}</a>.</>}
+          </p>
+        </div>
+        <div className={`text-xs font-bold px-3 py-1 rounded-full ${passed ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
+          {passed ? "⏰ Deadline passed" : deadline ? `Decide by ${deadline.toLocaleString()}` : ""}
+        </div>
+      </div>
+      <p className="text-xs text-slate-500 mb-3">
+        The holder has first right of refusal. Contact {b.contact_name} — if they commit with a deposit, they keep the date; if they pass, it goes to {challenger?.contact_name ?? "the next party"}.
+      </p>
+      <div className="flex flex-wrap gap-2.5">
+        <button className="btn-success" onClick={holderCommits}>✅ Holder is committing</button>
+        <button className="btn-warn" onClick={holderPasses}>↩️ Holder passes — release date</button>
+        {challenger && (
+          <button className="btn-ghost" onClick={() => window.location.assign(`/bookings/${challenger.id}`)}>
+            View {challenger.contact_name}&apos;s booking →
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

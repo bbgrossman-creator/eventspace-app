@@ -60,10 +60,55 @@ export async function GET(req: Request) {
     });
   } catch { /* non-fatal */ }
 
+  // First-right-of-refusal: handle holders whose decision deadline has passed.
+  let refusal_lapsed = 0;
+  try {
+    const { data: polRows } = await db.from("app_settings").select("key,value")
+      .in("key", ["refusal_lapse_action"]);
+    const lapseAction = (polRows ?? []).find((r) => r.key === "refusal_lapse_action")?.value ?? "flag";
+    const { data: expired } = await db.from("bookings").select("*")
+      .not("refusal_deadline", "is", null)
+      .lt("refusal_deadline", new Date().toISOString());
+    for (const holder of (expired ?? []) as Booking[]) {
+      if (lapseAction === "auto_release") {
+        // Release the holder; promote the challenger to a fresh 24h hold.
+        await db.from("bookings").update({
+          status: "cancelled", refusal_deadline: null, refusal_challenger: null,
+        }).eq("id", holder.id);
+        if (holder.refusal_challenger) {
+          const he = new Date(); he.setHours(he.getHours() + 24);
+          await db.from("bookings").update({
+            status: "on_hold", waitlisted_for: null, hold_expires: he.toISOString(),
+          }).eq("id", holder.refusal_challenger);
+          await db.from("activity_log").insert({
+            booking_id: holder.refusal_challenger, invoice_num: "—",
+            action: "Promoted from Waitlist (Auto)",
+            details: `Holder deadline lapsed — date auto-released and now holding.`, result: "SUCCESS",
+          });
+        }
+        await db.from("activity_log").insert({
+          booking_id: holder.id, invoice_num: holder.invoice_num,
+          action: "Hold Auto-Released (Deadline Lapsed)",
+          details: "First-right-of-refusal deadline passed with no commitment.", result: "WARNING",
+        });
+      } else {
+        // Flag-the-rep mode: just log that the deadline lapsed; rep decides.
+        await db.from("activity_log").insert({
+          booking_id: holder.id, invoice_num: holder.invoice_num,
+          action: "First-Refusal Deadline Lapsed",
+          details: "Deadline passed — rep must decide to keep or release the date.", result: "WARNING",
+        });
+        // Clear only the deadline so it isn't re-flagged every run; keep challenger link.
+        await db.from("bookings").update({ refusal_deadline: null }).eq("id", holder.id);
+      }
+      refusal_lapsed++;
+    }
+  } catch { /* non-fatal */ }
+
   const { data: autoRows } = await db.from("email_automations")
     .select("*").eq("enabled", true).neq("trigger", "action");
   const automations = (autoRows ?? []) as Automation[];
-  if (automations.length === 0) return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, sent: 0, note: "No enabled scheduled automations" });
+  if (automations.length === 0) return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, refusal_lapsed, sent: 0, note: "No enabled scheduled automations" });
 
   const { data: bookingRows } = await db.from("bookings").select("*").neq("status", "cancelled");
   const bookings = (bookingRows ?? []) as Booking[];
@@ -168,5 +213,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, automations_checked: automations.length, sent: sent + ladderSent, details });
+  return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, refusal_lapsed, automations_checked: automations.length, sent: sent + ladderSent, details });
 }
