@@ -44,10 +44,21 @@ export async function GET(req: Request) {
   let calendar_sync = "skipped";
   try {
     const csData = await syncCalendar();
-    calendar_sync = csData.ok ? `filled ${csData.filled}` : (csData.detail ?? "error");
+    calendar_sync = csData.ok
+      ? `scanned ${csData.events_scanned}, awaiting ${csData.awaiting_call}, filled ${csData.filled}`
+      : (csData.detail ?? "error");
   } catch (e) {
     calendar_sync = `error: ${(e as Error).message}`;
   }
+  // Record every run's sync outcome so we can see what the cron is doing without
+  // catching the live JSON. Visible in any booking's activity? No — log globally.
+  try {
+    await db.from("activity_log").insert({
+      booking_id: null, invoice_num: "CRON",
+      action: "Cron Calendar Sync", details: calendar_sync,
+      result: calendar_sync.startsWith("error") ? "FAILED" : "SUCCESS",
+    });
+  } catch { /* non-fatal */ }
 
   const { data: autoRows } = await db.from("email_automations")
     .select("*").eq("enabled", true).neq("trigger", "action");
