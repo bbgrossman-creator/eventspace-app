@@ -9,6 +9,9 @@ import StatusPipeline from "@/components/StatusPipeline";
 const DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// A calendar item is either the event itself or the menu-discussion phone call.
+type CalItem = { kind: "event" | "call"; booking: Booking; time: string };
+
 function startOfWeek(d: Date) {
   const w = new Date(d); w.setHours(0, 0, 0, 0);
   w.setDate(w.getDate() - w.getDay());
@@ -28,6 +31,7 @@ export default function Calendar() {
   const [view, setView] = useState<"week" | "month">("week");
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [filter, setFilter] = useState<"both" | "events" | "calls">("both");
 
   // Range to fetch depends on view
   const range = useMemo(() => {
@@ -42,25 +46,43 @@ export default function Calendar() {
   }, [view, anchor]);
 
   useEffect(() => {
-    supabase.from("bookings").select("*")
-      .gte("event_date", fmtISO(range.start))
-      .lte("event_date", fmtISO(range.end))
-      .neq("status", "cancelled")
-      .then(({ data }) => setBookings((data ?? []) as Booking[]));
+    // Fetch bookings whose EVENT date OR whose CALL date falls in range, so both
+    // kinds of items can appear. Two queries (Supabase can't OR across columns
+    // cleanly here), then dedupe.
+    const s = fmtISO(range.start), e = fmtISO(range.end);
+    Promise.all([
+      supabase.from("bookings").select("*").gte("event_date", s).lte("event_date", e).neq("status", "cancelled"),
+      supabase.from("bookings").select("*").gte("menu_discussion_date", s + "T00:00:00").lte("menu_discussion_date", e + "T23:59:59").neq("status", "cancelled"),
+    ]).then(([ev, calls]) => {
+      const map = new Map<string, Booking>();
+      for (const b of [...(ev.data ?? []), ...(calls.data ?? [])] as Booking[]) map.set(b.id, b);
+      setBookings(Array.from(map.values()));
+    });
   }, [range.start, range.end]);
 
-  // Group by ISO date
+  // Build calendar items: each booking yields an EVENT item (on event_date) and,
+  // if a call is scheduled, a CALL item (on menu_discussion_date's day).
   const byDate = useMemo(() => {
-    const m = new Map<string, Booking[]>();
+    const m = new Map<string, CalItem[]>();
+    function push(date: string, item: CalItem) {
+      if (!m.has(date)) m.set(date, []);
+      m.get(date)!.push(item);
+    }
     for (const b of bookings) {
-      if (!b.event_date) continue;
-      if (!m.has(b.event_date)) m.set(b.event_date, []);
-      m.get(b.event_date)!.push(b);
+      if ((filter === "both" || filter === "events") && b.event_date) {
+        push(b.event_date, { kind: "event", booking: b, time: b.event_time ?? "" });
+      }
+      if ((filter === "both" || filter === "calls") && b.menu_discussion_date) {
+        const d = new Date(b.menu_discussion_date);
+        const dateStr = fmtISO(d);
+        const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        push(dateStr, { kind: "call", booking: b, time });
+      }
     }
     for (const list of Array.from(m.values()))
-      list.sort((a, z) => (a.event_time ?? "99").localeCompare(z.event_time ?? "99"));
+      list.sort((a, z) => (a.time || "99").localeCompare(z.time || "99"));
     return m;
-  }, [bookings]);
+  }, [bookings, filter]);
 
   function shift(dir: -1 | 1) {
     const a = new Date(anchor);
@@ -85,10 +107,19 @@ export default function Calendar() {
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Calendar</h1>
-          <p className="text-sm text-slate-500 mt-1">{title} · {bookings.length} event{bookings.length === 1 ? "" : "s"}</p>
+          <p className="text-sm text-slate-500 mt-1">{title} · {Array.from(byDate.values()).reduce((n, l) => n + l.length, 0)} item{Array.from(byDate.values()).reduce((n, l) => n + l.length, 0) === 1 ? "" : "s"}</p>
           <div className="gold-rule mt-3" />
         </div>
         <div className="flex gap-3 flex-wrap">
+          {/* Calls / Bookings / Both filter */}
+          <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden">
+            {([["both", "Both"], ["events", "📅 Bookings"], ["calls", "📞 Calls"]] as const).map(([v, lbl]) => (
+              <button key={v} onClick={() => setFilter(v)}
+                className={`px-3 py-2 text-sm font-medium ${filter === v ? "bg-navy text-white" : "text-slate-600 hover:bg-slate-50"}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
           {/* View toggle */}
           <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden">
             {(["week", "month"] as const).map((v) => (
@@ -114,8 +145,8 @@ export default function Calendar() {
   );
 }
 
-// ─── WEEK VIEW (rich cards — preserved from the original) ───
-function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, Booking[]> }) {
+// ─── WEEK VIEW (rich cards) ───
+function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, CalItem[]> }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
       {DAYS.map((name, i) => {
@@ -130,16 +161,31 @@ function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, Bookin
             </div>
             <div className="bg-white rounded-b-xl shadow-card min-h-[120px] p-2 space-y-2">
               {list.length === 0 ? (
-                <p className="text-center text-[11px] text-slate-300 pt-8">No events</p>
-              ) : list.map((b) => {
+                <p className="text-center text-[11px] text-slate-300 pt-8">Nothing scheduled</p>
+              ) : list.map((item) => {
+                const b = item.booking;
+                if (item.kind === "call") {
+                  // Phone-call card — visually distinct (pink, phone icon).
+                  return (
+                    <Link key={`call-${b.id}`} href={`/bookings/${b.id}`}
+                      className="block rounded-lg border-2 border-pink-200 bg-pink-50 p-3 hover:border-pink-400 hover:shadow-md transition-all">
+                      <div className="flex justify-between items-baseline">
+                        <span className="font-display font-bold text-pink-700 text-sm">📞 Menu Call</span>
+                        <span className="text-xs font-semibold text-pink-700">{fmtTime(item.time)}</span>
+                      </div>
+                      <div className="text-sm font-medium truncate">{b.contact_name}</div>
+                      <div className="text-[11px] text-slate-500 truncate">#{b.invoice_num} · event {b.event_date ? parseLocalDate(b.event_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "TBD"}</div>
+                    </Link>
+                  );
+                }
                 const st = stageFor(b.status);
                 return (
-                  <Link key={b.id} href={`/bookings/${b.id}`}
+                  <Link key={`ev-${b.id}`} href={`/bookings/${b.id}`}
                     className="block rounded-lg border border-slate-200 p-3 hover:border-navy hover:shadow-md transition-all"
                     style={{ background: st.color + "55" }}>
                     <div className="flex justify-between items-baseline">
                       <span className="font-display font-bold text-navy text-sm">#{b.invoice_num}</span>
-                      <span className="text-xs font-semibold">{fmtTime(b.event_time)}</span>
+                      <span className="text-xs font-semibold">{fmtTime(item.time)}</span>
                     </div>
                     <div className="text-sm font-medium truncate">{b.contact_name}</div>
                     <div className="text-[11px] text-slate-600 truncate">{b.event_name || b.event_type}</div>
@@ -165,7 +211,7 @@ function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, Bookin
 
 // ─── MONTH VIEW (compact grid, all 7 days, Fri/Sat dimmed) ───
 function MonthView({ anchor, byDate, onDayClick }: {
-  anchor: Date; byDate: Map<string, Booking[]>; onDayClick: (d: Date) => void;
+  anchor: Date; byDate: Map<string, CalItem[]>; onDayClick: (d: Date) => void;
 }) {
   const router = useRouter();
   const first = startOfMonth(anchor);
@@ -205,17 +251,20 @@ function MonthView({ anchor, byDate, onDayClick }: {
                 {d.getDate()}
               </div>
               <div className="space-y-1">
-                {shown.map((b) => {
-                  const st = stageFor(b.status);
+                {shown.map((item) => {
+                  const b = item.booking;
+                  const isCall = item.kind === "call";
+                  const bg = isCall ? "#FCE7F3" : stageFor(b.status).color;
+                  const fg = isCall ? "#BE185D" : stageFor(b.status).textColor;
                   return (
-                    <button key={b.id}
+                    <button key={`${item.kind}-${b.id}`}
                       onClick={(e) => { e.stopPropagation(); router.push(`/bookings/${b.id}`); }}
                       className="w-full flex items-center gap-1 rounded px-1 py-0.5 text-left hover:ring-1 hover:ring-navy"
-                      style={{ background: st.color }}
-                      title={`#${b.invoice_num} ${b.contact_name} · ${fmtTime(b.event_time)} · ${st.label}`}>
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: st.textColor }} />
-                      <span className="text-[10px] font-medium truncate" style={{ color: st.textColor }}>
-                        {fmtTime(b.event_time).replace(":00", "")} {shortName(b)}
+                      style={{ background: bg }}
+                      title={`${isCall ? "📞 Menu call" : "Event"}: #${b.invoice_num} ${b.contact_name} · ${fmtTime(item.time)}`}>
+                      <span className="text-[10px] shrink-0">{isCall ? "📞" : ""}</span>
+                      <span className="text-[10px] font-medium truncate" style={{ color: fg }}>
+                        {fmtTime(item.time).replace(":00", "")} {shortName(b)}
                       </span>
                     </button>
                   );
@@ -229,7 +278,7 @@ function MonthView({ anchor, byDate, onDayClick }: {
         })}
       </div>
       <p className="text-[11px] text-slate-400 mt-3">
-        Click an event to open it · click a day to jump to that week · Fri/Sat dimmed (Sun–Thu operating week)
+        📞 = menu call · click to open · click a day to jump to that week · Fri/Sat dimmed (Sun–Thu operating week)
       </p>
     </div>
   );
