@@ -633,15 +633,14 @@ export default function BookingDetail() {
                         });
                         await logActivity(b.id, b.invoice_num, "Payment Reversed", `${fmtMoney(p.amount_applied)} ${p.method} reversed`, "WARNING");
 
-                        // If reversing this leaves no deposit on file, the booking is
-                        // no longer truly "booked" — revert it to the deposit stage.
+                        // Decide how the reversal affects the workflow stage.
                         const { data: pays } = await supabase.from("payments")
                           .select("amount_applied,payment_type").eq("booking_id", b.id);
                         const totalApplied = (pays ?? []).reduce((s, x) => s + Number(x.amount_applied), 0);
                         const wasDeposit = p.payment_type === "Deposit";
+
                         if (wasDeposit && totalApplied <= 0.01 && b.status !== "on_hold") {
-                          // Clear the deposit marker too, so a fresh deposit can be
-                          // recorded (the reversed original record remains for audit).
+                          // Deposit fully reversed → back to awaiting deposit.
                           const holdExpires = new Date(); holdExpires.setHours(holdExpires.getHours() + 24);
                           await supabase.from("bookings").update({
                             status: "on_hold", deposit_date: null, deposit_method: null,
@@ -649,6 +648,12 @@ export default function BookingDetail() {
                           }).eq("id", b.id);
                           await logActivity(b.id, b.invoice_num, "Reverted to Deposit Stage",
                             "Deposit reversed — booking returned to awaiting deposit.", "WARNING");
+                        } else if (!wasDeposit && (b.status === "completed" || b.status === "paid_awaiting_event")) {
+                          // A balance/final payment was reversed on a closed booking →
+                          // reopen it so the now-outstanding balance can be re-collected.
+                          await supabase.from("bookings").update({ status: "collect_payment" }).eq("id", b.id);
+                          await logActivity(b.id, b.invoice_num, "Reopened (Payment Reversed)",
+                            `${fmtMoney(p.amount_applied)} payment reversed — booking reopened to collect the balance.`, "WARNING");
                         }
                         load();
                         setMsg({ ok: true, text: "Payment reversed ✓" });
