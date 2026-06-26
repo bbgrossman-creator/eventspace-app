@@ -600,8 +600,11 @@ export default function BookingDetail() {
         </div>
       )}
 
-      {/* Event hours & overtime */}
-      <EventHoursPanel b={b} onChange={load} />
+      {/* Event hours & overtime — only on confirmed, progressing events
+          (not holds, conflicts, waitlists, or cancellations). */}
+      {!["on_hold", "conflict", "waitlisted", "hold_expired", "cancelled"].includes(b.status) && (
+        <EventHoursPanel b={b} onChange={load} />
+      )}
 
       {/* Payment history */}
       <div className="card p-5 mb-5">
