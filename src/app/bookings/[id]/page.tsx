@@ -624,6 +624,18 @@ export default function BookingDetail() {
                           notes: `Reversal of ${p.payment_type} from ${new Date(p.created_at).toLocaleDateString()}`,
                         });
                         await logActivity(b.id, b.invoice_num, "Payment Reversed", `${fmtMoney(p.amount_applied)} ${p.method} reversed`, "WARNING");
+
+                        // If reversing this leaves no deposit on file, the booking is
+                        // no longer truly "booked" — revert it to the deposit stage.
+                        const { data: pays } = await supabase.from("payments")
+                          .select("amount_applied,payment_type").eq("booking_id", b.id);
+                        const totalApplied = (pays ?? []).reduce((s, x) => s + Number(x.amount_applied), 0);
+                        const wasDeposit = p.payment_type === "Deposit";
+                        if (wasDeposit && totalApplied <= 0.01 && b.status !== "on_hold") {
+                          await supabase.from("bookings").update({ status: "on_hold" }).eq("id", b.id);
+                          await logActivity(b.id, b.invoice_num, "Reverted to Deposit Stage",
+                            "Deposit reversed — booking returned to awaiting deposit.", "WARNING");
+                        }
                         load();
                         setMsg({ ok: true, text: "Payment reversed ✓" });
                       }}>

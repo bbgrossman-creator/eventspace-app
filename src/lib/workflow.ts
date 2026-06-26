@@ -50,7 +50,7 @@ export const TIMELINE_MILESTONES = [
 // The canonical status that each timeline stage maps to, for click-to-navigate.
 // (stageIndex → the Status a user lands on when they click that milestone.)
 export const STAGE_TO_STATUS: Status[] = [
-  "schedule_menu_discussion", // 0 deposit done → next is schedule call
+  "on_hold",                  // 0 Deposit — collect the deposit (back here = un-book)
   "schedule_menu_discussion", // 1 Schedule Call
   "send_menu_form",           // 2 Menu
   "send_est_invoice",         // 3 Est. Invoice
