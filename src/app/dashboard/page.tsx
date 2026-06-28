@@ -12,10 +12,10 @@ interface PaymentRow {
 interface ChargeRowDb extends ChargeLike { booking_id: string; }
 
 const STATUS_GROUPS: { label: string; statuses: string[] }[] = [
-  { label: "On Hold", statuses: ["on_hold", "conflict", "hold_expired"] },
+  { label: "On Hold", statuses: ["on_hold", "conflict", "hold_expired", "waitlisted"] },
   { label: "Booked — Pending Menu", statuses: ["schedule_menu_discussion", "send_menu_form"] },
   { label: "Needs Invoice", statuses: ["menu_completed", "send_est_invoice"] },
-  { label: "Invoice Sent / Collecting", statuses: ["confirm_guest_count", "send_final_invoice", "collect_payment"] },
+  { label: "Invoice Sent / Collecting", statuses: ["confirm_guest_count", "send_final_invoice", "collect_payment", "paid_awaiting_event"] },
   { label: "Completed", statuses: ["completed"] },
 ];
 

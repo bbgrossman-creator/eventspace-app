@@ -464,6 +464,8 @@ export default function BookingDetail() {
             </>
           ) : b.status === "completed" ? (
             <span className="font-display font-bold text-emerald-700 text-lg py-1">☑️ Completed</span>
+          ) : b.status === "waitlisted" ? (
+            <span className="font-display font-bold text-amber-700 text-base py-1">⏳ Waitlisted — awaiting the holder&apos;s decision on this date</span>
           ) : (
             <span className="font-display font-bold text-slate-500 text-lg py-1">❌ Cancelled</span>
           )}
