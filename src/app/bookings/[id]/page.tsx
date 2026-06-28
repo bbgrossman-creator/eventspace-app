@@ -278,7 +278,7 @@ export default function BookingDetail() {
       )}
 
       {/* Conflict context: show what this booking conflicts with */}
-      {b.status === "conflict" && <ConflictPanel b={b} />}
+      {b.status === "conflict" && <ConflictPanel b={b} onChange={load} />}
 
       {/* First-right-of-refusal: this booking holds a date someone else wants */}
       {b.refusal_challenger && <RefusalPanel b={b} onChange={load} setMsg={setMsg} />}
@@ -995,8 +995,10 @@ function AmendmentForm({ b, adultPP, done }: { b: Booking; adultPP: number; done
 }
 
 // ─── Conflict context — shows the rep what this booking conflicts with ───
-function ConflictPanel({ b }: { b: Booking }) {
+function ConflictPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
   const [others, setOthers] = useState<Booking[]>([]);
+  const [pol, setPol] = useState<Policies | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!b.event_date) return;
     supabase.from("bookings").select("*")
@@ -1004,10 +1006,35 @@ function ConflictPanel({ b }: { b: Booking }) {
       .neq("id", b.id)
       .neq("status", "cancelled")
       .then(({ data }) => setOthers((data ?? []) as Booking[]));
+    loadPolicies().then(setPol);
   }, [b.event_date, b.id]);
 
   if (others.length === 0) return null;
   const anyBooked = others.some((o) => !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(o.status));
+  // The holder eligible for first-right-of-refusal: an UNCONFIRMED hold.
+  const eligibleHolder = others.find((o) => o.status === "on_hold" || o.status === "conflict");
+  const canStartRefusal = pol?.conflict_mode === "first_refusal" && !!eligibleHolder && !anyBooked;
+
+  // Adapt this existing conflict to first-refusal on demand: make THIS booking the
+  // waitlisted challenger and start the holder's decision clock. Mirrors creation-time setup.
+  async function startRefusal() {
+    if (!eligibleHolder || !pol) return;
+    if (!confirm(`Start first-right-of-refusal? ${eligibleHolder.contact_name} will have ${pol.refusal_deadline_hours} hours to commit, then ${pol.refusal_lapse_action === "auto_release" ? "the date auto-releases to this party" : "you'll be prompted to decide"}.`)) return;
+    setBusy(true);
+    const deadline = new Date(); deadline.setHours(deadline.getHours() + pol.refusal_deadline_hours);
+    // This booking becomes the waitlisted challenger.
+    await supabase.from("bookings").update({ status: "waitlisted", waitlisted_for: eligibleHolder.id }).eq("id", b.id);
+    // The holder gets the decision clock + a link back to this challenger.
+    await supabase.from("bookings").update({
+      refusal_deadline: deadline.toISOString(), refusal_challenger: b.id,
+    }).eq("id", eligibleHolder.id);
+    await logActivity(eligibleHolder.id, eligibleHolder.invoice_num, "First Right of Refusal Started",
+      `${b.contact_name} wants this date. Holder has until ${deadline.toLocaleString()} to commit.`, "WARNING");
+    await logActivity(b.id, b.invoice_num, "Waitlisted (First Refusal)",
+      `Now waiting on ${eligibleHolder.contact_name}'s decision.`, "WARNING");
+    // Take the rep to the holder's page to act.
+    window.location.assign(`/bookings/${eligibleHolder.id}`);
+  }
 
   return (
     <div className="card p-5 mb-5 border-2 border-red-200">
@@ -1033,8 +1060,15 @@ function ConflictPanel({ b }: { b: Booking }) {
           );
         })}
       </div>
+      {canStartRefusal && (
+        <button className="btn-primary mt-3 w-full" disabled={busy} onClick={startRefusal}>
+          ▶️ Start First-Right-of-Refusal with {eligibleHolder!.contact_name}
+        </button>
+      )}
       <p className="text-xs text-slate-400 mt-3">
-        Use the SOP note above for how to handle this. To proceed anyway (e.g. a shorter event that fits), use &quot;Override Conflict → Hold&quot; below.
+        {canStartRefusal
+          ? "Your policy is first-right-of-refusal: start the holder's decision clock above, or use the manual options below."
+          : "Use the SOP note above for how to handle this. To proceed anyway (e.g. a shorter event that fits), use \u201cOverride Conflict \u2192 Hold\u201d below."}
       </p>
     </div>
   );
