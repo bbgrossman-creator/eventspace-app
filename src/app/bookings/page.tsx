@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { Booking, fmtDate, fmtTime, fmtMoney, menuBadge, stageFor } from "@/lib/workflow";
+import { Booking, fmtDate, fmtTime, fmtMoney, menuBadge, stageFor, isHoldExpired } from "@/lib/workflow";
 
 export default function BookingsList() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
@@ -80,7 +80,7 @@ export default function BookingsList() {
             </thead>
             <tbody>
               {shown.map((b) => {
-                const st = stageFor(b.status);
+                const st = stageFor(isHoldExpired(b) ? "hold_expired" : b.status);
                 return (
                   <tr key={b.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-3">

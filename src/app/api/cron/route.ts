@@ -60,6 +60,25 @@ export async function GET(req: Request) {
     });
   } catch { /* non-fatal */ }
 
+  // Expire holds whose 24h window has passed, so status is real everywhere
+  // (lists/dashboard group by stored status, not lazy computation).
+  let holds_expired = 0;
+  try {
+    const { data: stale } = await db.from("bookings").select("id,invoice_num")
+      .eq("status", "on_hold")
+      .not("hold_expires", "is", null)
+      .lt("hold_expires", new Date().toISOString());
+    for (const h of (stale ?? []) as { id: string; invoice_num: string }[]) {
+      await db.from("bookings").update({ status: "hold_expired" }).eq("id", h.id);
+      await db.from("activity_log").insert({
+        booking_id: h.id, invoice_num: h.invoice_num,
+        action: "Hold Expired", details: "24h hold window passed with no deposit — follow up or release.",
+        result: "WARNING",
+      });
+      holds_expired++;
+    }
+  } catch { /* non-fatal */ }
+
   // First-right-of-refusal: handle holders whose decision deadline has passed.
   let refusal_lapsed = 0;
   try {
@@ -108,7 +127,7 @@ export async function GET(req: Request) {
   const { data: autoRows } = await db.from("email_automations")
     .select("*").eq("enabled", true).neq("trigger", "action");
   const automations = (autoRows ?? []) as Automation[];
-  if (automations.length === 0) return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, refusal_lapsed, sent: 0, note: "No enabled scheduled automations" });
+  if (automations.length === 0) return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, holds_expired, refusal_lapsed, sent: 0, note: "No enabled scheduled automations" });
 
   const { data: bookingRows } = await db.from("bookings").select("*").neq("status", "cancelled");
   const bookings = (bookingRows ?? []) as Booking[];
@@ -213,5 +232,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, refusal_lapsed, automations_checked: automations.length, sent: sent + ladderSent, details });
+  return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, holds_expired, refusal_lapsed, automations_checked: automations.length, sent: sent + ladderSent, details });
 }

@@ -262,8 +262,11 @@ export default function BookingDetail() {
           <div className="font-display font-bold text-lg">{stage.icon} {stage.label}</div>
         </div>
         {b.status === "on_hold" && b.hold_expires && (
-          <div className="text-xs font-semibold">
-            {holdExpired ? "EXPIRED " : "Hold expires "}{new Date(b.hold_expires).toLocaleString()}
+          <div className="text-xs font-semibold text-right">
+            {holdExpired
+              ? <span className="text-red-600">⏰ EXPIRED {new Date(b.hold_expires).toLocaleString()}</span>
+              : <><div><HoldCountdown expires={b.hold_expires} /></div>
+                  <div className="opacity-70 font-normal">expires {new Date(b.hold_expires).toLocaleString()}</div></>}
           </div>
         )}
       </div>
@@ -994,6 +997,26 @@ function AmendmentForm({ b, adultPP, done }: { b: Booking; adultPP: number; done
   );
 }
 
+// ─── Live countdown to hold expiry (ticks every second) ───
+function HoldCountdown({ expires }: { expires: string }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const ms = new Date(expires).getTime() - now;
+  if (ms <= 0) return <span className="text-red-600">⏰ Expired</span>;
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const urgent = ms < 2 * 3600000; // under 2h
+  return (
+    <span className={urgent ? "text-red-600" : ""}>
+      ⏳ {h}h {String(m).padStart(2, "0")}m {String(s).padStart(2, "0")}s left
+    </span>
+  );
+}
+
 // ─── Conflict context — shows the rep what this booking conflicts with ───
 function ConflictPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
   const [others, setOthers] = useState<Booking[]>([]);
@@ -1023,11 +1046,16 @@ function ConflictPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
     setBusy(true);
     const deadline = new Date(); deadline.setHours(deadline.getHours() + pol.refusal_deadline_hours);
     // This booking becomes the waitlisted challenger.
-    await supabase.from("bookings").update({ status: "waitlisted", waitlisted_for: eligibleHolder.id }).eq("id", b.id);
+    const r1 = await supabase.from("bookings").update({ status: "waitlisted", waitlisted_for: eligibleHolder.id }).eq("id", b.id);
     // The holder gets the decision clock + a link back to this challenger.
-    await supabase.from("bookings").update({
+    const r2 = await supabase.from("bookings").update({
       refusal_deadline: deadline.toISOString(), refusal_challenger: b.id,
     }).eq("id", eligibleHolder.id);
+    if (r1.error || r2.error) {
+      setBusy(false);
+      alert(`Could not start first-right-of-refusal: ${(r1.error || r2.error)?.message}\n\nThis usually means the refusal columns are missing — run first_refusal.sql in Supabase.`);
+      return;
+    }
     await logActivity(eligibleHolder.id, eligibleHolder.invoice_num, "First Right of Refusal Started",
       `${b.contact_name} wants this date. Holder has until ${deadline.toLocaleString()} to commit.`, "WARNING");
     await logActivity(b.id, b.invoice_num, "Waitlisted (First Refusal)",
