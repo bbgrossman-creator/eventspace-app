@@ -19,6 +19,7 @@ const BACKOFFICE = [
   { href: "/package-guides", label: "Package Guides", icon: "📣" },
   { href: "/staff", label: "Staff & Approvals", icon: "🔑" },
   { href: "/policies", label: "Policies", icon: "⚙️" },
+  { href: "/sop", label: "SOP / Playbook", icon: "📋" },
 ];
 
 export default function Sidebar() {

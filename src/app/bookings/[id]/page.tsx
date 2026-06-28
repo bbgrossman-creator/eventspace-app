@@ -19,6 +19,7 @@ import { bookingFinancials } from "@/lib/finance";
 import ApprovalField from "@/components/ApprovalField";
 import { loadPolicies, Policies } from "@/lib/policies";
 import { billableHours } from "@/lib/billingHours";
+import { loadSopNote } from "@/lib/sop";
 import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
@@ -266,6 +267,9 @@ export default function BookingDetail() {
           </div>
         )}
       </div>
+
+      {/* SOP / playbook note for the current stage (editable in back office) */}
+      <SopNote statusKey={holdExpired ? "hold_expired" : b.status} />
 
       {msg && (
         <div className={`rounded-lg px-4 py-3 mb-5 text-sm font-semibold ${msg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
@@ -982,6 +986,24 @@ function AmendmentForm({ b, adultPP, done }: { b: Booking; adultPP: number; done
       {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
       <button onClick={save} disabled={busy} className="btn-warn mt-3 w-full">{busy ? "Saving…" : "Add Amendment & Reopen for Payment"}</button>
     </Panel>
+  );
+}
+
+// ─── SOP note for the current stage (collapsible; editable in back office) ───
+function SopNote({ statusKey }: { statusKey: string }) {
+  const [body, setBody] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { loadSopNote(statusKey).then(setBody); }, [statusKey]);
+  if (!body) return null;
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 mb-5 overflow-hidden">
+      <button onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-slate-100">
+        <span className="text-sm font-semibold text-slate-700">📋 What to do here</span>
+        <span className="text-slate-400 text-xs">{open ? "▲ hide" : "▼ show"}</span>
+      </button>
+      {open && <p className="px-4 pb-3 text-sm text-slate-600 whitespace-pre-line">{body}</p>}
+    </div>
   );
 }
 
