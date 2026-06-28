@@ -55,6 +55,9 @@ export default function NewInquiry() {
     setErr("");
     if (!f.contact_name.trim()) { setErr("Customer name is required."); return; }
     if (!f.phone.trim() && !f.email.trim()) { setErr("Enter a phone number or email."); return; }
+    if (!f.event_type) { setErr("Event type is required."); return; }
+    if (!f.event_date) { setErr("Event date is required."); return; }
+    if (!f.event_time) { setErr("Event time is required."); return; }
     setSaving(true);
 
     const { data: invData, error: invErr } = await supabase.rpc("next_invoice_num");
@@ -178,11 +181,23 @@ export default function NewInquiry() {
             </div>
           ) : (
             <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
-              <p className="font-bold mb-1">⚠️ Time conflict — will be saved for review</p>
-              {conflicts.map((c) => (
-                <p key={c.id}>• #{c.invoice_num} {c.contact_name} at {fmtTime(c.event_time)}</p>
-              ))}
-              <p className="mt-1 text-xs">Events must be 4+ hours apart (start to start).</p>
+              <p className="font-bold mb-1">⚠️ Time conflict on this date</p>
+              {conflicts.map((c) => {
+                const isBooked = !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status);
+                return (
+                  <p key={c.id}>
+                    • #{c.invoice_num} {c.contact_name} at {fmtTime(c.event_time)} —{" "}
+                    <span className={isBooked ? "font-bold" : "font-medium"}>
+                      {isBooked ? "CONFIRMED BOOKING" : "hold (unconfirmed)"}
+                    </span>
+                  </p>
+                );
+              })}
+              <p className="mt-1 text-xs">
+                {conflicts.some((c) => !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status))
+                  ? "A confirmed booking holds this slot — the date is taken."
+                  : "Held by an unconfirmed party — first right of refusal may apply per your policy."}
+              </p>
             </div>
           )
         )}

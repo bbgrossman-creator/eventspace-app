@@ -277,6 +277,9 @@ export default function BookingDetail() {
         </div>
       )}
 
+      {/* Conflict context: show what this booking conflicts with */}
+      {b.status === "conflict" && <ConflictPanel b={b} />}
+
       {/* First-right-of-refusal: this booking holds a date someone else wants */}
       {b.refusal_challenger && <RefusalPanel b={b} onChange={load} setMsg={setMsg} />}
 
@@ -986,6 +989,52 @@ function AmendmentForm({ b, adultPP, done }: { b: Booking; adultPP: number; done
       {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
       <button onClick={save} disabled={busy} className="btn-warn mt-3 w-full">{busy ? "Saving…" : "Add Amendment & Reopen for Payment"}</button>
     </Panel>
+  );
+}
+
+// ─── Conflict context — shows the rep what this booking conflicts with ───
+function ConflictPanel({ b }: { b: Booking }) {
+  const [others, setOthers] = useState<Booking[]>([]);
+  useEffect(() => {
+    if (!b.event_date) return;
+    supabase.from("bookings").select("*")
+      .eq("event_date", b.event_date)
+      .neq("id", b.id)
+      .neq("status", "cancelled")
+      .then(({ data }) => setOthers((data ?? []) as Booking[]));
+  }, [b.event_date, b.id]);
+
+  if (others.length === 0) return null;
+  const anyBooked = others.some((o) => !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(o.status));
+
+  return (
+    <div className="card p-5 mb-5 border-2 border-red-200">
+      <h2 className="font-display font-bold text-sm mb-1">⚠️ Conflict — same date</h2>
+      <p className="text-xs text-slate-500 mb-3">
+        {anyBooked
+          ? "This date is held by a CONFIRMED booking — the date is taken. Inform this customer or offer an alternative."
+          : "This date is held by another unconfirmed party. Per your policy, first right of refusal may apply."}
+      </p>
+      <div className="space-y-1.5">
+        {others.map((o) => {
+          const booked = !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(o.status);
+          return (
+            <div key={o.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+              <span className="text-sm">
+                <b>#{o.invoice_num}</b> {o.contact_name} · {fmtTime(o.event_time)} ·{" "}
+                <span className={booked ? "text-red-700 font-semibold" : "text-amber-700"}>
+                  {booked ? "CONFIRMED BOOKING" : "hold (unconfirmed)"}
+                </span>
+              </span>
+              <button className="text-xs text-navy underline" onClick={() => window.location.assign(`/bookings/${o.id}`)}>view →</button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-slate-400 mt-3">
+        Use the SOP note above for how to handle this. To proceed anyway (e.g. a shorter event that fits), use &quot;Override Conflict → Hold&quot; below.
+      </p>
+    </div>
   );
 }
 
