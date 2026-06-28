@@ -94,6 +94,7 @@ export interface Booking {
   status: Status;
   hold_expires: string | null;
   waitlisted_for?: string | null;
+  expected_hours?: number | null;
   refusal_deadline?: string | null;
   refusal_challenger?: string | null;
   deposit_date: string | null;
@@ -275,16 +276,31 @@ export function findConflicts(
   bookings: Booking[],
   eventDate: string,
   eventTime: string,
-  excludeId?: string
+  excludeId?: string,
+  opts?: { newHours?: number; defaultHours?: number; bufferMin?: number },
 ): Booking[] {
   const newMins = timeToMinutes(eventTime);
+  const defaultHours = opts?.defaultHours ?? MINIMUM_GAP_HOURS;
+  const bufferMin = opts?.bufferMin ?? 0;
+  const newHours = opts?.newHours ?? defaultHours;
+
   return bookings.filter((b) => {
     if (excludeId && b.id === excludeId) return false;
     if (b.status === "cancelled" || b.status === "hold_expired") return false;
     if (b.event_date !== eventDate) return false;
     const exMins = timeToMinutes(b.event_time);
-    if (newMins === null || exMins === null) return true; // same day, unknown time → flag it
-    return Math.abs(newMins - exMins) < MINIMUM_GAP_HOURS * 60;
+    if (newMins === null || exMins === null) return true; // unknown time → flag it
+
+    // Duration-aware window check: each event occupies
+    // [start, start + duration + buffer]. They conflict only if the windows
+    // overlap. A shorter event can therefore fit alongside a longer one.
+    const exHours = (b as { expected_hours?: number | null }).expected_hours ?? defaultHours;
+    const newStart = newMins;
+    const newEnd = newMins + newHours * 60 + bufferMin;
+    const exStart = exMins;
+    const exEnd = exMins + exHours * 60 + bufferMin;
+    // Overlap iff one starts before the other ends, both ways.
+    return newStart < exEnd && exStart < newEnd;
   });
 }
 

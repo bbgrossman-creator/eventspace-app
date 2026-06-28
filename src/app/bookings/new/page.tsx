@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
 import { runActionAutomation } from "@/lib/automation";
-import { loadPolicies } from "@/lib/policies";
+import { loadPolicies, Policies } from "@/lib/policies";
 import { Booking, findConflicts, fmtTime, HOLD_HOURS } from "@/lib/workflow";
 import { PRICING } from "@/lib/pricing";
 import { sendEmail } from "@/lib/sendEmail";
@@ -23,7 +23,7 @@ export default function NewInquiry() {
   const [all, setAll] = useState<Booking[]>([]);
   const [f, setF] = useState({
     contact_name: "", phone: "", email: "",
-    event_type: "", event_date: "", event_time: "19:00", notes: "",
+    event_type: "", event_date: "", event_time: "19:00", notes: "", expected_hours: "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -37,8 +37,17 @@ export default function NewInquiry() {
       .then(({ data }) => setGuides((data ?? []) as PackageGuide[]));
   }, []);
 
+  const [pol, setPol] = useState<Policies | null>(null);
+  useEffect(() => { loadPolicies().then(setPol); }, []);
+
   const conflicts =
-    f.event_date && f.event_time ? findConflicts(all, f.event_date, f.event_time) : [];
+    f.event_date && f.event_time && pol
+      ? findConflicts(all, f.event_date, f.event_time, undefined, {
+          newHours: f.expected_hours ? Number(f.expected_hours) : pol.default_event_hours,
+          defaultHours: pol.default_event_hours,
+          bufferMin: pol.turnaround_buffer_min,
+        })
+      : (f.event_date && f.event_time ? findConflicts(all, f.event_date, f.event_time) : []);
 
   function set(k: string, v: string) { setF((p) => ({ ...p, [k]: v })); }
 
@@ -57,9 +66,13 @@ export default function NewInquiry() {
     holdExpires.setHours(holdExpires.getHours() + HOLD_HOURS);
 
     // How conflicts are handled depends on the owner's policy.
-    const pol = await loadPolicies();
-    const holder = hasConflict ? conflicts[0] : null; // first-right-of-refusal holder
-    const useRefusal = hasConflict && pol.conflict_mode === "first_refusal";
+    const cpol = await loadPolicies();
+    const holder = hasConflict ? conflicts[0] : null;
+    // First-right-of-refusal applies ONLY when the existing party is an
+    // unconfirmed HOLD. If they're already booked (deposit down / past hold),
+    // the date is simply taken — no refusal clock.
+    const holderIsUnconfirmed = !!holder && (holder.status === "on_hold" || holder.status === "conflict");
+    const useRefusal = hasConflict && cpol.conflict_mode === "first_refusal" && holderIsUnconfirmed;
 
     let newStatus: string = "on_hold";
     let newHoldExpires: string | null = holdExpires.toISOString();
@@ -80,6 +93,7 @@ export default function NewInquiry() {
         event_time: f.event_time || null,
         menu_type: "Not Sure Yet",
         notes: f.notes.trim() || null,
+        expected_hours: f.expected_hours ? Number(f.expected_hours) : null,
         status: newStatus,
         hold_expires: newHoldExpires,
         waitlisted_for: useRefusal && holder ? holder.id : null,
@@ -92,7 +106,7 @@ export default function NewInquiry() {
     // Under first-right-of-refusal, start the holder's decision clock.
     if (useRefusal && holder) {
       const deadline = new Date();
-      deadline.setHours(deadline.getHours() + pol.refusal_deadline_hours);
+      deadline.setHours(deadline.getHours() + cpol.refusal_deadline_hours);
       await supabase.from("bookings").update({
         refusal_deadline: deadline.toISOString(),
         refusal_challenger: data.id,
@@ -147,6 +161,12 @@ export default function NewInquiry() {
             <select className="field" value={f.event_time} onChange={(e) => set("event_time", e.target.value)}>
               {TIMES.map((t) => <option key={t} value={t}>{fmtTime(t)}</option>)}
             </select></div>
+          <div><label className="label">Expected duration (hrs)</label>
+            <input className="field" type="number" step="0.5" min="0" value={f.expected_hours}
+              onChange={(e) => set("expected_hours", e.target.value)}
+              placeholder={pol ? String(pol.default_event_hours) : "4"} />
+            <p className="text-[11px] text-slate-400 mt-1">Leave blank for standard. A shorter event may fit alongside another.</p>
+          </div>
           <div className="sm:col-span-2"><label className="label">Notes</label>
             <textarea className="field" rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></div>
         </div>
@@ -154,7 +174,7 @@ export default function NewInquiry() {
         {f.event_date && (
           conflicts.length === 0 ? (
             <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800 font-medium">
-              ✅ Available — no events within 4 hours of this time
+              ✅ Available — no overlapping events for this time and duration
             </div>
           ) : (
             <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">

@@ -85,6 +85,17 @@ export default function PoliciesAdmin() {
           <NumberField value={p.overtime_rate} onSave={(v) => set("overtime_rate", v)} min={0} />
         </Row>
         <p className="text-xs text-slate-400 mt-1 pl-1">Overtime is always suggested for the rep to confirm — never auto-charged.</p>
+
+        <div className="border-t border-slate-100 mt-4 pt-3">
+          <h3 className="font-display font-bold text-xs mb-1">Scheduling &amp; conflicts</h3>
+          <p className="text-xs text-slate-500 mb-3">Two events conflict only if their time windows overlap. A shorter event can fit alongside another.</p>
+          <Row label="Turnaround buffer between events (minutes)">
+            <NumberField value={p.turnaround_buffer_min} onSave={(v) => set("turnaround_buffer_min", v)} min={0} />
+          </Row>
+          <Row label="Standard / max service window (hours)">
+            <NumberField value={p.max_service_hours} onSave={(v) => set("max_service_hours", v)} min={0} step={0.5} />
+          </Row>
+        </div>
       </div>
     </div>
   );

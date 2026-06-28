@@ -11,6 +11,8 @@ export interface Policies {
   default_event_hours: number;
   overtime_increment_min: number;
   overtime_rate: number;
+  turnaround_buffer_min: number;
+  max_service_hours: number;
 }
 
 export const POLICY_DEFAULTS: Policies = {
@@ -21,11 +23,14 @@ export const POLICY_DEFAULTS: Policies = {
   default_event_hours: 4,
   overtime_increment_min: 30,
   overtime_rate: 200,
+  turnaround_buffer_min: 60,
+  max_service_hours: 4,
 };
 
 const NUMERIC: (keyof Policies)[] = [
   "hold_hours", "refusal_deadline_hours", "default_event_hours",
   "overtime_increment_min", "overtime_rate",
+  "turnaround_buffer_min", "max_service_hours",
 ];
 
 /** Load all policy settings, falling back to defaults for any that are unset. */
