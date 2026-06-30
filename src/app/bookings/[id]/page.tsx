@@ -316,11 +316,18 @@ export default function BookingDetail() {
           </div>
         )}
 
+        {b.deposit_ready && (b.status === "on_hold" || b.status === "conflict") && (
+          <div className="rounded-lg bg-emerald-50 border border-emerald-300 px-4 py-2.5 mb-3 text-sm text-emerald-800">
+            💳 <b>Ready to collect</b> — this party committed with a card on file
+            {b.card_last4 ? <> (•••• {b.card_last4})</> : ""}. Collect the deposit to confirm.
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2.5">
           {b.status === "on_hold" || b.status === "conflict" ? (
             <>
               <button className="btn-success" onClick={() => setPanel(panel === "deposit" ? "" : "deposit")}>
-                💰 Record Deposit{holdExpired ? " (rebooks the date)" : ""}
+                {b.deposit_ready ? "💳 Charge Deposit (card on file)" : `💰 Record Deposit${holdExpired ? " (rebooks the date)" : ""}`}
               </button>
               {holdExpired && (
                 <>
@@ -1170,8 +1177,11 @@ function RefusalPanel({ b, onChange, setMsg }: {
       await supabase.from("bookings").update({
         status: "on_hold", waitlisted_for: null, hold_expires: holdExpires.toISOString(),
       }).eq("id", challenger.id);
+      const readyNote = challenger.deposit_ready
+        ? ` Ready to commit — card ${challenger.card_last4 ? `•••• ${challenger.card_last4}` : "on file"}; collect the deposit.`
+        : "";
       await logActivity(challenger.id, challenger.invoice_num, "Promoted from Waitlist",
-        `Date released by ${b.contact_name} — now holding (24h).`);
+        `Date released by ${b.contact_name} — now holding (24h).${readyNote}`);
       await runActionAutomation("hold_confirmation", { ...challenger, status: "on_hold", hold_expires: holdExpires.toISOString() } as Booking);
     }
     await logActivity(b.id, b.invoice_num, "Holder Passed (First Refusal)",

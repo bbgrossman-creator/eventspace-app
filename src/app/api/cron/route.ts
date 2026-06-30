@@ -99,10 +99,15 @@ export async function GET(req: Request) {
           await db.from("bookings").update({
             status: "on_hold", waitlisted_for: null, hold_expires: he.toISOString(),
           }).eq("id", holder.refusal_challenger);
+          // Fetch the challenger to note if they're deposit-ready (card on file).
+          const { data: chal } = await db.from("bookings").select("deposit_ready,card_last4").eq("id", holder.refusal_challenger).maybeSingle();
+          const readyNote = chal?.deposit_ready
+            ? ` Ready to commit — card ${chal.card_last4 ? `•••• ${chal.card_last4}` : "on file"}; collect the deposit.`
+            : "";
           await db.from("activity_log").insert({
             booking_id: holder.refusal_challenger, invoice_num: "—",
             action: "Promoted from Waitlist (Auto)",
-            details: `Holder deadline lapsed — date auto-released and now holding.`, result: "SUCCESS",
+            details: `Holder deadline lapsed — date auto-released and now holding.${readyNote}`, result: "SUCCESS",
           });
         }
         await db.from("activity_log").insert({
