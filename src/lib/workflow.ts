@@ -39,26 +39,27 @@ export const STAGES: Record<Status, StageInfo> = {
   send_est_invoice: { status: "send_est_invoice", label: "Booked — Send Est. Invoice", action: "Send Est. Invoice",    icon: "📧", color: "#DBEAFE", textColor: "#1E40AF", stageIndex: 3 },
   confirm_guest_count: { status: "confirm_guest_count", label: "Booked — Confirm Count & Menu", action: "Confirm Count & Menu", icon: "👥", color: "#FCE7F3", textColor: "#9D174D", stageIndex: 4 },
   send_final_invoice: { status: "send_final_invoice", label: "Booked — Send Final Invoice", action: "Send Final Invoice", icon: "📨", color: "#D1FAE5", textColor: "#065F46", stageIndex: 5 },
-  collect_payment: { status: "collect_payment", label: "Booked — Collect Payment", action: "Collect Payment",          icon: "💵", color: "#D1FAE5", textColor: "#065F46", stageIndex: 5 },
-  paid_awaiting_event: { status: "paid_awaiting_event", label: "Paid in Full — Awaiting Event", action: "Awaiting Event", icon: "✅", color: "#FEF9C3", textColor: "#854D0E", stageIndex: 5 },
-  completed:      { status: "completed",      label: "Completed",                  action: "Complete",                 icon: "☑️", color: "#E0F2FE", textColor: "#0C4A6E", stageIndex: 6 },
+  collect_payment: { status: "collect_payment", label: "Booked — Collect Payment", action: "Collect Payment",          icon: "💵", color: "#D1FAE5", textColor: "#065F46", stageIndex: 6 },
+  paid_awaiting_event: { status: "paid_awaiting_event", label: "Paid in Full — Awaiting Event", action: "Awaiting Event", icon: "✅", color: "#FEF9C3", textColor: "#854D0E", stageIndex: 6 },
+  completed:      { status: "completed",      label: "Completed",                  action: "Complete",                 icon: "☑️", color: "#E0F2FE", textColor: "#0C4A6E", stageIndex: 7 },
   cancelled:      { status: "cancelled",      label: "Cancelled",                  action: "Cancelled",                icon: "❌", color: "#E5E7EB", textColor: "#374151", stageIndex: -1 },
 };
 
 export const TIMELINE_MILESTONES = [
-  "Deposit", "Schedule Call", "Menu", "Est. Invoice", "Count & Menu", "Final Invoice", "Complete",
+  "Hold", "Menu Call", "Menu", "Estimate", "Confirm Count", "Final Invoice", "Payment", "Complete",
 ];
 
 // The canonical status that each timeline stage maps to, for click-to-navigate.
 // (stageIndex → the Status a user lands on when they click that milestone.)
 export const STAGE_TO_STATUS: Status[] = [
-  "on_hold",                  // 0 Deposit — collect the deposit (back here = un-book)
-  "schedule_menu_discussion", // 1 Schedule Call
+  "on_hold",                  // 0 Hold — collect the deposit (back here = un-book)
+  "schedule_menu_discussion", // 1 Menu Call
   "send_menu_form",           // 2 Menu
-  "send_est_invoice",         // 3 Est. Invoice
-  "confirm_guest_count",      // 4 Count & Menu
+  "send_est_invoice",         // 3 Estimate
+  "confirm_guest_count",      // 4 Confirm Count
   "send_final_invoice",       // 5 Final Invoice
-  "completed",                // 6 Complete
+  "collect_payment",          // 6 Payment
+  "completed",                // 7 Complete
 ];
 
 /** Has a menu actually been completed? Used to guard the invoice steps so a
