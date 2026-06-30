@@ -52,6 +52,7 @@ export default function BookingDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [b, setB] = useState<Booking | null>(null);
+  const [overdueHrs, setOverdueHrs] = useState(1);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
   const [log, setLog] = useState<LogRow[]>([]);
@@ -85,6 +86,7 @@ export default function BookingDetail() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadPolicies().then((p) => setOverdueHrs(p.menu_call_overdue_hours)); }, []);
 
   // ─── Financials ───
   const fin = useMemo(() => {
@@ -184,7 +186,7 @@ export default function BookingDetail() {
   if (!b) return <p className="text-slate-500">Loading…</p>;
   const holdExpired = isHoldExpired(b);
   const stage = holdExpired ? stageFor("hold_expired") : stageFor(b.status);
-  const ds = discussionState(b);
+  const ds = discussionState(b, overdueHrs);
   const apptFmt = b.menu_discussion_date
     ? new Date(b.menu_discussion_date).toLocaleString("en-US", {
         weekday: "short", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
@@ -259,7 +261,15 @@ export default function BookingDetail() {
         style={{ background: stage.color, color: stage.textColor }}>
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wider opacity-70">Current status</div>
-          <div className="font-display font-bold text-lg">{stage.icon} {stage.label}</div>
+          <div className="font-display font-bold text-lg">
+            {b.status === "schedule_menu_discussion"
+              ? (discussionState(b, overdueHrs) === "overdue"
+                  ? "⚠️ Menu Call Missed — Follow Up"
+                  : discussionState(b, overdueHrs) === "scheduled"
+                    ? "📞 Booked — Menu Call Scheduled"
+                    : `${stage.icon} ${stage.label}`)
+              : `${stage.icon} ${stage.label}`}
+          </div>
         </div>
         {b.status === "on_hold" && b.hold_expires && (
           <div className="text-xs font-semibold text-right">
@@ -360,7 +370,7 @@ export default function BookingDetail() {
                 </button>
                 <button className="btn-ghost"
                   onClick={() => setPanel(panel === "schedulecall" ? "" : "schedulecall")}>
-                  ✏️ Update Recorded Time
+                  🕐 Move Call Time
                 </button>
                 <button className="btn-warn" onClick={sendRescheduleRequest}>
                   🔄 Send Reschedule Request
@@ -379,7 +389,7 @@ export default function BookingDetail() {
                 )}
                 <button className="btn-ghost"
                   onClick={() => setPanel(panel === "schedulecall" ? "" : "schedulecall")}>
-                  📅 Record Scheduled Call
+                  📅 Schedule Call Manually
                 </button>
                 <button className="btn-ghost"
                   onClick={async () => {

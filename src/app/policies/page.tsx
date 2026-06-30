@@ -95,6 +95,9 @@ export default function PoliciesAdmin() {
           <Row label="Standard / max service window (hours)">
             <NumberField value={p.max_service_hours} onSave={(v) => set("max_service_hours", v)} min={0} step={0.5} />
           </Row>
+          <Row label="Mark a menu call “missed” after (hours past call time)">
+            <NumberField value={p.menu_call_overdue_hours} onSave={(v) => set("menu_call_overdue_hours", v)} min={0} step={0.5} />
+          </Row>
         </div>
       </div>
     </div>

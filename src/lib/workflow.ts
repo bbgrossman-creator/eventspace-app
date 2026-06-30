@@ -170,10 +170,10 @@ export function eventHasPassed(b: Booking): boolean {
 export type DiscussionState = "not_sent" | "link_sent" | "scheduled" | "overdue";
 export const DISCUSSION_OVERDUE_HOURS = 1;
 
-export function discussionState(b: Booking): DiscussionState {
+export function discussionState(b: Booking, overdueHours: number = DISCUSSION_OVERDUE_HOURS): DiscussionState {
   if (b.menu_discussion_date) {
     const appt = new Date(b.menu_discussion_date).getTime();
-    if (!b.menu_completed && Date.now() > appt + DISCUSSION_OVERDUE_HOURS * 3600000)
+    if (!b.menu_completed && Date.now() > appt + overdueHours * 3600000)
       return "overdue";
     return "scheduled";
   }
