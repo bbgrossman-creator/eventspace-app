@@ -190,6 +190,11 @@ export default function NewInquiry() {
           conflicts.length === 0 ? (
             <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800 font-medium">
               ✅ Available — no overlapping events for this time and duration
+              {f.expected_hours && Number(f.expected_hours) < (pol?.default_event_hours ?? 4) && (
+                <span className="block text-xs font-normal mt-0.5">
+                  A {f.expected_hours}-hr event fits here even though a full-length one wouldn&apos;t. 🔀
+                </span>
+              )}
             </div>
           ) : (
             <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
@@ -207,9 +212,30 @@ export default function NewInquiry() {
               })}
               <p className="mt-1 text-xs">
                 {conflicts.some((c) => !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status))
-                  ? "A confirmed booking holds this slot — the date is taken."
+                  ? "A confirmed booking holds this slot — the date is taken for a full-length event."
                   : "Held by an unconfirmed party — first right of refusal may apply per your policy."}
               </p>
+
+              {/* Squeeze-in prompt: a shorter event may still fit around existing
+                  bookings. Offered whenever there's a conflict and the rep hasn't
+                  already entered a short duration that clears it. */}
+              {pol && (
+                <div className="mt-3 rounded-lg bg-white border border-blue-300 px-3 py-2.5 text-slate-700">
+                  <p className="text-xs font-semibold text-blue-800 mb-1">🔀 Try fitting a shorter event?</p>
+                  <p className="text-[11px] text-slate-500 mb-2">
+                    A shorter event (e.g. {pol.max_service_hours <= 2.5 ? pol.max_service_hours : 2.5} hrs) may wedge into an open part of the day, with a {pol.turnaround_buffer_min}-min turnaround between events. Enter an expected duration above to check if it clears the conflict.
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {[2, 2.5, 3].map((h) => (
+                      <button key={h} type="button"
+                        className="text-xs rounded-full border border-blue-300 px-3 py-1 hover:bg-blue-50"
+                        onClick={() => set("expected_hours", String(h))}>
+                        Try {h} hrs
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Deposit-readiness gate: only an unconfirmed holder under first-refusal
                   policy. This party can only challenge the hold if ready to commit. */}
