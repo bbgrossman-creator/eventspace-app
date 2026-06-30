@@ -612,9 +612,9 @@ export default function BookingDetail() {
         </div>
       )}
 
-      {/* Event hours & overtime — only on confirmed, progressing events
-          (not holds, conflicts, waitlists, or cancellations). */}
-      {!["on_hold", "conflict", "waitlisted", "hold_expired", "cancelled"].includes(b.status) && (
+      {/* Event hours & overtime — only at the late stages where event timing
+          actually matters (final invoice onward), not during scheduling/menu. */}
+      {["send_final_invoice", "collect_payment", "paid_awaiting_event", "completed"].includes(b.status) && (
         <EventHoursPanel b={b} onChange={load} />
       )}
 
