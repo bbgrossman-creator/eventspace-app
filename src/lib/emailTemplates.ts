@@ -9,22 +9,31 @@ const RULE = "══════════════════════
 const SCHEDULING_LINK = "https://calendar.app.google/MuzMridpmcgdgj9r9";
 
 export function holdConfirmation(b: Booking, holdExpires: Date) {
+  const expiresStr = holdExpires.toLocaleString("en-US", { weekday: "long", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
   return {
     subject: `⏳ Your date is on hold! ${fmtDate(b.event_date)} — Event Space by Burger Bar`,
     text:
       `Dear ${b.contact_name},\n\n` +
-      `Great news — we've placed a 24-hour courtesy hold for you:\n\n` +
+      `Great news — we've placed a 24-hour courtesy hold on your date:\n\n` +
       `${RULE}\n` +
       `📅 YOUR HOLD\n${RULE}\n` +
       `Event: ${b.event_name || b.event_type || "Your event"}\n` +
       `Date: ${fmtDate(b.event_date)}\n` +
       `Time: ${fmtTime(b.event_time)}\n` +
       `Invoice #: ${b.invoice_num}\n\n` +
-      `⏰ This hold expires ${holdExpires.toLocaleString("en-US", { weekday: "long", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}.\n\n` +
-      `To confirm your date, a $500 deposit is required before the hold expires.\n` +
-      `We accept cash, check, Zelle, or credit card over the phone.\n\n` +
+      `⏰ This hold is yours until ${expiresStr}.\n\n` +
+      `To lock in your date, a $500 deposit confirms the booking. ` +
+      `We accept cash, check, Zelle, or credit card.\n\n` +
       `📞 Call us at (848) 299-9079 and we'll take care of it in two minutes.\n\n` +
-      `We look forward to celebrating with you!\n` + SIG,
+      `We'd love to celebrate with you!\n` + SIG +
+      `\n\n${RULE}\n` +
+      `The fine print — how holds work\n${RULE}\n` +
+      `Your date is reserved for you for 24 hours. In the rare case another ` +
+      `party is ready to confirm the same date before your hold ends, we'll ` +
+      `reach out to you first — as a courtesy — and give you a short window ` +
+      `(about 4 hours) to secure it with your deposit before it's offered to ` +
+      `them. Placing your deposit any time within your hold keeps the date ` +
+      `firmly yours.`,
   };
 }
 
