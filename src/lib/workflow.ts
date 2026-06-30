@@ -305,16 +305,18 @@ export function findConflicts(
     const exMins = timeToMinutes(b.event_time);
     if (newMins === null || exMins === null) return true; // unknown time → flag it
 
-    // Duration-aware window check: each event occupies
-    // [start, start + duration + buffer]. They conflict only if the windows
-    // overlap. A shorter event can therefore fit alongside a longer one.
+    // Service-block model: each event occupies a SERVICE block [start, start+service].
+    // Two events conflict if the gap between their service blocks is smaller than the
+    // changeover (setup+bussing−overlap), passed in as bufferMin. A shorter service
+    // can therefore start later (or end earlier) and still clear the neighbor.
     const exHours = (b as { expected_hours?: number | null }).expected_hours ?? defaultHours;
     const newStart = newMins;
-    const newEnd = newMins + newHours * 60 + bufferMin;
+    const newEnd = newMins + newHours * 60;
     const exStart = exMins;
-    const exEnd = exMins + exHours * 60 + bufferMin;
-    // Overlap iff one starts before the other ends, both ways.
-    return newStart < exEnd && exStart < newEnd;
+    const exEnd = exMins + exHours * 60;
+    // They fit if one's service ends at least `changeover` before the other starts.
+    const clears = newEnd + bufferMin <= exStart || exEnd + bufferMin <= newStart;
+    return !clears;
   });
 }
 

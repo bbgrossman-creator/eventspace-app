@@ -14,6 +14,10 @@ export interface Policies {
   turnaround_buffer_min: number;
   max_service_hours: number;
   menu_call_overdue_hours: number;
+  setup_hours: number;
+  service_hours: number;
+  bussing_hours: number;
+  changeover_overlap_hours: number;
 }
 
 export const POLICY_DEFAULTS: Policies = {
@@ -21,18 +25,23 @@ export const POLICY_DEFAULTS: Policies = {
   hold_hours: 24,
   refusal_deadline_hours: 4,
   refusal_lapse_action: "flag",
-  default_event_hours: 4,
+  default_event_hours: 2.5,
   overtime_increment_min: 30,
   overtime_rate: 200,
   turnaround_buffer_min: 60,
-  max_service_hours: 4,
+  max_service_hours: 2.5,
   menu_call_overdue_hours: 1,
+  setup_hours: 1,
+  service_hours: 2.5,
+  bussing_hours: 1,
+  changeover_overlap_hours: 0.5,
 };
 
 const NUMERIC: (keyof Policies)[] = [
   "hold_hours", "refusal_deadline_hours", "default_event_hours",
   "overtime_increment_min", "overtime_rate",
   "turnaround_buffer_min", "max_service_hours",
+  "setup_hours", "service_hours", "bussing_hours", "changeover_overlap_hours",
   "menu_call_overdue_hours",
 ];
 
@@ -57,4 +66,16 @@ export async function savePolicy(key: keyof Policies, value: string | number): P
   const { data } = await supabase.from("app_settings").select("key").eq("key", key).maybeSingle();
   if (data) await supabase.from("app_settings").update({ value: v }).eq("key", key);
   else await supabase.from("app_settings").insert({ key, value: v });
+}
+
+/** The minimum gap between two consecutive events' service blocks, in minutes.
+ *  = setup + bussing − overlap (the bussing of the earlier event can overlap the
+ *  setup of the later one). E.g. 1 + 1 − 0.5 = 1.5 hrs = 90 min. */
+export function changeoverMinutes(p: Policies): number {
+  return Math.max(0, (p.setup_hours + p.bussing_hours - p.changeover_overlap_hours) * 60);
+}
+
+/** The full operational footprint of a standard event, in hours (setup+service+bussing). */
+export function footprintHours(p: Policies): number {
+  return p.setup_hours + p.service_hours + p.bussing_hours;
 }

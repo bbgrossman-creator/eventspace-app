@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
 import { runActionAutomation } from "@/lib/automation";
-import { loadPolicies, Policies } from "@/lib/policies";
+import { loadPolicies, Policies, changeoverMinutes } from "@/lib/policies";
 import { Booking, findConflicts, fmtTime, HOLD_HOURS } from "@/lib/workflow";
 import { PRICING } from "@/lib/pricing";
 import { sendEmail } from "@/lib/sendEmail";
@@ -44,9 +44,9 @@ export default function NewInquiry() {
   const conflicts =
     f.event_date && f.event_time && pol
       ? findConflicts(all, f.event_date, f.event_time, undefined, {
-          newHours: f.expected_hours ? Number(f.expected_hours) : pol.default_event_hours,
-          defaultHours: pol.default_event_hours,
-          bufferMin: pol.turnaround_buffer_min,
+          newHours: f.expected_hours ? Number(f.expected_hours) : pol.service_hours,
+          defaultHours: pol.service_hours,
+          bufferMin: changeoverMinutes(pol),
         })
       : (f.event_date && f.event_time ? findConflicts(all, f.event_date, f.event_time) : []);
 
@@ -219,23 +219,55 @@ export default function NewInquiry() {
               {/* Squeeze-in prompt: a shorter event may still fit around existing
                   bookings. Offered whenever there's a conflict and the rep hasn't
                   already entered a short duration that clears it. */}
-              {pol && (
-                <div className="mt-3 rounded-lg bg-white border border-blue-300 px-3 py-2.5 text-slate-700">
-                  <p className="text-xs font-semibold text-blue-800 mb-1">🔀 Try fitting a shorter event?</p>
-                  <p className="text-[11px] text-slate-500 mb-2">
-                    A shorter event (e.g. {pol.max_service_hours <= 2.5 ? pol.max_service_hours : 2.5} hrs) may wedge into an open part of the day, with a {pol.turnaround_buffer_min}-min turnaround between events. Enter an expected duration above to check if it clears the conflict.
-                  </p>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {[2, 2.5, 3].map((h) => (
-                      <button key={h} type="button"
-                        className="text-xs rounded-full border border-blue-300 px-3 py-1 hover:bg-blue-50"
-                        onClick={() => set("expected_hours", String(h))}>
-                        Try {h} hrs
-                      </button>
-                    ))}
+              {pol && (() => {
+                // Compute the viable start time for shorter service lengths so the rep
+                // sees a concrete answer, not just "try a number". For each candidate
+                // service length, the latest start that clears the EARLIEST conflicting
+                // event before it = conflictStart − changeover − serviceLength.
+                const changeMin = changeoverMinutes(pol);
+                const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
+                const fmtMin = (mins: number) => {
+                  if (mins < 0) return null;
+                  let h = Math.floor(mins / 60); const m = mins % 60;
+                  const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12;
+                  return `${h}:${String(m).padStart(2, "0")} ${ap}`;
+                };
+                // Earliest conflicting event start (the one we must finish before).
+                const earliest = conflicts
+                  .map((c) => (c.event_time ? toMin(c.event_time) : null))
+                  .filter((x): x is number => x !== null)
+                  .sort((a, b) => a - b)[0];
+                const candidates = [1, 1.5, 2, pol.service_hours].filter((v, i, a) => a.indexOf(v) === i && v <= pol.service_hours);
+                return (
+                  <div className="mt-3 rounded-lg bg-white border border-blue-300 px-3 py-2.5 text-slate-700">
+                    <p className="text-xs font-semibold text-blue-800 mb-1">🔀 Fit a shorter event before this slot?</p>
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      Standard service is {pol.service_hours} hrs. Between events you need {(changeMin / 60).toFixed(1)} hr changeover (setup {pol.setup_hours}h + bussing {pol.bussing_hours}h − {pol.changeover_overlap_hours}h overlap). A shorter service can start later and still clear the next event:
+                    </p>
+                    {earliest != null && (
+                      <div className="space-y-1">
+                        {candidates.map((svc) => {
+                          const latestStart = earliest - changeMin - svc * 60;
+                          const label = fmtMin(latestStart);
+                          return (
+                            <div key={svc} className="flex items-center justify-between text-xs">
+                              <span>{svc}-hr service →{" "}
+                                {label ? <>can start as late as <b>{label}</b></> : <span className="text-red-600">doesn&apos;t fit before this event</span>}
+                              </span>
+                              {label && (
+                                <button type="button" className="rounded-full border border-blue-300 px-2.5 py-0.5 hover:bg-blue-50"
+                                  onClick={() => { set("expected_hours", String(svc)); set("event_time", `${String(Math.floor(latestStart / 60)).padStart(2, "0")}:${String(latestStart % 60).padStart(2, "0")}`); }}>
+                                  Use {label}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Deposit-readiness gate: only an unconfirmed holder under first-refusal
                   policy. This party can only challenge the hold if ready to commit. */}

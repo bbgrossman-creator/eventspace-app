@@ -98,6 +98,25 @@ export default function PoliciesAdmin() {
           <Row label="Mark a menu call “missed” after (hours past call time)">
             <NumberField value={p.menu_call_overdue_hours} onSave={(v) => set("menu_call_overdue_hours", v)} min={0} step={0.5} />
           </Row>
+
+          <div className="border-t border-slate-100 mt-3 pt-3">
+            <h3 className="font-display font-bold text-xs mb-1">Event timing blocks</h3>
+            <p className="text-xs text-slate-500 mb-2">
+              Used for billing and for fitting events around each other. Changeover between two events = setup + bussing − overlap = <b>{(((p.setup_hours + p.bussing_hours - p.changeover_overlap_hours))).toFixed(1)} hr</b>. Full footprint = <b>{(p.setup_hours + p.service_hours + p.bussing_hours).toFixed(1)} hr</b>.
+            </p>
+            <Row label="Setup time (hours)">
+              <NumberField value={p.setup_hours} onSave={(v) => set("setup_hours", v)} min={0} step={0.25} />
+            </Row>
+            <Row label="Service time (hours) — standard, customer-facing">
+              <NumberField value={p.service_hours} onSave={(v) => { set("service_hours", v); set("default_event_hours", v); }} min={0} step={0.25} />
+            </Row>
+            <Row label="Bussing / breakdown time (hours)">
+              <NumberField value={p.bussing_hours} onSave={(v) => set("bussing_hours", v)} min={0} step={0.25} />
+            </Row>
+            <Row label="Bussing/setup overlap between events (hours)">
+              <NumberField value={p.changeover_overlap_hours} onSave={(v) => set("changeover_overlap_hours", v)} min={0} step={0.25} />
+            </Row>
+          </div>
         </div>
       </div>
     </div>
