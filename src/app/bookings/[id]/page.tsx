@@ -1179,6 +1179,11 @@ function RefusalPanel({ b, onChange, setMsg }: {
             <b>{challenger?.contact_name ?? "Another party"}</b> wants this date.
             {challenger?.phone && <> Call them: <a href={`tel:${challenger.phone}`} className="text-navy underline">{challenger.phone}</a>.</>}
           </p>
+          {challenger?.deposit_ready && (
+            <p className="text-xs text-emerald-700 mt-1 font-medium">
+              ✅ Ready to commit — card secured{challenger.card_last4 ? ` (•••• ${challenger.card_last4})` : ""}.
+            </p>
+          )}
         </div>
         <div className={`text-xs font-bold px-3 py-1 rounded-full ${passed ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>
           {passed ? "⏰ Deadline passed" : deadline ? `Decide by ${deadline.toLocaleString()}` : ""}

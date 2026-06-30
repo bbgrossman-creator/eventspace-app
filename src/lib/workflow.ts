@@ -96,6 +96,8 @@ export interface Booking {
   hold_expires: string | null;
   waitlisted_for?: string | null;
   expected_hours?: number | null;
+  deposit_ready?: boolean | null;
+  card_last4?: string | null;
   refusal_deadline?: string | null;
   refusal_challenger?: string | null;
   deposit_date: string | null;

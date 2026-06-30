@@ -24,6 +24,7 @@ export default function NewInquiry() {
   const [f, setF] = useState({
     contact_name: "", phone: "", email: "",
     event_type: "", event_date: "", event_time: "19:00", notes: "", expected_hours: "",
+    deposit_ready: "", card_last4: "",
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -75,12 +76,19 @@ export default function NewInquiry() {
     // unconfirmed HOLD. If they're already booked (deposit down / past hold),
     // the date is simply taken — no refusal clock.
     const holderIsUnconfirmed = !!holder && (holder.status === "on_hold" || holder.status === "conflict");
-    const useRefusal = hasConflict && cpol.conflict_mode === "first_refusal" && holderIsUnconfirmed;
+    // First-right-of-refusal now triggers ONLY when the challenger is ready to
+    // commit (card secured). Mere interest gives no standing to disturb the holder.
+    const useRefusal = hasConflict && cpol.conflict_mode === "first_refusal"
+      && holderIsUnconfirmed && f.deposit_ready;
+    // B inquired on a held date but isn't ready to commit → save as a lead with
+    // no claim on the date. The holder is untouched.
+    const noStandingLead = hasConflict && holderIsUnconfirmed && !f.deposit_ready
+      && cpol.conflict_mode === "first_refusal";
 
     let newStatus: string = "on_hold";
     let newHoldExpires: string | null = holdExpires.toISOString();
     if (hasConflict) {
-      newStatus = useRefusal ? "waitlisted" : "conflict";
+      newStatus = (useRefusal || noStandingLead) ? "waitlisted" : "conflict";
       newHoldExpires = null;
     }
 
@@ -99,14 +107,16 @@ export default function NewInquiry() {
         expected_hours: f.expected_hours ? Number(f.expected_hours) : null,
         status: newStatus,
         hold_expires: newHoldExpires,
-        waitlisted_for: useRefusal && holder ? holder.id : null,
+        waitlisted_for: (useRefusal || noStandingLead) && holder ? holder.id : null,
+        deposit_ready: useRefusal,
+        card_last4: useRefusal && f.card_last4 ? f.card_last4 : null,
       })
       .select()
       .single();
 
     if (error) { setErr(error.message); setSaving(false); return; }
 
-    // Under first-right-of-refusal, start the holder's decision clock.
+    // Only a deposit-ready challenger starts the holder's decision clock.
     if (useRefusal && holder) {
       const deadline = new Date();
       deadline.setHours(deadline.getHours() + cpol.refusal_deadline_hours);
@@ -115,16 +125,18 @@ export default function NewInquiry() {
         refusal_challenger: data.id,
       }).eq("id", holder.id);
       await logActivity(holder.id, holder.invoice_num, "First Right of Refusal Started",
-        `${f.contact_name.trim()} wants this date. Holder has until ${deadline.toLocaleString()} to commit.`, "WARNING");
+        `${f.contact_name.trim()} is ready to commit (card secured) and wants this date. Holder has until ${deadline.toLocaleString()} to confirm with a deposit.`, "WARNING");
     }
 
     await logActivity(
       data.id, invoice_num,
-      hasConflict ? (useRefusal ? "Waitlisted (Date Held)" : "Conflict Detected") : "Booking Created",
+      hasConflict ? (useRefusal ? "Deposit-Ready Challenger" : noStandingLead ? "Lead — Date Held (No Standing)" : "Conflict Detected") : "Booking Created",
       hasConflict
         ? (useRefusal
-            ? `Date held by ${holder?.contact_name ?? "another party"} — waitlisted pending their decision`
-            : `Conflicts with ${conflicts.length} event(s) — needs review`)
+            ? `Ready to commit. Holder ${holder?.contact_name ?? ""} given courtesy window to confirm.`
+            : noStandingLead
+              ? `Interested in a date held by ${holder?.contact_name ?? "another party"}, but not ready to commit — saved as a lead with no claim.`
+              : `Conflicts with ${conflicts.length} event(s) — needs review`)
         : `Hold created, expires ${holdExpires.toLocaleString()}`,
       hasConflict ? "WARNING" : "SUCCESS"
     );
@@ -132,7 +144,7 @@ export default function NewInquiry() {
       await runActionAutomation("hold_confirmation", data);
     }
     await runActionAutomation("internal_new_booking", data);
-    // Under first-right-of-refusal, take the rep to the HOLDER's page to act.
+    // Only a deposit-ready challenger sends the rep to the holder to act.
     if (useRefusal && holder) { router.push(`/bookings/${holder.id}`); return; }
     router.push(`/bookings/${data.id}`);
   }
@@ -198,6 +210,35 @@ export default function NewInquiry() {
                   ? "A confirmed booking holds this slot — the date is taken."
                   : "Held by an unconfirmed party — first right of refusal may apply per your policy."}
               </p>
+
+              {/* Deposit-readiness gate: only an unconfirmed holder under first-refusal
+                  policy. This party can only challenge the hold if ready to commit. */}
+              {pol?.conflict_mode === "first_refusal" &&
+               conflicts.some((c) => c.status === "on_hold" || c.status === "conflict") &&
+               !conflicts.some((c) => !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status)) && (
+                <div className="mt-3 rounded-lg bg-white border border-amber-300 px-3 py-2.5 text-slate-700">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" className="mt-1" checked={!!f.deposit_ready}
+                      onChange={(e) => set("deposit_ready", e.target.checked ? "1" : "")} />
+                    <span className="text-xs">
+                      <b>This party is ready to commit now (card secured).</b> Only then do we
+                      contact the current holder and give them their courtesy window. If left
+                      unchecked, this inquiry is saved as a lead with no claim on the date.
+                    </span>
+                  </label>
+                  {f.deposit_ready && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <label className="text-xs text-slate-500">Card last 4 (reference only):</label>
+                      <input className="field !py-1 w-24 text-sm" maxLength={4} inputMode="numeric"
+                        placeholder="1234" value={f.card_last4}
+                        onChange={(e) => set("card_last4", e.target.value.replace(/\D/g, "").slice(0, 4))} />
+                    </div>
+                  )}
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    We never store the full card number — only the last 4 for your reference. Collect/charge the card through your processor as usual.
+                  </p>
+                </div>
+              )}
             </div>
           )
         )}
