@@ -148,7 +148,7 @@ function TaskSection({ title, tasks, accent, empty }: { title: string; tasks: Ta
                 className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
                 style={{ background: t.stage.color, color: t.stage.textColor }}
               >
-                {t.stage.icon} {t.stage.action}
+                {t.stage.icon} {t.actionLabel ?? t.stage.action}
               </span>
             </Link>
           ))}

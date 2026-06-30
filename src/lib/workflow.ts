@@ -190,6 +190,7 @@ export interface Task {
   daysUntil: number;
   priority: Priority;
   reason: string;
+  actionLabel?: string;
 }
 
 /** Working days are Sun–Thu (Fri/Sat off). */
@@ -256,7 +257,17 @@ export function buildTasks(bookings: Booking[]): Task[] {
       priority = "MEDIUM";
     }
 
-    tasks.push({ booking: b, stage, daysUntil, priority, reason });
+    // Action label normally comes from the stage, but the menu-call stage has
+    // sub-states (scheduled / missed / not-yet) the flat label doesn't capture.
+    let actionLabel = stage.action;
+    if (b.status === "schedule_menu_discussion") {
+      const ds = discussionState(b);
+      actionLabel = ds === "overdue" ? "Menu Call Missed — Follow Up"
+        : ds === "scheduled" ? "Complete Menu (call set)"
+        : "Schedule Menu Call";
+    }
+
+    tasks.push({ booking: b, stage, daysUntil, priority, reason, actionLabel });
   }
 
   const order: Record<Priority, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
