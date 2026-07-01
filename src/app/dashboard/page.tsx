@@ -116,7 +116,7 @@ export default function Dashboard() {
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       monthMap.set(key, (monthMap.get(key) ?? 0) + r.fin.total);
     }
-    const monthlySeries = [...monthMap.entries()]
+    const monthlySeries = Array.from(monthMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([key, v]) => {
         const [y, m] = key.split("-").map(Number);
@@ -130,7 +130,7 @@ export default function Dashboard() {
       const t = r.b.event_type || "Other";
       typeMap.set(t, (typeMap.get(t) ?? 0) + r.fin.total);
     }
-    const byType = [...typeMap.entries()]
+    const byType = Array.from(typeMap.entries())
       .map(([type, v]) => ({ type, v }))
       .sort((a, b) => b.v - a.v);
 
