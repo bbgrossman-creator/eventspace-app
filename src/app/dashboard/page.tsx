@@ -25,8 +25,28 @@ export default function Dashboard() {
   const [charges, setCharges] = useState<ChargeRowDb[]>([]);
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
+  const [periodPreset, setPeriodPreset] = useState<"all" | "week" | "month" | "year" | "custom">("all");
+  const [bucket, setBucket] = useState<"week" | "month" | "year">("month");
   const [ordSort, setOrdSort] = useState<string>("event_date");
   const [ordDir, setOrdDir] = useState<"asc" | "desc">("desc");
+
+  function applyPreset(preset: "all" | "week" | "month" | "year" | "custom") {
+    setPeriodPreset(preset);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const now = new Date();
+    if (preset === "all") { setPeriodStart(""); setPeriodEnd(""); }
+    else if (preset === "week") {
+      const start = new Date(now); start.setDate(now.getDate() - now.getDay());
+      const end = new Date(start); end.setDate(start.getDate() + 6);
+      setPeriodStart(iso(start)); setPeriodEnd(iso(end)); setBucket("week");
+    } else if (preset === "month") {
+      setPeriodStart(iso(new Date(now.getFullYear(), now.getMonth(), 1)));
+      setPeriodEnd(iso(new Date(now.getFullYear(), now.getMonth() + 1, 0))); setBucket("week");
+    } else if (preset === "year") {
+      setPeriodStart(iso(new Date(now.getFullYear(), 0, 1)));
+      setPeriodEnd(iso(new Date(now.getFullYear(), 11, 31))); setBucket("month");
+    }
+  }
   function toggleOrdSort(key: string) {
     if (ordSort === key) setOrdDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setOrdSort(key); setOrdDir("asc"); }
@@ -222,31 +242,35 @@ export default function Dashboard() {
     (custCounts.get(custKey(b)) ?? 0) > 1 ? s + fin.total : s, 0);
   const repeatPct = periodRevenue > 0 ? (repeatRevenue / periodRevenue) * 100 : 0;
 
-  // 4. Avg event size trend — average $/event by month (from period-filtered orders).
-  const sizeByMonth = new Map<string, { sum: number; n: number }>();
+  // Revenue chart series — bucketed by week / month / year, always from the
+  // period-filtered orders (so it respects the dashboard period control).
+  function bucketKey(d: Date): { key: string; label: string } {
+    if (bucket === "year") {
+      return { key: String(d.getFullYear()), label: String(d.getFullYear()) };
+    }
+    if (bucket === "week") {
+      const wk = new Date(d); wk.setDate(d.getDate() - d.getDay()); // Sunday
+      const key = wk.toISOString().slice(0, 10);
+      return { key, label: wk.toLocaleString("en-US", { month: "short", day: "numeric" }) };
+    }
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return { key, label: d.toLocaleString("en-US", { month: "short", year: "2-digit" }) };
+  }
+  const revMap = new Map<string, { label: string; v: number }>();
   for (const { b, fin } of visibleOrders) {
     if (!b.event_date) continue;
-    const d = parseLocalDate(b.event_date);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const cur = sizeByMonth.get(key) ?? { sum: 0, n: 0 };
-    cur.sum += fin.total; cur.n += 1; sizeByMonth.set(key, cur);
+    const { key, label } = bucketKey(parseLocalDate(b.event_date));
+    const cur = revMap.get(key) ?? { label, v: 0 };
+    cur.v += fin.total; revMap.set(key, cur);
   }
-  const avgSizeSeries = Array.from(sizeByMonth.entries())
+  const chartMonthly = Array.from(revMap.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([key, { sum, n }]) => {
-      const [y, m] = key.split("-").map(Number);
-      return { label: new Date(y, m - 1, 1).toLocaleString("en-US", { month: "short", year: "2-digit" }), v: n ? sum / n : 0 };
-    });
+    .map(([, val]) => val);
 
-  // Period-scoped versions of the two main charts (fall back to all-time when no period).
-  const chartMonthly = periodActive
-    ? avgSizeSeries.map((s, i) => ({ label: s.label, v: Array.from(sizeByMonth.values())[i].sum }))
-    : D.monthlySeries.map((m) => ({ label: m.label, v: m.v }));
+  // Revenue by type (respects the period).
   const typeMapP = new Map<string, number>();
   for (const { b, fin } of visibleOrders) { const t = b.event_type || "Other"; typeMapP.set(t, (typeMapP.get(t) ?? 0) + fin.total); }
-  const chartByType = periodActive
-    ? Array.from(typeMapP.entries()).map(([type, v]) => ({ type, v })).sort((a, b) => b.v - a.v)
-    : D.byType;
+  const chartByType = Array.from(typeMapP.entries()).map(([type, v]) => ({ type, v })).sort((a, b) => b.v - a.v);
 
   return (
     <div>
@@ -255,6 +279,34 @@ export default function Dashboard() {
         <p className="text-sm text-slate-500 mt-1">Live from bookings, charges, and payments — nothing to refresh.</p>
         <div className="gold-rule mt-3" />
       </header>
+
+      {/* ── PERIOD CONTROL (governs period-appropriate sections) ── */}
+      <div className="card p-4 mb-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-slate-500 mr-1">PERIOD:</span>
+            {([["all", "All Time"], ["week", "This Week"], ["month", "This Month"], ["year", "This Year"]] as const).map(([p, label]) => (
+              <button key={p} onClick={() => applyPreset(p)}
+                className={`text-xs px-3 py-1.5 rounded-full border ${periodPreset === p ? "bg-navy text-white border-navy" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
+            <label className="text-slate-500">From</label>
+            <input type="date" className="field !py-1 !text-xs" value={periodStart}
+              onChange={(e) => { setPeriodStart(e.target.value); setPeriodPreset("custom"); }} />
+            <label className="text-slate-500">To</label>
+            <input type="date" className="field !py-1 !text-xs" value={periodEnd}
+              onChange={(e) => { setPeriodEnd(e.target.value); setPeriodPreset("custom"); }} />
+          </div>
+        </div>
+        {periodActive && (
+          <p className="text-[11px] text-slate-400 mt-2">
+            Showing period-appropriate metrics for {periodStart || "earliest"} → {periodEnd || "latest"}. Snapshot metrics (Upcoming Revenue, Outstanding A/R, Booking Status) always reflect today.
+          </p>
+        )}
+      </div>
 
       {/* ── REVENUE BREAKDOWN ── */}
       <SectionTitle>Revenue (contracted)</SectionTitle>
@@ -288,14 +340,19 @@ export default function Dashboard() {
 
       {/* Charts — each full-width on its own row; respect the period filter */}
       <div className="card p-5 mb-5">
-        <SectionTitle>Revenue by Month{periodActive ? " (period)" : ""}</SectionTitle>
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+          <SectionTitle>Revenue by {bucket === "week" ? "Week" : bucket === "year" ? "Year" : "Month"}</SectionTitle>
+          <div className="flex gap-1">
+            {(["week", "month", "year"] as const).map((bk) => (
+              <button key={bk} onClick={() => setBucket(bk)}
+                className={`text-xs px-3 py-1 rounded-full border ${bucket === bk ? "bg-navy text-white border-navy" : "border-slate-300 text-slate-500 hover:bg-slate-50"}`}>
+                {bk[0].toUpperCase() + bk.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
         <p className="text-xs text-slate-400 mb-3">Contracted revenue by event date — spot your busy and slow seasons.</p>
-        <BarChart data={chartMonthly} height={280} />
-      </div>
-      <div className="card p-5 mb-5">
-        <SectionTitle>Average Event Size by Month{periodActive ? " (period)" : ""}</SectionTitle>
-        <p className="text-xs text-slate-400 mb-3">Average revenue per event — are your events trending bigger or smaller?</p>
-        <BarChart data={avgSizeSeries} height={240} />
+        <BarChart data={chartMonthly} height={300} />
       </div>
       <div className="card p-5 mb-8">
         <SectionTitle>Revenue by Event Type{periodActive ? " (period)" : ""}</SectionTitle>
@@ -318,26 +375,22 @@ export default function Dashboard() {
         <Big label="CC Fees Paid" value={fmtMoney(D.ccFees)} tone="text-red-600" />
       </div>
 
-      {periodActive && (
-        <div className="card p-5 mb-8 border-2 border-navy/20">
-          <SectionTitle>Selected Period</SectionTitle>
-          <p className="text-xs text-slate-400 mb-3">
-            {periodStart || "earliest"} → {periodEnd || "latest"} · driven by the date filter on All Orders below.
-          </p>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Big label="Events in Period" value={String(periodCount)} tone="text-navy" />
-            <Big label="Net Revenue (pre-tax)" value={fmtMoney(orderTotals.subtotal)} tone="text-navy" />
-            <Big label="Tax" value={fmtMoney(orderTotals.tax)} tone="text-slate-500" />
-            <Big label="Gross Revenue (net+tax)" value={fmtMoney(orderTotals.total)} tone="text-navy" />
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-            <Big label="Collected in Period" value={fmtMoney(orderTotals.paid)} tone="text-emerald-600" />
-            <Big label="Gross by Cash" value={fmtMoney(orderTotals.cash)} tone="text-gold" />
-            <Big label="Gross by Check/Zelle" value={fmtMoney(orderTotals.checkZelle)} tone="text-gold" />
-            <Big label="Gross by Card" value={fmtMoney(orderTotals.cc)} tone="text-gold" />
-          </div>
+      <div className="card p-5 mb-8 border-2 border-navy/20">
+        <SectionTitle>Revenue Summary{periodActive ? ` · ${periodStart || "earliest"} → ${periodEnd || "latest"}` : " · All Time"}</SectionTitle>
+        <p className="text-xs text-slate-400 mb-3">Net = pre-tax · Gross = net + tax. Payment rows show gross collected by method.</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Big label="Events" value={String(periodCount)} tone="text-navy" />
+          <Big label="Net Revenue (pre-tax)" value={fmtMoney(orderTotals.subtotal)} tone="text-navy" />
+          <Big label="Tax" value={fmtMoney(orderTotals.tax)} tone="text-slate-500" />
+          <Big label="Gross Revenue (net+tax)" value={fmtMoney(orderTotals.total)} tone="text-navy" />
         </div>
-      )}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          <Big label="Collected" value={fmtMoney(orderTotals.paid)} tone="text-emerald-600" />
+          <Big label="Gross by Cash" value={fmtMoney(orderTotals.cash)} tone="text-gold" />
+          <Big label="Gross by Check/Zelle" value={fmtMoney(orderTotals.checkZelle)} tone="text-gold" />
+          <Big label="Gross by Card" value={fmtMoney(orderTotals.cc)} tone="text-gold" />
+        </div>
+      </div>
 
       <div className="grid lg:grid-cols-2 gap-5 mb-8">
         {/* Payment breakdown */}
@@ -377,23 +430,10 @@ export default function Dashboard() {
           </table>
         </div>
 
-        {/* This month */}
+        {/* Upcoming revenue (always current — forward-looking snapshot) */}
         <div className="card p-5">
-          <SectionTitle>This Month</SectionTitle>
-          <table className="w-full text-sm">
-            <tbody>
-              <KV k="Events This Month" v={String(D.monthCount)} />
-              <KV k="Revenue This Month" v={fmtMoney(D.monthRevenue)} />
-              <KV k="Collected This Month" v={fmtMoney(D.monthCollected)} />
-              <KV k="Cash This Month" v={fmtMoney(D.monthCash)} />
-              <KV k="Avg per Event" v={fmtMoney(D.monthAvg)} />
-            </tbody>
-          </table>
-        </div>
-
-        {/* Upcoming revenue */}
-        <div className="card p-5">
-          <SectionTitle>Upcoming Revenue</SectionTitle>
+          <SectionTitle>📅 Upcoming Revenue</SectionTitle>
+          <p className="text-[11px] text-slate-400 mb-2">As of today — not affected by the period filter.</p>
           <table className="w-full text-sm">
             <tbody>
               {D.upcoming.map((u) => <KV key={u.d} k={`Next ${u.d} Days`} v={fmtMoney(u.v)} />)}
@@ -416,21 +456,10 @@ export default function Dashboard() {
 
       {/* All orders */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <SectionTitle>All Orders{periodStart || periodEnd ? " (filtered)" : " (most recent event first)"}</SectionTitle>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs">
-            <label className="text-slate-500">Start</label>
-            <input type="date" className="field !py-1 !text-xs" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
-            <label className="text-slate-500">End</label>
-            <input type="date" className="field !py-1 !text-xs" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
-            {(periodStart || periodEnd) && (
-              <button className="text-xs text-slate-400 underline" onClick={() => { setPeriodStart(""); setPeriodEnd(""); }}>clear</button>
-            )}
-          </div>
-          <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => exportOrdersCSV(visibleOrders, D.methodPaid)}>
-            ⬇️ Export CSV
-          </button>
-        </div>
+        <SectionTitle>All Orders{periodActive ? " (period)" : ""}</SectionTitle>
+        <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => exportOrdersCSV(visibleOrders, D.methodPaid)}>
+          ⬇️ Export CSV
+        </button>
       </div>
       {(periodStart || periodEnd) && (
         <p className="text-xs text-slate-500 mb-2">Showing {visibleOrders.length} order(s) in the selected period.</p>
@@ -539,30 +568,36 @@ function exportOrdersCSV(
 }
 
 // ─── Lightweight inline SVG charts (no external dependency) ───
-function BarChart({ data, height = 180 }: { data: { label: string; v: number }[]; height?: number }) {
+function BarChart({ data, height = 300 }: { data: { label: string; v: number }[]; height?: number }) {
   if (data.length === 0) return <p className="text-sm text-slate-400">No data yet.</p>;
   const max = Math.max(...data.map((d) => d.v), 1);
-  const barW = 100 / data.length;
-  const money = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(0)}k` : `$${n.toFixed(0)}`;
+  const W = Math.max(600, data.length * 70); // widen so bars/labels have room; scrolls if needed
+  const H = height;
+  const padB = 46, padT = 24, padL = 8, padR = 8;
+  const plotH = H - padB - padT;
+  const bw = (W - padL - padR) / data.length;
+  const money = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
   return (
-    <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="w-full" style={{ height }}>
-      {data.map((d, i) => {
-        const h = (d.v / max) * (height - 40);
-        const x = i * barW;
-        return (
-          <g key={d.label}>
-            <rect x={x + barW * 0.15} y={height - 20 - h} width={barW * 0.7} height={h}
-              fill="#1F4E79" rx="0.5" />
-            <text x={x + barW / 2} y={height - 20 - h - 3} textAnchor="middle" fontSize="3.2" fill="#1F4E79" fontWeight="bold">
-              {money(d.v)}
-            </text>
-            <text x={x + barW / 2} y={height - 8} textAnchor="middle" fontSize="3" fill="#64748b">
-              {d.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <div className="overflow-x-auto">
+      <svg width={W} height={H} className="block" style={{ minWidth: "100%" }}>
+        {data.map((d, i) => {
+          const h = (d.v / max) * plotH;
+          const x = padL + i * bw;
+          const y = padT + (plotH - h);
+          return (
+            <g key={d.label + i}>
+              <rect x={x + bw * 0.18} y={y} width={bw * 0.64} height={h} fill="#1F4E79" rx="3" />
+              <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="12" fill="#1F4E79" fontWeight="600">
+                {money(d.v)}
+              </text>
+              <text x={x + bw / 2} y={H - padB + 18} textAnchor="middle" fontSize="12" fill="#64748b">
+                {d.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
