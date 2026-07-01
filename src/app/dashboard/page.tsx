@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { Booking, fmtDate, fmtMoney, stageFor, parseLocalDate } from "@/lib/workflow";
+import { Booking, fmtDate, fmtMoney, stageFor, parseLocalDate, deriveGuests } from "@/lib/workflow";
 import { bookingFinancials, ChargeLike } from "@/lib/finance";
 
 interface PaymentRow {
@@ -195,6 +195,59 @@ export default function Dashboard() {
   const periodCount = visibleOrders.length;
   const periodAvg = periodCount ? periodRevenue / periodCount : 0;
 
+  // ── Additional analytics (respect the period via visibleOrders) ──
+  // 1. Collection rate = collected / contracted (gross).
+  const collectionRate = periodRevenue > 0 ? (orderTotals.paid / periodRevenue) * 100 : 0;
+
+  // Deposit conversion = of holds ever created, how many got a deposit (moved past hold).
+  // Uses all visible orders: a booking "converted" if it has a deposit on file.
+  const holdsTotal = visibleOrders.length;
+  const converted = visibleOrders.filter(({ b }) =>
+    !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(b.status)).length;
+  const conversionRate = holdsTotal > 0 ? (converted / holdsTotal) * 100 : 0;
+
+  // 2. Guest analytics.
+  const guestRows = visibleOrders.filter(({ b }) => b.event_date); // real events
+  const totalGuests = guestRows.reduce((s, { b }) => {
+    const g = deriveGuests(b); return s + (g.men + g.women + g.children);
+  }, 0);
+  const avgGuests = guestRows.length ? Math.round(totalGuests / guestRows.length) : 0;
+
+  // 3. Repeat customer revenue — group by phone/email; a customer with >1 booking
+  // is "returning". Sum revenue attributed to returning customers.
+  const custKey = (b: Booking) => (b.phone || b.email || b.contact_name || "").trim().toLowerCase();
+  const custCounts = new Map<string, number>();
+  for (const { b } of visibleOrders) { const k = custKey(b); if (k) custCounts.set(k, (custCounts.get(k) ?? 0) + 1); }
+  const repeatRevenue = visibleOrders.reduce((s, { b, fin }) =>
+    (custCounts.get(custKey(b)) ?? 0) > 1 ? s + fin.total : s, 0);
+  const repeatPct = periodRevenue > 0 ? (repeatRevenue / periodRevenue) * 100 : 0;
+
+  // 4. Avg event size trend — average $/event by month (from period-filtered orders).
+  const sizeByMonth = new Map<string, { sum: number; n: number }>();
+  for (const { b, fin } of visibleOrders) {
+    if (!b.event_date) continue;
+    const d = parseLocalDate(b.event_date);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const cur = sizeByMonth.get(key) ?? { sum: 0, n: 0 };
+    cur.sum += fin.total; cur.n += 1; sizeByMonth.set(key, cur);
+  }
+  const avgSizeSeries = Array.from(sizeByMonth.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, { sum, n }]) => {
+      const [y, m] = key.split("-").map(Number);
+      return { label: new Date(y, m - 1, 1).toLocaleString("en-US", { month: "short", year: "2-digit" }), v: n ? sum / n : 0 };
+    });
+
+  // Period-scoped versions of the two main charts (fall back to all-time when no period).
+  const chartMonthly = periodActive
+    ? avgSizeSeries.map((s, i) => ({ label: s.label, v: Array.from(sizeByMonth.values())[i].sum }))
+    : D.monthlySeries.map((m) => ({ label: m.label, v: m.v }));
+  const typeMapP = new Map<string, number>();
+  for (const { b, fin } of visibleOrders) { const t = b.event_type || "Other"; typeMapP.set(t, (typeMapP.get(t) ?? 0) + fin.total); }
+  const chartByType = periodActive
+    ? Array.from(typeMapP.entries()).map(([type, v]) => ({ type, v })).sort((a, b) => b.v - a.v)
+    : D.byType;
+
   return (
     <div>
       <header className="mb-8">
@@ -233,21 +286,38 @@ export default function Dashboard() {
         <Big label="Cash Collected" value={fmtMoney(D.cashCollected)} tone="text-gold" />
       </div>
 
-      {/* Charts */}
-      <div className="grid lg:grid-cols-2 gap-5 mb-8">
-        <div className="card p-5">
-          <SectionTitle>Revenue by Month</SectionTitle>
-          <p className="text-xs text-slate-400 mb-3">Contracted revenue by event date — spot your busy and slow seasons.</p>
-          <BarChart data={D.monthlySeries.map((m) => ({ label: m.label, v: m.v }))} />
-        </div>
-        <div className="card p-5">
-          <SectionTitle>Revenue by Event Type</SectionTitle>
-          <p className="text-xs text-slate-400 mb-3">Where your revenue comes from.</p>
-          <DonutChart data={D.byType} />
-        </div>
+      {/* Charts — each full-width on its own row; respect the period filter */}
+      <div className="card p-5 mb-5">
+        <SectionTitle>Revenue by Month{periodActive ? " (period)" : ""}</SectionTitle>
+        <p className="text-xs text-slate-400 mb-3">Contracted revenue by event date — spot your busy and slow seasons.</p>
+        <BarChart data={chartMonthly} height={280} />
+      </div>
+      <div className="card p-5 mb-5">
+        <SectionTitle>Average Event Size by Month{periodActive ? " (period)" : ""}</SectionTitle>
+        <p className="text-xs text-slate-400 mb-3">Average revenue per event — are your events trending bigger or smaller?</p>
+        <BarChart data={avgSizeSeries} height={240} />
+      </div>
+      <div className="card p-5 mb-8">
+        <SectionTitle>Revenue by Event Type{periodActive ? " (period)" : ""}</SectionTitle>
+        <p className="text-xs text-slate-400 mb-3">Where your revenue comes from.</p>
+        <DonutChart data={chartByType} />
       </div>
 
-      {/* Period analytics — governed by the start/end pickers on All Orders below */}
+      {/* Business health analytics (respect the period filter) */}
+      <SectionTitle>Business Health{periodActive ? " (period)" : ""}</SectionTitle>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <Big label="Collection Rate" value={`${collectionRate.toFixed(0)}%`} tone="text-emerald-600" />
+        <Big label="Deposit Conversion" value={`${conversionRate.toFixed(0)}%`} tone="text-navy" />
+        <Big label="Repeat Revenue" value={`${repeatPct.toFixed(0)}%`} tone="text-gold" />
+        <Big label="Total Guests" value={totalGuests.toLocaleString()} tone="text-navy" />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <Big label="Avg Guests / Event" value={String(avgGuests)} tone="text-slate-600" />
+        <Big label="Avg Event Size" value={fmtMoney(periodAvg)} tone="text-slate-600" />
+        <Big label="Repeat Revenue $" value={fmtMoney(repeatRevenue)} tone="text-gold" />
+        <Big label="CC Fees Paid" value={fmtMoney(D.ccFees)} tone="text-red-600" />
+      </div>
+
       {periodActive && (
         <div className="card p-5 mb-8 border-2 border-navy/20">
           <SectionTitle>Selected Period</SectionTitle>
@@ -256,9 +326,15 @@ export default function Dashboard() {
           </p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Big label="Events in Period" value={String(periodCount)} tone="text-navy" />
-            <Big label="Revenue in Period" value={fmtMoney(periodRevenue)} tone="text-navy" />
+            <Big label="Net Revenue (pre-tax)" value={fmtMoney(orderTotals.subtotal)} tone="text-navy" />
+            <Big label="Tax" value={fmtMoney(orderTotals.tax)} tone="text-slate-500" />
+            <Big label="Gross Revenue (net+tax)" value={fmtMoney(orderTotals.total)} tone="text-navy" />
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
             <Big label="Collected in Period" value={fmtMoney(orderTotals.paid)} tone="text-emerald-600" />
-            <Big label="Avg per Event" value={fmtMoney(periodAvg)} tone="text-gold" />
+            <Big label="Gross by Cash" value={fmtMoney(orderTotals.cash)} tone="text-gold" />
+            <Big label="Gross by Check/Zelle" value={fmtMoney(orderTotals.checkZelle)} tone="text-gold" />
+            <Big label="Gross by Card" value={fmtMoney(orderTotals.cc)} tone="text-gold" />
           </div>
         </div>
       )}
@@ -508,14 +584,14 @@ function DonutChart({ data }: { data: { type: string; v: number }[] }) {
   });
   return (
     <div className="flex items-center gap-4 flex-wrap">
-      <svg viewBox="0 0 40 40" className="w-32 h-32 shrink-0">
+      <svg viewBox="0 0 40 40" className="w-48 h-48 shrink-0">
         {segs.map((s) => <path key={s.d.type} d={s.path} fill={s.color} />)}
         <circle cx="20" cy="20" r="8" fill="white" />
       </svg>
-      <div className="space-y-1 text-xs">
+      <div className="space-y-1.5 text-sm">
         {segs.map((s) => (
           <div key={s.d.type} className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-sm inline-block" style={{ background: s.color }} />
+            <span className="w-3.5 h-3.5 rounded-sm inline-block" style={{ background: s.color }} />
             <span className="text-slate-600">{s.d.type}</span>
             <span className="font-semibold text-navy">{fmtMoney(s.d.v)}</span>
             <span className="text-slate-400">({s.pct}%)</span>
