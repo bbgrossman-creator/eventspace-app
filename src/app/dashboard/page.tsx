@@ -23,6 +23,14 @@ export default function Dashboard() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [charges, setCharges] = useState<ChargeRowDb[]>([]);
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [ordSort, setOrdSort] = useState<string>("event_date");
+  const [ordDir, setOrdDir] = useState<"asc" | "desc">("desc");
+  function toggleOrdSort(key: string) {
+    if (ordSort === key) setOrdDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setOrdSort(key); setOrdDir("asc"); }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -115,6 +123,33 @@ export default function Dashboard() {
   }, [bookings, payments, charges]);
 
   if (!D) return <p className="text-slate-500">Loading…</p>;
+
+  // Apply the period filter + column sort to the orders table (view-only; the
+  // financial tiles above still reflect all live bookings).
+  const pStart = periodStart ? parseLocalDate(periodStart) : null;
+  const pEnd = periodEnd ? parseLocalDate(periodEnd) : null;
+  const visibleOrders = [...D.orders]
+    .filter(({ b }) => {
+      if (!pStart && !pEnd) return true;
+      if (!b.event_date) return false;
+      const d = parseLocalDate(b.event_date);
+      if (pStart && d < pStart) return false;
+      if (pEnd && d > pEnd) return false;
+      return true;
+    })
+    .sort((a, z) => {
+      let av: string | number = "", bv: string | number = "";
+      if (ordSort === "event_date") { av = a.b.event_date ?? "9999"; bv = z.b.event_date ?? "9999"; }
+      else if (ordSort === "invoice_num") { av = a.b.invoice_num ?? ""; bv = z.b.invoice_num ?? ""; }
+      else if (ordSort === "contact_name") { av = (a.b.contact_name ?? "").toLowerCase(); bv = (z.b.contact_name ?? "").toLowerCase(); }
+      else if (ordSort === "event_type") { av = a.b.event_type ?? ""; bv = z.b.event_type ?? ""; }
+      else if (ordSort === "total") { av = a.fin.total; bv = z.fin.total; }
+      else if (ordSort === "paid") { av = a.paid; bv = z.paid; }
+      else if (ordSort === "balance") { av = a.balance; bv = z.balance; }
+      else if (ordSort === "status") { av = a.b.status ?? ""; bv = z.b.status ?? ""; }
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return ordDir === "asc" ? cmp : -cmp;
+    });
 
   return (
     <div>
@@ -230,22 +265,45 @@ export default function Dashboard() {
       </div>
 
       {/* All orders */}
-      <div className="flex items-center justify-between mb-3">
-        <SectionTitle>All Orders (most recent event first)</SectionTitle>
-        <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => exportOrdersCSV(D.orders, D.methodPaid)}>
-          ⬇️ Export CSV
-        </button>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <SectionTitle>All Orders{periodStart || periodEnd ? " (filtered)" : " (most recent event first)"}</SectionTitle>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs">
+            <label className="text-slate-500">Start</label>
+            <input type="date" className="field !py-1 !text-xs" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+            <label className="text-slate-500">End</label>
+            <input type="date" className="field !py-1 !text-xs" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+            {(periodStart || periodEnd) && (
+              <button className="text-xs text-slate-400 underline" onClick={() => { setPeriodStart(""); setPeriodEnd(""); }}>clear</button>
+            )}
+          </div>
+          <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => exportOrdersCSV(visibleOrders, D.methodPaid)}>
+            ⬇️ Export CSV
+          </button>
+        </div>
       </div>
+      {(periodStart || periodEnd) && (
+        <p className="text-xs text-slate-500 mb-2">Showing {visibleOrders.length} order(s) in the selected period.</p>
+      )}
       <div className="card overflow-x-auto">
         <table className="w-full text-xs whitespace-nowrap">
           <thead>
             <tr className="bg-ink text-white text-left">
-              {["Event Date", "Invoice #", "Customer", "Type", "Guests", "Subtotal", "Tax", "Total", "Cash", "Check/Zelle", "Credit Card", "Total Paid", "Balance", "Status"]
-                .map((h) => <th key={h} className="px-3 py-2.5 font-semibold">{h}</th>)}
+              {([
+                ["event_date", "Event Date"], ["invoice_num", "Invoice #"], ["contact_name", "Customer"],
+                ["event_type", "Type"], ["", "Guests"], ["", "Subtotal"], ["", "Tax"], ["total", "Total"],
+                ["", "Cash"], ["", "Check/Zelle"], ["", "Credit Card"], ["paid", "Total Paid"],
+                ["balance", "Balance"], ["status", "Status"],
+              ] as [string, string][]).map(([key, h]) => (
+                <th key={h} className={`px-3 py-2.5 font-semibold ${key ? "cursor-pointer select-none hover:bg-white/10" : ""}`}
+                  onClick={key ? () => toggleOrdSort(key) : undefined}>
+                  {h}{key && ordSort === key ? (ordDir === "asc" ? " ▲" : " ▼") : ""}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {D.orders.map(({ b, fin, paid, balance }) => {
+            {visibleOrders.map(({ b, fin, paid, balance }) => {
               const st = stageFor(b.status);
               const g = fin.guests;
               return (

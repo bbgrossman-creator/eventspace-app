@@ -1256,6 +1256,17 @@ function EventHoursPanel({ b, onChange }: { b: Booking; onChange: () => void }) 
     onChange();
   }
 
+  async function resetTimes() {
+    if (!confirm("Clear the actual times and override, back to the default?")) return;
+    setStart(""); setEnd(""); setOverride("");
+    await supabase.from("bookings").update({
+      actual_start: null, actual_end: null, hours_override: null,
+    }).eq("id", b.id);
+    setMsg("Reset to default ✓");
+    setTimeout(() => setMsg(""), 1500);
+    onChange();
+  }
+
   async function addOvertime() {
     if (preview.overtimeAmount <= 0) return;
     if (!confirm(`Add ${fmtMoney(preview.overtimeAmount)} overtime charge (${preview.overtimeUnits} × ${fmtMoney(policies!.overtime_rate)})?`)) return;
@@ -1308,6 +1319,9 @@ function EventHoursPanel({ b, onChange }: { b: Booking; onChange: () => void }) 
 
       <div className="flex items-center gap-3 mt-3 flex-wrap">
         <button className="btn-ghost" onClick={save}>Save times</button>
+        {(start || end || override) && (
+          <button className="btn-ghost !text-slate-500" onClick={resetTimes}>↺ Reset to default</button>
+        )}
         {preview.overtimeAmount > 0 && (
           <button className="btn-warn" onClick={addOvertime}>
             ➕ Add overtime charge — {fmtMoney(preview.overtimeAmount)} ({preview.overtimeHours} hr)

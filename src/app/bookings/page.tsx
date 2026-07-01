@@ -8,6 +8,13 @@ export default function BookingsList() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"active" | "all" | "completed" | "cancelled">("active");
+  const [sortKey, setSortKey] = useState<"invoice_num" | "contact_name" | "event_date" | "total_with_tax" | "status">("event_date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  }
 
   useEffect(() => {
     supabase
@@ -28,8 +35,17 @@ export default function BookingsList() {
         if (!hay.includes(q.toLowerCase())) return false;
       }
       return true;
+    }).sort((a, b) => {
+      let av: string | number = "", bv: string | number = "";
+      if (sortKey === "invoice_num") { av = a.invoice_num ?? ""; bv = b.invoice_num ?? ""; }
+      else if (sortKey === "contact_name") { av = (a.contact_name ?? "").toLowerCase(); bv = (b.contact_name ?? "").toLowerCase(); }
+      else if (sortKey === "event_date") { av = a.event_date ?? "9999"; bv = b.event_date ?? "9999"; }
+      else if (sortKey === "total_with_tax") { av = Number(a.total_with_tax ?? 0); bv = Number(b.total_with_tax ?? 0); }
+      else if (sortKey === "status") { av = a.status ?? ""; bv = b.status ?? ""; }
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [bookings, q, filter]);
+  }, [bookings, q, filter, sortKey, sortDir]);
 
   return (
     <div>
@@ -70,12 +86,19 @@ export default function BookingsList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-ink text-white text-left">
-                <th className="px-4 py-3 font-semibold">Invoice</th>
-                <th className="px-4 py-3 font-semibold">Contact</th>
-                <th className="px-4 py-3 font-semibold">Event date</th>
-                <th className="px-4 py-3 font-semibold hidden lg:table-cell">Menu</th>
-                <th className="px-4 py-3 font-semibold hidden md:table-cell">Total</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
+                {([
+                  ["invoice_num", "Invoice", ""],
+                  ["contact_name", "Contact", ""],
+                  ["event_date", "Event date", ""],
+                  ["", "Menu", "hidden lg:table-cell"],
+                  ["total_with_tax", "Total", "hidden md:table-cell"],
+                  ["status", "Status", ""],
+                ] as [string, string, string][]).map(([key, label, cls]) => (
+                  <th key={label} className={`px-4 py-3 font-semibold ${cls} ${key ? "cursor-pointer select-none hover:bg-white/10" : ""}`}
+                    onClick={key ? () => toggleSort(key as typeof sortKey) : undefined}>
+                    {label}{key && sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
