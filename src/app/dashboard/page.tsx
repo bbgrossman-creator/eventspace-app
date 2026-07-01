@@ -108,6 +108,32 @@ export default function Dashboard() {
     const methodPaid = (bid: string, methods: string[]) =>
       sumApplied(payments.filter((p) => p.booking_id === bid && methods.includes(p.method)));
 
+    // ── Monthly revenue series (by event date) for the trend graph ──
+    const monthMap = new Map<string, number>();
+    for (const r of rows) {
+      if (!r.b.event_date) continue;
+      const d = parseLocalDate(r.b.event_date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      monthMap.set(key, (monthMap.get(key) ?? 0) + r.fin.total);
+    }
+    const monthlySeries = [...monthMap.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, v]) => {
+        const [y, m] = key.split("-").map(Number);
+        const label = new Date(y, m - 1, 1).toLocaleString("en-US", { month: "short", year: "2-digit" });
+        return { key, label, v };
+      });
+
+    // ── Revenue by event type (for the pie/bar) ──
+    const typeMap = new Map<string, number>();
+    for (const r of rows) {
+      const t = r.b.event_type || "Other";
+      typeMap.set(t, (typeMap.get(t) ?? 0) + r.fin.total);
+    }
+    const byType = [...typeMap.entries()]
+      .map(([type, v]) => ({ type, v }))
+      .sort((a, b) => b.v - a.v);
+
     return {
       totalSubtotal, totalTax,
       totalRevenue, totalCollected, outstandingAR, cashCollected, ccFees,
@@ -118,7 +144,7 @@ export default function Dashboard() {
       monthCount: monthRows.length, monthRevenue, monthCollected, monthCash,
       monthAvg: monthRows.length ? monthRevenue / monthRows.length : 0,
       upcoming: [7, 30, 60, 90].map((d) => ({ d, v: upcoming(d) })),
-      groups, orders, methodPaid,
+      groups, orders, methodPaid, monthlySeries, byType,
     };
   }, [bookings, payments, charges]);
 
@@ -150,6 +176,24 @@ export default function Dashboard() {
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return ordDir === "asc" ? cmp : -cmp;
     });
+
+  // Totals row for the visible (period-filtered) orders.
+  const orderTotals = visibleOrders.reduce((acc, { b, fin, paid, balance }) => ({
+    subtotal: acc.subtotal + fin.subtotal,
+    tax: acc.tax + fin.tax,
+    total: acc.total + fin.total,
+    cash: acc.cash + D.methodPaid(b.id, ["Cash"]),
+    checkZelle: acc.checkZelle + D.methodPaid(b.id, ["Check", "Zelle"]),
+    cc: acc.cc + D.methodPaid(b.id, ["Credit Card"]),
+    paid: acc.paid + paid,
+    balance: acc.balance + balance,
+  }), { subtotal: 0, tax: 0, total: 0, cash: 0, checkZelle: 0, cc: 0, paid: 0, balance: 0 });
+
+  // Period-scoped analytics band (governed by the start/end pickers).
+  const periodActive = !!(pStart || pEnd);
+  const periodRevenue = orderTotals.total;
+  const periodCount = visibleOrders.length;
+  const periodAvg = periodCount ? periodRevenue / periodCount : 0;
 
   return (
     <div>
@@ -188,6 +232,36 @@ export default function Dashboard() {
         <Big label="Outstanding A/R" value={fmtMoney(D.outstandingAR)} tone="text-red-600" />
         <Big label="Cash Collected" value={fmtMoney(D.cashCollected)} tone="text-gold" />
       </div>
+
+      {/* Charts */}
+      <div className="grid lg:grid-cols-2 gap-5 mb-8">
+        <div className="card p-5">
+          <SectionTitle>Revenue by Month</SectionTitle>
+          <p className="text-xs text-slate-400 mb-3">Contracted revenue by event date — spot your busy and slow seasons.</p>
+          <BarChart data={D.monthlySeries.map((m) => ({ label: m.label, v: m.v }))} />
+        </div>
+        <div className="card p-5">
+          <SectionTitle>Revenue by Event Type</SectionTitle>
+          <p className="text-xs text-slate-400 mb-3">Where your revenue comes from.</p>
+          <DonutChart data={D.byType} />
+        </div>
+      </div>
+
+      {/* Period analytics — governed by the start/end pickers on All Orders below */}
+      {periodActive && (
+        <div className="card p-5 mb-8 border-2 border-navy/20">
+          <SectionTitle>Selected Period</SectionTitle>
+          <p className="text-xs text-slate-400 mb-3">
+            {periodStart || "earliest"} → {periodEnd || "latest"} · driven by the date filter on All Orders below.
+          </p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Big label="Events in Period" value={String(periodCount)} tone="text-navy" />
+            <Big label="Revenue in Period" value={fmtMoney(periodRevenue)} tone="text-navy" />
+            <Big label="Collected in Period" value={fmtMoney(orderTotals.paid)} tone="text-emerald-600" />
+            <Big label="Avg per Event" value={fmtMoney(periodAvg)} tone="text-gold" />
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-5 mb-8">
         {/* Payment breakdown */}
@@ -335,6 +409,21 @@ export default function Dashboard() {
               );
             })}
           </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-ink bg-slate-50 font-bold">
+              <td className="px-3 py-2.5" colSpan={4}>TOTALS ({visibleOrders.length} orders)</td>
+              <td className="px-3 py-2.5"></td>
+              <td className="px-3 py-2.5 text-right">{fmtMoney(orderTotals.subtotal)}</td>
+              <td className="px-3 py-2.5 text-right">{fmtMoney(orderTotals.tax)}</td>
+              <td className="px-3 py-2.5 text-right text-navy">{fmtMoney(orderTotals.total)}</td>
+              <td className="px-3 py-2.5 text-right">{fmtMoney(orderTotals.cash)}</td>
+              <td className="px-3 py-2.5 text-right">{fmtMoney(orderTotals.checkZelle)}</td>
+              <td className="px-3 py-2.5 text-right">{fmtMoney(orderTotals.cc)}</td>
+              <td className="px-3 py-2.5 text-right">{fmtMoney(orderTotals.paid)}</td>
+              <td className={`px-3 py-2.5 text-right ${orderTotals.balance > 0.01 ? "text-red-600" : "text-emerald-600"}`}>{fmtMoney(orderTotals.balance)}</td>
+              <td className="px-3 py-2.5"></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -371,6 +460,70 @@ function exportOrdersCSV(
   a.download = `event-space-orders-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ─── Lightweight inline SVG charts (no external dependency) ───
+function BarChart({ data, height = 180 }: { data: { label: string; v: number }[]; height?: number }) {
+  if (data.length === 0) return <p className="text-sm text-slate-400">No data yet.</p>;
+  const max = Math.max(...data.map((d) => d.v), 1);
+  const barW = 100 / data.length;
+  const money = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(0)}k` : `$${n.toFixed(0)}`;
+  return (
+    <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="w-full" style={{ height }}>
+      {data.map((d, i) => {
+        const h = (d.v / max) * (height - 40);
+        const x = i * barW;
+        return (
+          <g key={d.label}>
+            <rect x={x + barW * 0.15} y={height - 20 - h} width={barW * 0.7} height={h}
+              fill="#1F4E79" rx="0.5" />
+            <text x={x + barW / 2} y={height - 20 - h - 3} textAnchor="middle" fontSize="3.2" fill="#1F4E79" fontWeight="bold">
+              {money(d.v)}
+            </text>
+            <text x={x + barW / 2} y={height - 8} textAnchor="middle" fontSize="3" fill="#64748b">
+              {d.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function DonutChart({ data }: { data: { type: string; v: number }[] }) {
+  const total = data.reduce((s, d) => s + d.v, 0);
+  if (total === 0) return <p className="text-sm text-slate-400">No data yet.</p>;
+  const colors = ["#1F4E79", "#B08A3E", "#2E7D5B", "#8B4A6B", "#5A6B8C", "#C77D3E", "#4A7C8B", "#9B7B4A"];
+  let acc = 0;
+  const segs = data.map((d, i) => {
+    const frac = d.v / total;
+    const start = acc; acc += frac;
+    const a0 = start * 2 * Math.PI - Math.PI / 2;
+    const a1 = acc * 2 * Math.PI - Math.PI / 2;
+    const large = frac > 0.5 ? 1 : 0;
+    const r = 16, cx = 20, cy = 20;
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    return { d, color: colors[i % colors.length], path: `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`, pct: Math.round(frac * 100) };
+  });
+  return (
+    <div className="flex items-center gap-4 flex-wrap">
+      <svg viewBox="0 0 40 40" className="w-32 h-32 shrink-0">
+        {segs.map((s) => <path key={s.d.type} d={s.path} fill={s.color} />)}
+        <circle cx="20" cy="20" r="8" fill="white" />
+      </svg>
+      <div className="space-y-1 text-xs">
+        {segs.map((s) => (
+          <div key={s.d.type} className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ background: s.color }} />
+            <span className="text-slate-600">{s.d.type}</span>
+            <span className="font-semibold text-navy">{fmtMoney(s.d.v)}</span>
+            <span className="text-slate-400">({s.pct}%)</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
