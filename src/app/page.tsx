@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
-  Booking, Task, buildTasks, daysLabel, fmtDate, fmtTime, menuBadge, parseLocalDate } from "@/lib/workflow";
+  Booking, Task, buildTasks, daysLabel, fmtDate, fmtTime, menuBadge, parseLocalDate, isHoldExpired } from "@/lib/workflow";
+import { loadPolicies } from "@/lib/policies";
 import StatusPipeline from "@/components/StatusPipeline";
 
 export default function DailyOps() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [callsToday, setCallsToday] = useState<Booking[]>([]);
+  const [expiredHolds, setExpiredHolds] = useState<Booking[]>([]);
   const [err, setErr] = useState("");
 
   async function load() {
@@ -19,7 +21,10 @@ export default function DailyOps() {
       .order("event_date", { ascending: true });
     if (error) { setErr(error.message); return; }
     const bookings = (data ?? []) as Booking[];
-    setTasks(buildTasks(bookings));
+    const pol = await loadPolicies();
+    setTasks(buildTasks(bookings, { menuOverdueHours: pol.menu_call_overdue_hours }));
+    setExpiredHolds(bookings.filter((b) =>
+      b.status === "hold_expired" || (b.status === "on_hold" && isHoldExpired(b))));
 
     const todayStr = new Date().toDateString();
     setCallsToday(
@@ -81,6 +86,22 @@ export default function DailyOps() {
               <span className="text-sm font-medium">{b.contact_name} · #{b.invoice_num}</span>
               <span className="text-sm font-bold text-navy">
                 {new Date(b.menu_discussion_date!).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+              </span>
+            </Link>
+          ))}
+        </section>
+      )}
+
+      {expiredHolds.length > 0 && (
+        <section className="card p-5 mb-8 border-l-4 border-red-500">
+          <h2 className="font-display font-bold text-sm mb-1">⏰ Expired holds — follow up ({expiredHolds.length})</h2>
+          <p className="text-[11px] text-slate-400 mb-3">These holds lapsed without a deposit. Call to rebook, or delete to release the date.</p>
+          {expiredHolds.map((b) => (
+            <Link key={b.id} href={`/bookings/${b.id}`} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0 hover:text-navy">
+              <span className="text-sm font-medium">{b.contact_name} · #{b.invoice_num}</span>
+              <span className="text-xs text-slate-500">
+                {b.event_name || b.event_type || "—"} · {fmtDate(b.event_date)}
+                {b.hold_expires ? ` · expired ${daysLabel(Math.ceil((parseLocalDate(b.hold_expires.slice(0, 10)).getTime() - Date.now()) / 86400000)).toLowerCase()}` : ""}
               </span>
             </Link>
           ))}

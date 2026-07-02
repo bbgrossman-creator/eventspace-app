@@ -75,6 +75,17 @@ export async function GET(req: Request) {
         action: "Hold Expired", details: "24h hold window passed with no deposit — follow up or release.",
         result: "WARNING",
       });
+      // Any leads waiting on this holder: the date is now effectively open.
+      const { data: leads } = await db.from("bookings").select("id,invoice_num")
+        .eq("waitlisted_for", h.id).eq("status", "waitlisted");
+      for (const l of (leads ?? []) as { id: string; invoice_num: string }[]) {
+        await db.from("activity_log").insert({
+          booking_id: l.id, invoice_num: l.invoice_num,
+          action: "Held Date Now Open",
+          details: "The holder's hold expired without a deposit — offer this party the date.",
+          result: "WARNING",
+        });
+      }
       holds_expired++;
     }
   } catch { /* non-fatal */ }

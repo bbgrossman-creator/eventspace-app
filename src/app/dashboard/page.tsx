@@ -98,14 +98,6 @@ export default function Dashboard() {
     const cashFinal = sumApplied(cash.filter((p) => p.payment_type === "Additional Payment"));
     const cashOther = cashCollected - cashDeposits - cashFinal;
 
-    // ── This month ──
-    const now = new Date();
-    const inThisMonth = (d: Date) => d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    const monthRows = rows.filter((r) => r.b.event_date && inThisMonth(parseLocalDate(r.b.event_date)));
-    const monthRevenue = monthRows.reduce((s, r) => s + r.fin.total, 0);
-    const monthCollected = sumApplied(payments.filter((p) => inThisMonth(new Date(p.created_at))));
-    const monthCash = sumApplied(cash.filter((p) => inThisMonth(new Date(p.created_at))));
-
     // ── Upcoming revenue ──
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const upcoming = (days: number) => {
@@ -128,32 +120,6 @@ export default function Dashboard() {
     const methodPaid = (bid: string, methods: string[]) =>
       sumApplied(payments.filter((p) => p.booking_id === bid && methods.includes(p.method)));
 
-    // ── Monthly revenue series (by event date) for the trend graph ──
-    const monthMap = new Map<string, number>();
-    for (const r of rows) {
-      if (!r.b.event_date) continue;
-      const d = parseLocalDate(r.b.event_date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      monthMap.set(key, (monthMap.get(key) ?? 0) + r.fin.total);
-    }
-    const monthlySeries = Array.from(monthMap.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, v]) => {
-        const [y, m] = key.split("-").map(Number);
-        const label = new Date(y, m - 1, 1).toLocaleString("en-US", { month: "short", year: "2-digit" });
-        return { key, label, v };
-      });
-
-    // ── Revenue by event type (for the pie/bar) ──
-    const typeMap = new Map<string, number>();
-    for (const r of rows) {
-      const t = r.b.event_type || "Other";
-      typeMap.set(t, (typeMap.get(t) ?? 0) + r.fin.total);
-    }
-    const byType = Array.from(typeMap.entries())
-      .map(([type, v]) => ({ type, v }))
-      .sort((a, b) => b.v - a.v);
-
     return {
       totalSubtotal, totalTax,
       totalRevenue, totalCollected, outstandingAR, cashCollected, ccFees,
@@ -161,10 +127,8 @@ export default function Dashboard() {
         m, count: byMethod(m).length, sum: sumApplied(byMethod(m)),
       })),
       cashDeposits, cashFinal, cashOther,
-      monthCount: monthRows.length, monthRevenue, monthCollected, monthCash,
-      monthAvg: monthRows.length ? monthRevenue / monthRows.length : 0,
       upcoming: [7, 30, 60, 90].map((d) => ({ d, v: upcoming(d) })),
-      groups, orders, methodPaid, monthlySeries, byType,
+      groups, orders, methodPaid,
     };
   }, [bookings, payments, charges]);
 
@@ -257,6 +221,22 @@ export default function Dashboard() {
   const addonJobs = Array.from(addonByBooking.values()).filter((v) => v > 0.01).length;
   const addonAvg = addonJobs > 0 ? addonRevenue / addonJobs : 0;
   const addonAttachRate = periodCount > 0 ? (addonJobs / periodCount) * 100 : 0;
+
+  // Per-item breakdown: which add-ons actually drive the revenue.
+  const addonItems = new Map<string, { revenue: number; jobs: Set<string> }>();
+  for (const c of charges) {
+    if (!visibleIds.has(c.booking_id)) continue;
+    if ((c as { is_supplemental?: boolean }).is_supplemental) continue;
+    const name = (c.description || "Other").replace(/\s*[×x]\s*\d+\s*$/, "").trim() || "Other";
+    const cur = addonItems.get(name) ?? { revenue: 0, jobs: new Set<string>() };
+    cur.revenue += Number(c.unit_price) * Number(c.quantity);
+    cur.jobs.add(c.booking_id);
+    addonItems.set(name, cur);
+  }
+  const addonBreakdown = Array.from(addonItems.entries())
+    .map(([name, x]) => ({ name, revenue: x.revenue, jobs: x.jobs.size }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 12);
 
   // Revenue chart series — bucketed by week / month / year, always from the
   // period-filtered orders (so it respects the dashboard period control).
@@ -392,12 +372,35 @@ export default function Dashboard() {
       </div>
 
       <SectionTitle>Add-On Sales (pre-event, above base){periodActive ? " (period)" : ""}</SectionTitle>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         <Big label="Add-On Revenue" value={fmtMoney(addonRevenue)} tone="text-emerald-600" />
         <Big label="Jobs with Add-Ons" value={String(addonJobs)} tone="text-navy" />
         <Big label="Avg Add-On / Job" value={fmtMoney(addonAvg)} tone="text-gold" />
         <Big label="Attach Rate" value={`${addonAttachRate.toFixed(0)}%`} tone="text-slate-600" />
       </div>
+      {addonBreakdown.length > 0 && (
+        <div className="card p-5 mb-8">
+          <SectionTitle>Top Add-Ons by Revenue</SectionTitle>
+          <table className="w-full text-sm mt-2">
+            <thead>
+              <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
+                <th className="py-1.5 font-semibold">Add-On</th>
+                <th className="py-1.5 font-semibold text-right">Revenue</th>
+                <th className="py-1.5 font-semibold text-right">Jobs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {addonBreakdown.map((a) => (
+                <tr key={a.name} className="border-b border-slate-50 last:border-0">
+                  <td className="py-1.5">{a.name}</td>
+                  <td className="py-1.5 text-right font-medium">{fmtMoney(a.revenue)}</td>
+                  <td className="py-1.5 text-right text-slate-500">{a.jobs}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="card p-5 mb-8 border-2 border-navy/20">
         <SectionTitle>Revenue Summary{periodActive ? ` · ${periodStart || "earliest"} → ${periodEnd || "latest"}` : " · All Time"}</SectionTitle>

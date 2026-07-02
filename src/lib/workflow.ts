@@ -213,10 +213,11 @@ export function parseLocalDate(d: string): Date {
   return new Date(d + "T12:00:00");
 }
 
-export function buildTasks(bookings: Booking[]): Task[] {
+export function buildTasks(bookings: Booking[], opts?: { menuOverdueHours?: number }): Task[] {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const now = new Date();
   const tasks: Task[] = [];
+  const overdueHrs = opts?.menuOverdueHours ?? DISCUSSION_OVERDUE_HOURS;
 
   for (const b of bookings) {
     if (b.status === "completed" || b.status === "cancelled") continue;
@@ -251,7 +252,7 @@ export function buildTasks(bookings: Booking[]): Task[] {
       priority = "HIGH"; reason = `🔥 ${workDays} working day${workDays === 1 ? "" : "s"} left`;
     } else if (b.status === "confirm_guest_count" && daysUntil <= 5) {
       priority = "HIGH"; reason = "👥 Count & menu confirmation due soon";
-    } else if (b.status === "schedule_menu_discussion" && discussionState(b) === "overdue") {
+    } else if (b.status === "schedule_menu_discussion" && discussionState(b, overdueHrs) === "overdue") {
       priority = "HIGH"; reason = "📞 Menu call missed — follow up";
     } else if (daysUntil <= 7) {
       priority = "MEDIUM";
@@ -261,10 +262,31 @@ export function buildTasks(bookings: Booking[]): Task[] {
     // sub-states (scheduled / missed / not-yet) the flat label doesn't capture.
     let actionLabel = stage.action;
     if (b.status === "schedule_menu_discussion") {
-      const ds = discussionState(b);
+      const ds = discussionState(b, overdueHrs);
       actionLabel = ds === "overdue" ? "Menu Call Missed — Follow Up"
         : ds === "scheduled" ? "Complete Menu (call set)"
         : "Schedule Menu Call";
+    }
+
+    // Waitlisted lifecycle: a waitlisted booking is either (a) the official
+    // deposit-ready challenger (holder's clock is running), (b) a no-standing
+    // lead (interested, not committed), or (c) waiting on a holder who is now
+    // gone/expired — meaning the date has opened up and the rep should act.
+    if (b.status === "waitlisted") {
+      const holder = b.waitlisted_for ? bookings.find((x) => x.id === b.waitlisted_for) : undefined;
+      const holderGone = !holder || holder.status === "cancelled" || holder.status === "hold_expired" ||
+        (holder.status === "on_hold" && isHoldExpired(holder));
+      const isChallenger = !!holder && (holder as { refusal_challenger?: string | null }).refusal_challenger === b.id;
+      if (holderGone) {
+        priority = "HIGH"; reason = "🔓 Held date now OPEN — offer it to this party";
+        actionLabel = "Date Open — Follow Up";
+      } else if (isChallenger) {
+        actionLabel = "Awaiting Holder Decision";
+      } else {
+        if (priority === "LOW") priority = "MEDIUM";
+        if (!reason) reason = "📇 Lead waiting on a held date — keep them warm";
+        actionLabel = "Lead — Date Held (follow up)";
+      }
     }
 
     tasks.push({ booking: b, stage, daysUntil, priority, reason, actionLabel });
