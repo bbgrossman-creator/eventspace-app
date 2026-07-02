@@ -242,6 +242,22 @@ export default function Dashboard() {
     (custCounts.get(custKey(b)) ?? 0) > 1 ? s + fin.total : s, 0);
   const repeatPct = periodRevenue > 0 ? (repeatRevenue / periodRevenue) * 100 : 0;
 
+  // Add-on tracking: pre-event add-ons (charges above base, EXCLUDING post-event
+  // supplemental/amendment charges which carry is_supplemental). Counts revenue,
+  // jobs with at least one add-on, and average add-on per such job.
+  const visibleIds = new Set(visibleOrders.map(({ b }) => b.id));
+  const addonByBooking = new Map<string, number>();
+  for (const c of charges) {
+    if (!visibleIds.has(c.booking_id)) continue;
+    if ((c as { is_supplemental?: boolean }).is_supplemental) continue; // skip post-event
+    const amt = Number(c.unit_price) * Number(c.quantity);
+    addonByBooking.set(c.booking_id, (addonByBooking.get(c.booking_id) ?? 0) + amt);
+  }
+  const addonRevenue = Array.from(addonByBooking.values()).reduce((s, v) => s + v, 0);
+  const addonJobs = Array.from(addonByBooking.values()).filter((v) => v > 0.01).length;
+  const addonAvg = addonJobs > 0 ? addonRevenue / addonJobs : 0;
+  const addonAttachRate = periodCount > 0 ? (addonJobs / periodCount) * 100 : 0;
+
   // Revenue chart series — bucketed by week / month / year, always from the
   // period-filtered orders (so it respects the dashboard period control).
   function bucketKey(d: Date): { key: string; label: string } {
@@ -373,6 +389,14 @@ export default function Dashboard() {
         <Big label="Avg Event Size" value={fmtMoney(periodAvg)} tone="text-slate-600" />
         <Big label="Repeat Revenue $" value={fmtMoney(repeatRevenue)} tone="text-gold" />
         <Big label="CC Fees Paid" value={fmtMoney(D.ccFees)} tone="text-red-600" />
+      </div>
+
+      <SectionTitle>Add-On Sales (pre-event, above base){periodActive ? " (period)" : ""}</SectionTitle>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <Big label="Add-On Revenue" value={fmtMoney(addonRevenue)} tone="text-emerald-600" />
+        <Big label="Jobs with Add-Ons" value={String(addonJobs)} tone="text-navy" />
+        <Big label="Avg Add-On / Job" value={fmtMoney(addonAvg)} tone="text-gold" />
+        <Big label="Attach Rate" value={`${addonAttachRate.toFixed(0)}%`} tone="text-slate-600" />
       </div>
 
       <div className="card p-5 mb-8 border-2 border-navy/20">
