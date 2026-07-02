@@ -248,7 +248,10 @@ export default function NewInquiry() {
                       <div className="space-y-1">
                         {candidates.map((svc) => {
                           const latestStart = earliest - changeMin - svc * 60;
-                          const label = fmtMin(latestStart);
+                          // The Start-time picker is on an hourly grid, so floor the
+                          // suggestion to the hour — starting earlier still clears.
+                          const snapped = Math.floor(latestStart / 60) * 60;
+                          const label = fmtMin(snapped);
                           return (
                             <div key={svc} className="flex items-center justify-between text-xs">
                               <span>{svc}-hr service →{" "}
@@ -256,7 +259,7 @@ export default function NewInquiry() {
                               </span>
                               {label && (
                                 <button type="button" className="rounded-full border border-blue-300 px-2.5 py-0.5 hover:bg-blue-50"
-                                  onClick={() => { set("expected_hours", String(svc)); set("event_time", `${String(Math.floor(latestStart / 60)).padStart(2, "0")}:${String(latestStart % 60).padStart(2, "0")}`); }}>
+                                  onClick={() => { set("expected_hours", String(svc)); set("event_time", `${String(snapped / 60).padStart(2, "0")}:00`); }}>
                                   Use {label}
                                 </button>
                               )}

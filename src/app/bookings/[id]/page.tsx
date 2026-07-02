@@ -243,7 +243,7 @@ export default function BookingDetail() {
             const target = STAGE_TO_STATUS[i];
             if (target === b.status) return;
             // Guard: can't jump to invoice/count steps without a completed menu
-            const needsMenu = ["send_est_invoice", "confirm_guest_count", "send_final_invoice", "completed"];
+            const needsMenu = ["send_est_invoice", "confirm_guest_count", "send_final_invoice", "collect_payment", "completed"];
             if (needsMenu.includes(target) && !hasMenu(b)) {
               setMsg({ ok: false, text: "Complete the menu first — this booking has no menu selections yet." });
               return;
@@ -795,7 +795,19 @@ function DepositForm({ b, done }: { b: Booking; done: () => void }) {
     await supabase.from("bookings").update({
       deposit_date: new Date().toISOString(), deposit_amount: cc.applied,
       deposit_method: method, status: "schedule_menu_discussion", hold_expires: null,
+      refusal_deadline: null, refusal_challenger: null,
     }).eq("id", b.id);
+
+    // Depositing IS the holder committing: any parties waiting on this date
+    // (deposit-ready challenger or no-standing leads) are declined, so nothing
+    // sits "awaiting holder decision" on a date that's now confirmed.
+    const { data: waiting } = await supabase.from("bookings")
+      .select("id,invoice_num,contact_name").eq("waitlisted_for", b.id).eq("status", "waitlisted");
+    for (const w of waiting ?? []) {
+      await supabase.from("bookings").update({ status: "cancelled", waitlisted_for: null }).eq("id", w.id);
+      await logActivity(w.id, w.invoice_num, "Waitlist Declined",
+        `${b.contact_name} confirmed the date with a deposit — waitlist released. Follow up to offer another date.`, "WARNING");
+    }
 
     await logActivity(b.id, b.invoice_num, "Deposit Received",
       `$${amt.toFixed(2)} via ${method} (applied $${cc.applied.toFixed(2)}) by ${by}`);
@@ -1151,13 +1163,16 @@ function RefusalPanel({ b, onChange, setMsg }: {
   const deadline = b.refusal_deadline ? new Date(b.refusal_deadline) : null;
   const passed = deadline ? Date.now() > deadline.getTime() : false;
 
-  // Holder commits: clear the challenge; the challenger is declined (cancelled).
+  // Holder commits: clear the challenge; ALL parties waiting on this date
+  // (the challenger and any no-standing leads) are declined.
   async function holderCommits() {
     if (!confirm("Confirm the holder is committing to this date? The waitlisted party will be declined.")) return;
     await supabase.from("bookings").update({ refusal_deadline: null, refusal_challenger: null }).eq("id", b.id);
-    if (challenger) {
-      await supabase.from("bookings").update({ status: "cancelled", waitlisted_for: null }).eq("id", challenger.id);
-      await logActivity(challenger.id, challenger.invoice_num, "Waitlist Declined",
+    const { data: waiting } = await supabase.from("bookings")
+      .select("id,invoice_num").eq("waitlisted_for", b.id).eq("status", "waitlisted");
+    for (const w of waiting ?? []) {
+      await supabase.from("bookings").update({ status: "cancelled", waitlisted_for: null }).eq("id", w.id);
+      await logActivity(w.id, w.invoice_num, "Waitlist Declined",
         `Date holder (${b.contact_name}) committed — waitlist released.`, "WARNING");
     }
     await logActivity(b.id, b.invoice_num, "Holder Committed (First Refusal)",

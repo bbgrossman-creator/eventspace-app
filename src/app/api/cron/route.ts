@@ -87,7 +87,8 @@ export async function GET(req: Request) {
     const lapseAction = (polRows ?? []).find((r) => r.key === "refusal_lapse_action")?.value ?? "flag";
     const { data: expired } = await db.from("bookings").select("*")
       .not("refusal_deadline", "is", null)
-      .lt("refusal_deadline", new Date().toISOString());
+      .lt("refusal_deadline", new Date().toISOString())
+      .in("status", ["on_hold", "conflict"]); // never touch a booked/deposited holder
     for (const holder of (expired ?? []) as Booking[]) {
       if (lapseAction === "auto_release") {
         // Release the holder; promote the challenger to a fresh 24h hold.
