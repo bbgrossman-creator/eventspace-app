@@ -167,10 +167,13 @@ export function eventHasPassed(b: Booking): boolean {
 }
 
 // ─── Menu discussion sub-states ───
-export type DiscussionState = "not_sent" | "link_sent" | "scheduled" | "overdue";
+export type DiscussionState = "not_sent" | "link_sent" | "scheduled" | "overdue" | "menu_in";
 export const DISCUSSION_OVERDUE_HOURS = 1;
 
 export function discussionState(b: Booking, overdueHours: number = DISCUSSION_OVERDUE_HOURS): DiscussionState {
+  // If the menu form already came in, the call has served its purpose (or is
+  // moot) — never show "call scheduled" or "call missed" once the menu exists.
+  if (hasMenu(b)) return "menu_in";
   if (b.menu_discussion_date) {
     const appt = new Date(b.menu_discussion_date).getTime();
     if (!b.menu_completed && Date.now() > appt + overdueHours * 3600000)
@@ -263,7 +266,8 @@ export function buildTasks(bookings: Booking[], opts?: { menuOverdueHours?: numb
     let actionLabel = stage.action;
     if (b.status === "schedule_menu_discussion") {
       const ds = discussionState(b, overdueHrs);
-      actionLabel = ds === "overdue" ? "Menu Call Missed — Follow Up"
+      actionLabel = ds === "menu_in" ? "Menu Received — Review & Advance"
+        : ds === "overdue" ? "Menu Call Missed — Follow Up"
         : ds === "scheduled" ? "Complete Menu (call set)"
         : "Schedule Menu Call";
     }

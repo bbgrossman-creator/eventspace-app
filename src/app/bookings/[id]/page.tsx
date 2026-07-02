@@ -263,7 +263,9 @@ export default function BookingDetail() {
           <div className="text-[11px] font-semibold uppercase tracking-wider opacity-70">Current status</div>
           <div className="font-display font-bold text-lg">
             {b.status === "schedule_menu_discussion"
-              ? (discussionState(b, overdueHrs) === "overdue"
+              ? (discussionState(b, overdueHrs) === "menu_in"
+                  ? "📋 Menu Received — Review & Complete"
+                  : discussionState(b, overdueHrs) === "overdue"
                   ? "⚠️ Menu Call Missed — Follow Up"
                   : discussionState(b, overdueHrs) === "scheduled"
                     ? "📞 Booked — Menu Call Scheduled"
@@ -420,7 +422,7 @@ export default function BookingDetail() {
                       "Opening menu form");
                     router.push(`/bookings/${b.id}/menu`);
                   }}>
-                  {ds === "overdue" ? "📞 Complete Menu Now" : "⏭️ Skip to Menu"}
+                  {ds === "menu_in" ? "📋 Process Received Menu" : ds === "overdue" ? "📞 Complete Menu Now" : "⏭️ Skip to Menu"}
                 </button>
               </>
             )

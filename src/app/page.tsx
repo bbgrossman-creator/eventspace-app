@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
-  Booking, Task, buildTasks, daysLabel, fmtDate, fmtTime, menuBadge, parseLocalDate, isHoldExpired } from "@/lib/workflow";
+  Booking, Task, buildTasks, daysLabel, fmtDate, fmtTime, menuBadge, parseLocalDate, isHoldExpired, hasMenu } from "@/lib/workflow";
 import { loadPolicies } from "@/lib/policies";
 import StatusPipeline from "@/components/StatusPipeline";
 
@@ -31,6 +31,7 @@ export default function DailyOps() {
       bookings.filter(
         (b) =>
           b.menu_discussion_status === "Scheduled" &&
+          !hasMenu(b) &&
           b.menu_discussion_date &&
           new Date(b.menu_discussion_date).toDateString() === todayStr
       )
