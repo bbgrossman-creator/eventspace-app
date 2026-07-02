@@ -234,6 +234,13 @@ export default function BookingDetail() {
             ? `${heads}${suffix}`
             : `${heads}${suffix}`;
         })()} />
+        {b.contact2_name && (
+          <>
+            <Info label="2nd Contact" value={b.contact2_name} />
+            <Info label="2nd Phone" value={b.contact2_phone || "—"} link={b.contact2_phone ? `tel:${b.contact2_phone}` : undefined} />
+            <Info label="2nd Email" value={b.contact2_email || "—"} link={b.contact2_email ? `mailto:${b.contact2_email}` : undefined} />
+          </>
+        )}
       </div>
 
       {/* Pipeline + current status */}

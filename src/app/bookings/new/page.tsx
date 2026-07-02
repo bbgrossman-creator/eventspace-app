@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase, logActivity } from "@/lib/supabase";
 import { runActionAutomation } from "@/lib/automation";
 import { loadPolicies, Policies, changeoverMinutes } from "@/lib/policies";
-import { Booking, findConflicts, fmtTime, HOLD_HOURS } from "@/lib/workflow";
+import { Booking, findConflicts, fmtTime, fmtDate, stageFor, HOLD_HOURS } from "@/lib/workflow";
 import { PRICING } from "@/lib/pricing";
 import { sendEmail } from "@/lib/sendEmail";
 import { FULL_SERVICE_MENU, BUFFET_MENU, BUSINESS_PHONE } from "@/lib/automation";
@@ -23,9 +24,11 @@ export default function NewInquiry() {
   const [all, setAll] = useState<Booking[]>([]);
   const [f, setF] = useState({
     contact_name: "", phone: "", email: "",
+    contact2_name: "", contact2_phone: "", contact2_email: "",
     event_type: "", event_date: "", event_time: "19:00", notes: "", expected_hours: "",
     deposit_ready: "", card_last4: "",
   });
+  const [showContact2, setShowContact2] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [guides, setGuides] = useState<PackageGuide[]>([]);
@@ -49,6 +52,17 @@ export default function NewInquiry() {
           bufferMin: changeoverMinutes(pol),
         })
       : (f.event_date && f.event_time ? findConflicts(all, f.event_date, f.event_time) : []);
+
+  // Duplicate-inquiry check: same phone (or email) already on an active booking.
+  // Warns — doesn't block — so a spouse calling twice doesn't create a silent double.
+  const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
+  const dupes = (() => {
+    const ph = digits(f.phone); const em = f.email.trim().toLowerCase();
+    if (ph.length < 7 && !em) return [];
+    return all.filter((b) =>
+      b.status !== "cancelled" &&
+      ((ph.length >= 7 && digits(b.phone) === ph) || (!!em && (b.email ?? "").toLowerCase() === em)));
+  })();
 
   function set(k: string, v: string) { setF((p) => ({ ...p, [k]: v })); }
 
@@ -99,6 +113,9 @@ export default function NewInquiry() {
         contact_name: f.contact_name.trim(),
         phone: f.phone.trim() || null,
         email: f.email.trim() || null,
+        contact2_name: f.contact2_name.trim() || null,
+        contact2_phone: f.contact2_phone.trim() || null,
+        contact2_email: f.contact2_email.trim() || null,
         event_type: f.event_type || null,
         event_date: f.event_date || null,
         event_time: f.event_time || null,
@@ -165,6 +182,31 @@ export default function NewInquiry() {
             <input className="field" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="(555) 555-5555" /></div>
           <div><label className="label">Email</label>
             <input className="field" type="email" value={f.email} onChange={(e) => set("email", e.target.value)} /></div>
+
+          {/* Optional second contact — hidden until needed (e.g. spouse, event planner) */}
+          {!showContact2 ? (
+            <div className="sm:col-span-2">
+              <button type="button" className="text-xs text-navy underline" onClick={() => setShowContact2(true)}>
+                ＋ Add a second contact
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="sm:col-span-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-500">Second contact</span>
+                <button type="button" className="text-xs text-slate-400 underline"
+                  onClick={() => { setShowContact2(false); set("contact2_name", ""); set("contact2_phone", ""); set("contact2_email", ""); }}>
+                  remove
+                </button>
+              </div>
+              <div><label className="label">Name</label>
+                <input className="field" value={f.contact2_name} onChange={(e) => set("contact2_name", e.target.value)} /></div>
+              <div><label className="label">Phone</label>
+                <input className="field" value={f.contact2_phone} onChange={(e) => set("contact2_phone", e.target.value)} /></div>
+              <div><label className="label">Email</label>
+                <input className="field" type="email" value={f.contact2_email} onChange={(e) => set("contact2_email", e.target.value)} /></div>
+            </>
+          )}
           <div><label className="label">Event type</label>
             <select className="field" value={f.event_type} onChange={(e) => set("event_type", e.target.value)}>
               <option value="">— Select —</option>
@@ -185,6 +227,19 @@ export default function NewInquiry() {
           <div className="sm:col-span-2"><label className="label">Notes</label>
             <textarea className="field" rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></div>
         </div>
+
+        {dupes.length > 0 && (
+          <div className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
+            <p className="font-bold mb-1">👥 This contact already has {dupes.length === 1 ? "a booking" : `${dupes.length} bookings`}</p>
+            {dupes.slice(0, 4).map((d) => (
+              <p key={d.id} className="text-xs">
+                • <Link href={`/bookings/${d.id}`} className="underline" target="_blank">#{d.invoice_num} {d.contact_name}</Link>
+                {" — "}{fmtDate(d.event_date)}{d.event_date === f.event_date ? " (SAME DATE — possible duplicate!)" : ""} · {stageFor(d.status).label}
+              </p>
+            ))}
+            <p className="text-[11px] mt-1 text-amber-700">If this is the same request, open the existing booking instead of creating a double.</p>
+          </div>
+        )}
 
         {f.event_date && (
           conflicts.length === 0 ? (

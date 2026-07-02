@@ -84,6 +84,9 @@ export interface Booking {
   event_name: string | null;
   contact_name: string;
   email: string | null;
+  contact2_name?: string | null;
+  contact2_phone?: string | null;
+  contact2_email?: string | null;
   phone: string | null;
   event_date: string | null;     // 'YYYY-MM-DD'
   event_time: string | null;     // 'HH:MM'
