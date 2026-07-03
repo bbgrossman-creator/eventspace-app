@@ -24,7 +24,7 @@ import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
 import TodoPanel from "@/components/TodoPanel";
-import { STAGE_TO_STATUS, hasMenu, TIMELINE_MILESTONES, STAGES, findConflicts } from "@/lib/workflow";
+import { STAGE_TO_STATUS, hasMenu, TIMELINE_MILESTONES, STAGES, findConflicts, HOLD_HOURS } from "@/lib/workflow";
 
 interface Payment {
   id: string; payment_type: string; method: string; check_number?: string | null;
@@ -104,6 +104,47 @@ export default function BookingDetail() {
       actualHeads: f.actualHeads,
     };
   }, [b, charges, payments]);
+
+  /** Convert a lead into a real reservation: mint the next invoice number,
+   *  start the 24h hold clock, and run the conflict check NOW — the moment a
+   *  date is actually being claimed. All history stays (same row). */
+  async function convertLead() {
+    if (!b) return;
+    if (!b.event_date || !b.event_time) {
+      setMsg({ ok: false, text: "Set the event date & time first (✏️ Edit Details) — a reservation needs a real date." });
+      return;
+    }
+    const [{ data: all }, pol] = await Promise.all([
+      supabase.from("bookings").select("*").neq("status", "cancelled"),
+      loadPolicies(),
+    ]);
+    const clashes = findConflicts((all ?? []) as Booking[], b.event_date, b.event_time, b.id, {
+      newHours: (b as { expected_hours?: number | null }).expected_hours ?? pol.service_hours,
+      defaultHours: pol.service_hours,
+      bufferMin: changeoverMinutes(pol),
+    });
+    const asConflict = clashes.length > 0;
+    if (asConflict) {
+      const list = clashes.map((c) => `#${c.invoice_num} ${c.contact_name} at ${fmtTime(c.event_time)}`).join(", ");
+      if (!confirm(`This date/time clashes with: ${list}.\n\nConvert anyway as a CONFLICT for review?`)) return;
+    }
+    const { data: invData, error: invErr } = await supabase.rpc("next_invoice_num");
+    if (invErr) { setMsg({ ok: false, text: invErr.message }); return; }
+    const newInv = invData as string;
+    const oldNum = b.invoice_num;
+    const holdExpires = new Date(); holdExpires.setHours(holdExpires.getHours() + HOLD_HOURS);
+    const { error } = await supabase.from("bookings").update({
+      invoice_num: newInv,
+      status: asConflict ? "conflict" : "on_hold",
+      hold_expires: holdExpires.toISOString(),
+    }).eq("id", b.id);
+    if (error) { setMsg({ ok: false, text: error.message }); return; }
+    await logActivity(b.id, newInv, "Lead Converted to Hold",
+      `${oldNum} → #${newInv}. 24-hour hold started${asConflict ? " ⚠️ as CONFLICT (date clash at conversion)" : ""}. Full lead history retained.`,
+      asConflict ? "WARNING" : "SUCCESS");
+    setMsg({ ok: true, text: `Converted — now #${newInv} ✓` });
+    load();
+  }
 
   async function setStatus(status: Status, action: string, details = "") {
     if (!b) return;
@@ -296,7 +337,12 @@ export default function BookingDetail() {
 
       {/* Optional touchpoints: walkthrough / tasting / contract / follow-up.
           Hidden until the rep adds one — never a pipeline stage. */}
-      <TouchpointsPanel b={b} onChange={load} />
+      <TouchpointsPanel b={b} onChange={load} onConvert={convertLead}
+        onMarkLost={() => {
+          if (confirm("Mark this lead as lost? You can reopen it later.")) {
+            setStatus("lead_lost", "Lead Marked Lost", "Opportunity closed — did not convert.");
+          }
+        }} />
 
       {/* This booking's to-dos — same rows as the Daily Ops To-Do rail,
           filtered to this booking; new ones are pre-linked to it. */}
@@ -524,6 +570,19 @@ export default function BookingDetail() {
           )}
           {(b.status === "completed" || b.status === "paid_awaiting_event") && (
             <button className="btn-warn" onClick={() => setPanel(panel === "amend" ? "" : "amend")}>📝 Add Amendment (extra guests/charges)</button>
+          )}
+          {b.status === "lead" && (
+            <>
+              <button className="btn-primary" onClick={convertLead}>⏳ Convert to 24-Hour Hold</button>
+              <button className="btn-ghost" onClick={() => {
+                if (confirm("Mark this lead as lost? You can reopen it later.")) {
+                  setStatus("lead_lost", "Lead Marked Lost", "Opportunity closed — did not convert.");
+                }
+              }}>🚫 Mark Lost</button>
+            </>
+          )}
+          {b.status === "lead_lost" && (
+            <button className="btn-ghost" onClick={() => setStatus("lead", "Lead Reopened", "Back to active prospects.")}>🌱 Reopen Lead</button>
           )}
           {b.status !== "cancelled" && (
             <button className="btn-ghost" onClick={() => setPanel(panel === "edit" ? "" : "edit")}>✏️ Edit Details</button>
@@ -1171,13 +1230,23 @@ interface Touchpoint {
 /** Optional, booking-tied appointments (walkthrough / tasting / contract /
  *  follow-up). Hidden until added; completing a tasting offers to finalize
  *  the menu, since a tasting is usually the menu's finalizer when it happens. */
-function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
+function TouchpointsPanel({ b, onChange, onConvert, onMarkLost }: {
+  b: Booking; onChange: () => void;
+  onConvert?: () => void; onMarkLost?: () => void;
+}) {
   const [items, setItems] = useState<Touchpoint[]>([]);
   const [adding, setAdding] = useState(false);
   const [kind, setKind] = useState("walkthrough");
   const [when, setWhen] = useState("");
   const [notes, setNotes] = useState("");
   const [tpErr, setTpErr] = useState("");
+  const [tpAssignee, setTpAssignee] = useState("");
+  const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
+  const [leadNext, setLeadNext] = useState(false);
+  useEffect(() => {
+    supabase.from("staff").select("id,name").eq("active", true).order("sort_order")
+      .then(({ data }) => setStaff((data ?? []) as { id: string; name: string }[]));
+  }, []);
 
   // Which touchpoint types make sense at this booking's stage:
   // - tasting: only while the menu is still open (it's the menu's finalizer)
@@ -1186,7 +1255,7 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
   const idx = stageFor(b.status).stageIndex;
   const allowed = Object.keys(TP_META).filter((k) => {
     if (k === "followup") return true;
-    if (b.status === "cancelled") return false;
+    if (b.status === "cancelled" || b.status === "lead_lost") return false;
     if (k === "tasting") return !hasMenu(b) && idx <= 2;
     return idx <= 5; // walkthrough, contract
   });
@@ -1205,6 +1274,7 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
     const { error } = await supabase.from("touchpoints").insert({
       booking_id: b.id, invoice_num: b.invoice_num, kind,
       scheduled_at: when || null, notes: notes.trim() || null,
+      assignee: tpAssignee || null,
     });
     if (error) { setTpErr(`Couldn't save: ${error.message} — run the touchpoints SQL if the table is missing.`); return; }
     await logActivity(b.id, b.invoice_num, `${TP_META[kind].label} Scheduled`,
@@ -1215,6 +1285,7 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
   async function complete(t: Touchpoint) {
     await supabase.from("touchpoints").update({ status: "completed" }).eq("id", t.id);
     await logActivity(b.id, b.invoice_num, `${TP_META[t.kind]?.label ?? t.kind} Completed`, t.notes ?? "");
+    if (t.kind === "walkthrough" && b.status === "lead") setLeadNext(true);
     if (t.kind === "tasting" && !hasMenu(b) &&
         confirm("Tasting completed — also mark the menu as finalized?")) {
       await supabase.from("bookings").update({ menu_completed: true }).eq("id", b.id);
@@ -1247,11 +1318,32 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
         <h3 className="font-display font-bold text-sm">📌 Touchpoints</h3>
         {!adding && <button className="text-xs text-navy underline" onClick={() => setAdding(true)}>＋ Add</button>}
       </div>
+
+      {leadNext && (
+        <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 p-3 mb-3">
+          <p className="text-xs font-semibold text-emerald-800 mb-2">✅ Walkthrough done — what's next for this lead?</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {onConvert && (
+              <button className="btn-primary !py-1 !px-3 !text-[11px]" onClick={() => { setLeadNext(false); onConvert(); }}>⏳ Create 24-Hour Hold</button>
+            )}
+            <button className="text-[11px] font-semibold rounded-lg border border-navy/20 text-navy px-3 py-1 hover:bg-navy/5"
+              onClick={() => { setLeadNext(false); setKind("followup"); setAdding(true); }}>☎️ Schedule Follow-up</button>
+            <button className="text-[11px] font-semibold rounded-lg border border-navy/20 text-navy px-3 py-1 hover:bg-navy/5"
+              onClick={() => { setLeadNext(false); setKind("walkthrough"); setAdding(true); }}>🚶 Another Walkthrough</button>
+            {onMarkLost && (
+              <button className="text-[11px] font-semibold rounded-lg border border-red-200 text-red-600 px-3 py-1 hover:bg-red-50"
+                onClick={() => { setLeadNext(false); onMarkLost(); }}>🚫 Mark Lost</button>
+            )}
+            <button className="text-[11px] text-slate-500 underline px-2" onClick={() => setLeadNext(false)}>Leave as prospect</button>
+          </div>
+        </div>
+      )}
       {items.map((t) => (
         <div key={t.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 last:border-0 text-sm flex-wrap">
           <span className={t.status === "completed" ? "line-through text-slate-400" : ""}>
             {TP_META[t.kind]?.icon} <b>{TP_META[t.kind]?.label ?? t.kind}</b>
             {t.scheduled_at ? ` — ${fmtDate(String(t.scheduled_at).slice(0, 10))} ${fmtTime(String(t.scheduled_at).slice(11, 16))}` : " — no time set"}
+            {(t as { assignee?: string | null }).assignee ? <span className="text-slate-500"> · 👤 {(t as { assignee?: string | null }).assignee}</span> : ""}
             {t.notes ? <span className="text-slate-500"> · {t.notes}</span> : ""}
           </span>
           <span className="flex gap-2 text-xs">
@@ -1263,13 +1355,18 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
         </div>
       ))}
       {adding && (
-        <div className="mt-3 grid sm:grid-cols-4 gap-2 items-end">
+        <div className="mt-3 grid sm:grid-cols-5 gap-2 items-end">
           <div><label className="label">Type</label>
             <select className="field" value={kind} onChange={(e) => setKind(e.target.value)}>
               {allowed.map((k) => <option key={k} value={k}>{TP_META[k].icon} {TP_META[k].label}</option>)}
             </select></div>
           <div><label className="label">When</label>
             <input className="field" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></div>
+          <div><label className="label">With</label>
+            <select className="field" value={tpAssignee} onChange={(e) => setTpAssignee(e.target.value)}>
+              <option value="">— Anyone —</option>
+              {staff.map((st) => <option key={st.id} value={st.name}>{st.name}</option>)}
+            </select></div>
           <div><label className="label">Note</label>
             <input className="field" value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder={kind === "followup" ? "e.g. call back re: pricing" : "optional"} /></div>
@@ -1277,9 +1374,9 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
             <button className="btn-primary !py-2 !px-4 text-sm" onClick={add}>Add</button>
             <button className="btn-ghost !py-2 !px-3 text-sm" onClick={() => setAdding(false)}>Cancel</button>
           </div>
-          {tpErr && <p className="text-red-600 text-xs sm:col-span-4">{tpErr}</p>}
+          {tpErr && <p className="text-red-600 text-xs sm:col-span-5">{tpErr}</p>}
           {blocked.length > 0 && (
-            <p className="text-[10px] text-slate-400 sm:col-span-4">
+            <p className="text-[10px] text-slate-400 sm:col-span-5">
               Not available at this stage: {blocked.map((k) => TP_META[k].label).join(", ")}
               {blocked.includes("tasting") && hasMenu(b) ? " (menu already finalized)" : ""}
             </p>

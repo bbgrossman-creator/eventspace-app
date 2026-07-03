@@ -16,6 +16,7 @@ type CalItem = {
   booking?: Booking; time: string;
   icon?: string; label?: string; sub?: string; id: string;
   task?: TaskRow; // task items carry their row for links/assignee/complete
+  assignee?: string | null;
 };
 
 const TP_ICONS: Record<string, string> = {
@@ -27,7 +28,7 @@ const TP_LABELS: Record<string, string> = {
 
 interface TouchRow {
   id: string; booking_id: string; kind: string; scheduled_at: string | null;
-  status: string; notes: string | null; bookings: Booking | null;
+  status: string; notes: string | null; assignee?: string | null; bookings: Booking | null;
 }
 interface TaskRow {
   id: string; title: string; due_date: string | null; due_time: string | null; done: boolean;
@@ -91,8 +92,8 @@ export default function Calendar() {
     // cleanly here), then dedupe.
     const s = fmtISO(range.start), e = fmtISO(range.end);
     Promise.all([
-      supabase.from("bookings").select("*").gte("event_date", s).lte("event_date", e).neq("status", "cancelled"),
-      supabase.from("bookings").select("*").gte("menu_discussion_date", s + "T00:00:00").lte("menu_discussion_date", e + "T23:59:59").neq("status", "cancelled"),
+      supabase.from("bookings").select("*").gte("event_date", s).lte("event_date", e).not("status", "in", '("cancelled","lead","lead_lost")'),
+      supabase.from("bookings").select("*").gte("menu_discussion_date", s + "T00:00:00").lte("menu_discussion_date", e + "T23:59:59").not("status", "in", '("cancelled","lead","lead_lost")'),
     ]).then(([ev, calls]) => {
       const map = new Map<string, Booking>();
       for (const b of [...(ev.data ?? []), ...(calls.data ?? [])] as Booking[]) map.set(b.id, b);
@@ -173,7 +174,7 @@ export default function Calendar() {
         push(raw.slice(0, 10), {
           kind: "touch", booking: t.bookings ?? undefined, id: `tp-${t.id}`,
           time: raw.slice(11, 16),
-          icon: TP_ICONS[t.kind] ?? "📌", label: TP_LABELS[t.kind] ?? t.kind, sub: t.notes ?? "",
+          icon: TP_ICONS[t.kind] ?? "📌", label: TP_LABELS[t.kind] ?? t.kind, sub: t.notes ?? "", assignee: t.assignee ?? null,
         });
       }
       for (const t of tasks) {
@@ -354,6 +355,7 @@ function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDa
                         <div className="font-medium">{b.contact_name}</div>
                         <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
                           <div>#{b.invoice_num} · {fmtTime(item.time)}</div>
+                          {item.assignee && <div>👤 {item.assignee}</div>}
                           {item.sub && <div className="whitespace-pre-wrap">📝 {item.sub}</div>}
                           {b.event_date && <div>Event: {fmtDate(b.event_date)}</div>}
                         </div>

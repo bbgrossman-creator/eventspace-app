@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type Status =
+  | "lead"
+  | "lead_lost"
   | "on_hold"
   | "waitlisted"
   | "conflict"
@@ -29,6 +31,8 @@ export interface StageInfo {
 }
 
 export const STAGES: Record<Status, StageInfo> = {
+  lead:           { status: "lead",           label: "Lead — Sales Opportunity",   action: "Schedule Next Touchpoint", icon: "🌱", color: "#D1FAE5", textColor: "#065F46", stageIndex: -1 },
+  lead_lost:      { status: "lead_lost",      label: "Lead — Lost",                action: "Reopen Lead",              icon: "🚫", color: "#F1F5F9", textColor: "#64748B", stageIndex: -1 },
   on_hold:        { status: "on_hold",        label: "On Hold — Collect Deposit",  action: "Collect Deposit",          icon: "💰", color: "#FEF3C7", textColor: "#92400E", stageIndex: 0 },
   conflict:       { status: "conflict",       label: "Conflict — Review Required", action: "Review Conflict",          icon: "⚠️", color: "#FEE2E2", textColor: "#991B1B", stageIndex: 0 },
   waitlisted:     { status: "waitlisted",     label: "Waitlisted — Awaiting Holder", action: "Awaiting Holder Decision", icon: "⏳", color: "#FEF3C7", textColor: "#92400E", stageIndex: 0 },
@@ -74,7 +78,7 @@ export function stageFor(status: string): StageInfo {
 }
 
 export const ACTIVE_STATUSES: Status[] = Object.keys(STAGES).filter(
-  (s) => s !== "completed" && s !== "cancelled"
+  (s) => s !== "completed" && s !== "cancelled" && s !== "lead_lost"
 ) as Status[];
 
 // ─── Booking record shape (matches Supabase schema) ───
@@ -219,14 +223,25 @@ export function parseLocalDate(d: string): Date {
   return new Date(d + "T12:00:00");
 }
 
-export function buildTasks(bookings: Booking[], opts?: { menuOverdueHours?: number }): Task[] {
+export function buildTasks(bookings: Booking[], opts?: { menuOverdueHours?: number; leadsWithTouchpoints?: Set<string> }): Task[] {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const now = new Date();
   const tasks: Task[] = [];
   const overdueHrs = opts?.menuOverdueHours ?? DISCUSSION_OVERDUE_HOURS;
 
   for (const b of bookings) {
-    if (b.status === "completed" || b.status === "cancelled") continue;
+    if (b.status === "completed" || b.status === "cancelled" || b.status === "lead_lost") continue;
+    if (b.status === "lead") {
+      // A lead with nothing on the calendar is a prospect quietly rotting.
+      if (!opts?.leadsWithTouchpoints?.has(b.id)) {
+        tasks.push({
+          booking: b, stage: stageFor("lead"), daysUntil: 999, priority: "MEDIUM",
+          reason: "🌱 Lead — nothing scheduled. No walkthrough, call, or follow-up on the calendar for this opportunity.",
+          actionLabel: "Review Lead",
+        });
+      }
+      continue; // leads never enter the booking-stage task logic
+    }
     const stage = stageFor(b.status);
 
     let daysUntil = 999;
@@ -330,6 +345,7 @@ export function findConflicts(
   return bookings.filter((b) => {
     if (excludeId && b.id === excludeId) return false;
     if (b.status === "cancelled" || b.status === "hold_expired") return false;
+    if (b.status === "lead" || b.status === "lead_lost") return false; // opportunities don't claim dates
     if (b.event_date !== eventDate) return false;
     const exMins = timeToMinutes(b.event_time);
     if (newMins === null || exMins === null) return true; // unknown time → flag it

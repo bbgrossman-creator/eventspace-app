@@ -24,7 +24,10 @@ export default function DailyOps() {
     if (error) { setErr(error.message); return; }
     const bookings = (data ?? []) as Booking[];
     const pol = await loadPolicies();
-    setTasks(buildTasks(bookings, { menuOverdueHours: pol.menu_call_overdue_hours }));
+    const { data: tp } = await supabase.from("touchpoints")
+      .select("booking_id").eq("status", "scheduled");
+    const leadsWithTouchpoints = new Set((tp ?? []).map((t) => t.booking_id as string));
+    setTasks(buildTasks(bookings, { menuOverdueHours: pol.menu_call_overdue_hours, leadsWithTouchpoints }));
     setExpiredHolds(bookings.filter((b) =>
       b.status === "hold_expired" || (b.status === "on_hold" && isHoldExpired(b))));
 

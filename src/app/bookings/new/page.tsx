@@ -38,6 +38,15 @@ export default function NewInquiry() {
     deposit_ready: "", card_last4: "",
   });
   const [showContact2, setShowContact2] = useState(false);
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const [wtWhen, setWtWhen] = useState("");
+  const [wtAssignee, setWtAssignee] = useState("");
+  const [wtNotes, setWtNotes] = useState("");
+  const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    supabase.from("staff").select("id,name").eq("active", true).order("sort_order")
+      .then(({ data }) => setStaff((data ?? []) as { id: string; name: string }[]));
+  }, []);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [guides, setGuides] = useState<PackageGuide[]>([]);
@@ -74,6 +83,53 @@ export default function NewInquiry() {
   })();
 
   function set(k: string, v: string) { setF((p) => ({ ...p, [k]: v })); }
+
+  async function nextLeadNum(): Promise<string> {
+    const { data } = await supabase.from("bookings").select("invoice_num")
+      .like("invoice_num", "L-%").order("invoice_num", { ascending: false }).limit(1);
+    const last = data?.[0]?.invoice_num;
+    const n = last && /^L-\d+$/.test(last) ? parseInt(last.slice(2), 10) + 1 : 1001;
+    return `L-${n}`;
+  }
+
+  /** Save as a sales opportunity: L-number, status "lead" — no hold, no real
+   *  invoice number, never enters conflict detection. Optionally schedules the
+   *  first walkthrough in the same stroke. */
+  async function createLead(withWalkthrough: boolean) {
+    setErr("");
+    if (!f.contact_name.trim()) { setErr("Customer name is required."); return; }
+    if (!f.phone.trim() && !f.email.trim()) { setErr("Enter a phone number or email."); return; }
+    if (withWalkthrough && !wtWhen) { setErr("Pick a date & time for the walkthrough."); return; }
+    setSaving(true);
+    const invoice_num = await nextLeadNum();
+    const { data, error } = await supabase.from("bookings").insert({
+      invoice_num, status: "lead",
+      contact_name: f.contact_name.trim(),
+      phone: f.phone.trim() || null, email: f.email.trim() || null,
+      contact2_name: f.contact2_name.trim() || null,
+      contact2_phone: f.contact2_phone.trim() || null,
+      contact2_email: f.contact2_email.trim() || null,
+      event_type: f.event_type || null,
+      event_date: f.event_date || null, event_time: f.event_time || null,
+      expected_hours: f.expected_hours ? Number(f.expected_hours) : null,
+      notes: f.notes.trim() || null,
+      hold_expires: null,
+    }).select().single();
+    if (error || !data) { setErr(error?.message ?? "Couldn't save the lead."); setSaving(false); return; }
+    await logActivity(data.id, invoice_num, "Lead Created",
+      `Sales opportunity${f.event_date ? ` — estimated date ${f.event_date}` : ""}${f.event_type ? ` · ${f.event_type}` : ""}. No date reserved.`);
+    if (withWalkthrough) {
+      const { error: tpErr } = await supabase.from("touchpoints").insert({
+        booking_id: data.id, invoice_num, kind: "walkthrough",
+        scheduled_at: wtWhen, notes: wtNotes.trim() || null, assignee: wtAssignee || null,
+      });
+      if (!tpErr) {
+        await logActivity(data.id, invoice_num, "Walkthrough Scheduled",
+          `${new Date(wtWhen).toLocaleString()}${wtAssignee ? ` · with ${wtAssignee}` : ""}`);
+      }
+    }
+    router.push(`/bookings/${data.id}`);
+  }
 
   async function createBooking() {
     setErr("");
@@ -385,11 +441,44 @@ export default function NewInquiry() {
 
         {err && <p className="text-sm text-red-600 font-medium">{err}</p>}
 
-        <div className="flex gap-3 pt-1">
-          <button onClick={createBooking} disabled={saving} className="btn-primary flex-1">
-            {saving ? "Creating…" : conflicts.length > 0 ? "Create as Conflict (review)" : "Create 24-Hour Hold"}
+        {/* Three intents, three weights: reserving a date (primary), coming to
+            see the room (outlined), or just staying in touch (text). The first
+            claims the date; the other two create an L-series lead. */}
+        <div className="flex gap-3 pt-1 flex-wrap items-center">
+          <button onClick={createBooking} disabled={saving} className="btn-primary flex-1 min-w-[180px]">
+            {saving ? "Working…" : conflicts.length > 0 ? "Reserve Date — Conflict (review)" : "Reserve Date (24-Hour Hold)"}
+          </button>
+          <button onClick={() => setShowWalkthrough((v) => !v)} disabled={saving}
+            className="flex-1 min-w-[180px] rounded-xl border-2 border-navy text-navy font-semibold py-2.5 px-4 hover:bg-navy/5 transition-colors">
+            🚶 Schedule Walkthrough
+          </button>
+          <button onClick={() => createLead(false)} disabled={saving}
+            className="text-sm font-semibold text-slate-500 hover:text-navy underline underline-offset-2 px-2">
+            Save as Lead
           </button>
         </div>
+
+        {showWalkthrough && (
+          <div className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-4 space-y-3">
+            <p className="text-xs text-slate-500">
+              Creates a <b>lead</b> (L-number — no hold, no invoice) with the walkthrough on the calendar. The date above is optional and stays an estimate.
+            </p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div><label className="label">Walkthrough date & time *</label>
+                <input className="field" type="datetime-local" value={wtWhen} onChange={(e) => setWtWhen(e.target.value)} /></div>
+              <div><label className="label">Salesperson</label>
+                <select className="field" value={wtAssignee} onChange={(e) => setWtAssignee(e.target.value)}>
+                  <option value="">— Unassigned —</option>
+                  {staff.map((st) => <option key={st.id} value={st.name}>{st.name}</option>)}
+                </select></div>
+              <div><label className="label">Notes</label>
+                <input className="field" value={wtNotes} onChange={(e) => setWtNotes(e.target.value)} placeholder="e.g. wants to see the hall set for 150" /></div>
+            </div>
+            <button onClick={() => createLead(true)} disabled={saving} className="btn-primary !py-2">
+              {saving ? "Working…" : "Create Lead + Schedule Walkthrough"}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card p-6 mt-6">
