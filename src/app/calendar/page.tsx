@@ -231,8 +231,9 @@ export default function Calendar() {
 // ─── WEEK VIEW (rich cards) ───
 function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, CalItem[]>; days: number[] }) {
   return (
-    <div className="grid gap-3"
-      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+    <div
+      className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-[repeat(var(--cd),minmax(0,1fr))]"
+      style={{ "--cd": days.length } as React.CSSProperties}>
       {days.map((i) => {
         const name = DAYS[i];
         const date = new Date(anchor); date.setDate(date.getDate() + i);
