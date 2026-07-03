@@ -291,6 +291,10 @@ function PopActions({ bookingId, taskId, onCompleteTask }: {
 
 // ─── WEEK VIEW (rich cards) ───
 function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDate: Map<string, CalItem[]>; days: number[]; onCompleteTask: (id: string) => void }) {
+  // Responsive density: fewer visible days = wider columns = richer cards.
+  // ≤5 days: rich (P1–P4) · 6 days: medium (P1–P3) · 7 days: compact (P1–P2).
+  const density: "rich" | "medium" | "compact" =
+    days.length <= 5 ? "rich" : days.length === 6 ? "medium" : "compact";
   return (
     <div
       className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-[repeat(var(--cd),minmax(0,1fr))]"
@@ -325,23 +329,18 @@ function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDa
                         <PopActions bookingId={tk?.booking_id} taskId={tk?.id} onCompleteTask={onCompleteTask} />
                       </div>
                     }>
-                    <div className="block rounded-lg border border-slate-300 border-dashed bg-slate-50 p-3">
-                      <div className="flex justify-between items-baseline">
-                        <span className="font-display font-bold text-slate-600 text-sm">📝 To-Do</span>
-                        {item.time && <span className="text-xs font-semibold text-slate-500">by {fmtTime(item.time)}</span>}
+                    <div className="block rounded-lg ring-1 ring-[#F9BFAE] bg-[#FFF3EE] p-3">
+                      <div className="flex justify-between items-baseline gap-2">
+                        <span className="text-[11px] font-bold text-[#B5492F]">📋 To-Do</span>
+                        {item.time && <span className="text-[11px] font-semibold text-[#B5492F] whitespace-nowrap">by {fmtTime(item.time)}</span>}
                       </div>
-                      <div className="text-sm truncate">{item.label}</div>
-                      <div className="text-[11px] text-slate-500 truncate">
-                        {tk?.assignee ? `👤 ${tk.assignee}` : ""}
-                        {tk?.booking_id ? (
-                          <>{tk?.assignee ? " · " : ""}
-                            <Link href={`/bookings/${tk.booking_id}`} className="text-navy underline" onClick={(e) => e.stopPropagation()}>
-                              #{tk.invoice_num}
-                            </Link>
-                            {tk.customer ? ` ${tk.customer}` : ""}
-                          </>
-                        ) : null}
-                      </div>
+                      <div className="text-sm font-semibold leading-snug mt-0.5 line-clamp-2">{item.label}</div>
+                      {tk?.assignee && <div className="text-[11px] text-slate-600 mt-0.5">{tk.assignee}</div>}
+                      {density === "rich" && tk?.booking_id && (
+                        <Link href={`/bookings/${tk.booking_id}`} className="text-[11px] text-navy font-semibold hover:underline" onClick={(e) => e.stopPropagation()}>
+                          #{tk.invoice_num}{tk.customer ? ` · ${tk.customer}` : ""}
+                        </Link>
+                      )}
                     </div>
                     </HoverCard>
                   );
@@ -362,13 +361,13 @@ function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDa
                       </div>
                     }>
                     <Link href={`/bookings/${b.id}`}
-                      className="block rounded-lg border-2 border-amber-200 bg-amber-50 p-3 hover:border-amber-400 hover:shadow-md transition-all">
-                      <div className="flex justify-between items-baseline">
-                        <span className="font-display font-bold text-amber-700 text-sm">{item.icon} {item.label}</span>
-                        <span className="text-xs font-semibold text-amber-700">{fmtTime(item.time)}</span>
-                      </div>
-                      <div className="text-sm font-medium truncate">{b.contact_name}</div>
-                      <div className="text-[11px] text-slate-500 truncate">#{b.invoice_num}{item.sub ? ` · ${item.sub}` : ""}</div>
+                      className="block rounded-lg ring-1 ring-[#E4C87F] bg-[#FDF6E7] p-3 hover:ring-gold hover:shadow-md transition-all">
+                      <div className="font-display font-bold text-[#8A6A1F] text-sm leading-tight">{item.icon} {item.label}</div>
+                      <div className="text-sm font-medium truncate mt-0.5">{b.contact_name}</div>
+                      <div className="text-[11px] font-semibold text-[#8A6A1F] mt-0.5">{fmtTime(item.time)}</div>
+                      {density === "rich" && (
+                        <div className="text-[11px] text-slate-500 truncate">#{b.invoice_num}</div>
+                      )}
                     </Link>
                     </HoverCard>
                   );
@@ -389,13 +388,15 @@ function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDa
                       </div>
                     }>
                     <Link href={`/bookings/${b.id}`}
-                      className="block rounded-lg border-2 border-pink-200 bg-pink-50 p-3 hover:border-pink-400 hover:shadow-md transition-all">
-                      <div className="flex justify-between items-baseline">
-                        <span className="font-display font-bold text-pink-700 text-sm">📞 Menu Call</span>
-                        <span className="text-xs font-semibold text-pink-700">{fmtTime(item.time)}</span>
+                      className="block rounded-lg ring-1 ring-purple-200 bg-purple-50 p-3 hover:ring-purple-400 hover:shadow-md transition-all">
+                      <div className="flex justify-between items-baseline gap-2">
+                        <span className="font-display font-bold text-purple-700 text-sm">📞 Menu Call</span>
+                        <span className="text-[11px] font-semibold text-purple-700 whitespace-nowrap">{fmtTime(item.time)}</span>
                       </div>
-                      <div className="text-sm font-medium truncate">{b.contact_name}</div>
-                      <div className="text-[11px] text-slate-500 truncate">#{b.invoice_num} · event {b.event_date ? parseLocalDate(b.event_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "TBD"}</div>
+                      <div className="text-sm font-medium truncate mt-0.5">{b.contact_name}</div>
+                      {density !== "compact" && (
+                        <div className="text-[11px] text-slate-500 truncate">#{b.invoice_num} · event {b.event_date ? parseLocalDate(b.event_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "TBD"}</div>
+                      )}
                     </Link>
                     </HoverCard>
                   );
@@ -420,23 +421,27 @@ function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDa
                     </div>
                   }>
                   <Link href={`/bookings/${b.id}`}
-                    className="block rounded-lg border border-slate-200 p-3 hover:border-navy hover:shadow-md transition-all"
+                    className="block rounded-lg ring-1 ring-slate-200 p-3 hover:ring-navy hover:shadow-md transition-all"
                     style={{ background: st.color + "55" }}>
-                    <div className="flex justify-between items-baseline">
-                      <span className="font-display font-bold text-navy text-sm">#{b.invoice_num}</span>
-                      <span className="text-xs font-semibold">{fmtTime(item.time)}</span>
+                    {/* P1: customer + time (customer is king) */}
+                    <div className="flex justify-between items-baseline gap-2">
+                      <span className="text-[11px] font-bold text-navy">#{b.invoice_num}</span>
+                      <span className="text-[11px] font-semibold whitespace-nowrap">{fmtTime(item.time)}</span>
                     </div>
-                    <div className="text-sm font-medium truncate">{b.contact_name}</div>
-                    <div className="text-[11px] text-slate-600 truncate">{b.event_name || b.event_type}</div>
-                    <div className="text-[11px] mt-1">{menuBadge(b.menu_type)} · {(() => {
-                      const g = deriveGuests(b);
-                      const heads = (g.gendered ? g.men + g.women : g.adults) + g.children;
-                      return heads > 0 ? `${heads} guests` : "? guests";
-                    })()}</div>
-                    <div className="mt-2 space-y-1">
-                      <StatusPipeline currentStage={st.stageIndex} compact />
-                      <div className="text-[10px] font-semibold truncate" style={{ color: st.textColor }}>{st.icon} {st.action}</div>
-                    </div>
+                    <div className="font-display font-bold text-[15px] leading-tight truncate mt-0.5">{b.contact_name}</div>
+                    {/* P2: event type */}
+                    <div className="text-xs text-slate-600 truncate">{b.event_name || b.event_type}</div>
+                    {/* P3: status / next action */}
+                    {density !== "compact" && (
+                      <div className="text-[10px] font-semibold truncate mt-1" style={{ color: st.textColor }}>{st.icon} {st.action}</div>
+                    )}
+                    {/* P4: guests + menu + pipeline — widest columns only */}
+                    {density === "rich" && (
+                      <>
+                        <div className="text-[11px] text-slate-500 mt-0.5">{menuBadge(b.menu_type)} · {heads}</div>
+                        <div className="mt-1.5"><StatusPipeline currentStage={st.stageIndex} compact /></div>
+                      </>
+                    )}
                   </Link>
                   </HoverCard>
                 );
@@ -513,7 +518,7 @@ function MonthView({ anchor, byDate, onDayClick, onCompleteTask }: {
                       <button
                         onClick={(e) => { e.stopPropagation(); if (b) router.push(`/bookings/${b.id}`); }}
                         className="w-full flex items-center gap-1 rounded px-1 py-0.5 text-left hover:ring-1 hover:ring-navy"
-                        style={{ background: item.kind === "task" ? "#F1F5F9" : "#FEF3C7" }}>
+                        style={{ background: item.kind === "task" ? "#FFE9E1" : "#FDF0D5" }}>
                         <span className="text-[10px] shrink-0">{item.icon}</span>
                         <span className="text-[10px] font-medium truncate text-slate-700">
                           {item.time ? fmtTime(item.time).replace(":00", "") + " " : ""}{b ? shortName(b) : item.label}
@@ -524,12 +529,12 @@ function MonthView({ anchor, byDate, onDayClick, onCompleteTask }: {
                   }
                   const b = item.booking!;
                   const isCall = item.kind === "call";
-                  const bg = isCall ? "#FCE7F3" : stageFor(b.status).color;
-                  const fg = isCall ? "#BE185D" : stageFor(b.status).textColor;
+                  const bg = isCall ? "#F3E8FF" : stageFor(b.status).color;
+                  const fg = isCall ? "#7C3AED" : stageFor(b.status).textColor;
                   return (
                     <HoverCard key={`${item.kind}-${b.id}`} pop={
                       <div className="text-sm" onClick={(e) => e.stopPropagation()}>
-                        <div className="font-display font-bold mb-1" style={{ color: isCall ? "#BE185D" : "#1F4E79" }}>
+                        <div className="font-display font-bold mb-1" style={{ color: isCall ? "#7C3AED" : "#1F4E79" }}>
                           {isCall ? "📞 Menu Call" : `#${b.invoice_num}`} · {fmtTime(item.time)}
                         </div>
                         <div className="font-medium">{b.contact_name}</div>

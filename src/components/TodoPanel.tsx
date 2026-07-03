@@ -54,7 +54,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   const [assignee, setAssignee] = useState("");
   const [linkBooking, setLinkBooking] = useState("");
   const [collapsed, setCollapsed] = useState(false);
-  const [showForm, setShowForm] = useState(variant === "rail");
+  const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(async () => {
     let q = supabase.from("tasks").select("*").eq("done", false);
@@ -155,29 +155,34 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
             {showHeader && (
               <div className={`text-[10px] font-bold uppercase tracking-wider mt-2 mb-0.5 ${headColor}`}>{band}</div>
             )}
-            <div className={`flex items-start gap-2 py-1.5 px-2 rounded-lg text-sm ${rail
-              ? (idx % 2 === 0 ? "bg-white/55" : "bg-[#FFD9CE]/45")
-              : (idx % 2 === 0 ? "bg-white" : "bg-slate-50/70")}`}>
+            <div className={`flex items-start gap-2.5 p-2.5 mb-2 rounded-xl text-sm shadow-sm ${rail
+              ? (band === "Overdue" ? "bg-[#FFD3C6]/90 ring-1 ring-[#fa8072]/30"
+                : band === "Today" ? "bg-[#FFE7DF]/90 ring-1 ring-[#fa8072]/20"
+                : "bg-white/80 ring-1 ring-[#fa8072]/10")
+              : (band === "Overdue" ? "bg-red-50 ring-1 ring-red-100"
+                : "bg-white ring-1 ring-slate-900/[0.05]")}`}>
               <input type="checkbox" className="accent-navy mt-0.5"
                 onChange={async () => {
                   await supabase.from("tasks").update({ done: true }).eq("id", t.id);
                   setTodos((prev) => prev.filter((x) => x.id !== t.id));
                 }} />
-              <div className="flex-1 min-w-0">
-                <div className="truncate">{t.title}</div>
-                <div className="text-[11px] text-slate-400 flex gap-2 flex-wrap">
-                  {t.booking_id && !bookingId && (
-                    <Link href={`/bookings/${t.booking_id}`} className="text-navy underline">
-                      #{t.invoice_num ?? "booking"} →
-                    </Link>
-                  )}
-                  {t.assignee && <span>👤 {t.assignee}</span>}
-                  {t.due_date && (
-                    <span className={overdue ? "text-red-600 font-semibold" : ""}>
-                      {fmtDate(t.due_date)}{t.due_time ? ` · by ${fmtTime(t.due_time)}` : ""}{overdue ? " · OVERDUE" : ""}
-                    </span>
-                  )}
-                </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="font-medium leading-snug">{t.title}</div>
+                {(t.assignee || (t.booking_id && !bookingId)) && (
+                  <div className="text-[11px] text-slate-500 flex gap-3">
+                    {t.booking_id && !bookingId && (
+                      <Link href={`/bookings/${t.booking_id}`} className="text-navy font-semibold hover:underline">
+                        #{t.invoice_num ?? "booking"}
+                      </Link>
+                    )}
+                    {t.assignee && <span>{t.assignee}</span>}
+                  </div>
+                )}
+                {t.due_date && (
+                  <div className={`text-[11px] ${overdue ? "text-red-600 font-semibold" : "text-slate-400"}`}>
+                    {fmtDate(t.due_date)}{t.due_time ? ` • ${fmtTime(t.due_time)}` : ""}{overdue ? " • OVERDUE" : ""}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -215,9 +220,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
             </select>
           )}
           <button className="btn-primary !py-1 !px-3.5 text-xs" onClick={add}>Add</button>
-          {!rail && (
-            <button className="text-xs text-slate-400 underline" onClick={() => setShowForm(false)}>cancel</button>
-          )}
+          <button className="text-xs text-slate-400 underline" onClick={() => setShowForm(false)}>cancel</button>
         </div>
         <p className={`text-[10px] ${rail ? "text-[#B45309]/60" : "text-slate-300"}`}>Date/time = due by (deadline). Leave blank for “anytime”.</p>
       </div>
