@@ -117,6 +117,28 @@ export default function PoliciesAdmin() {
               <NumberField value={p.changeover_overlap_hours} onSave={(v) => set("changeover_overlap_hours", v)} min={0} step={0.25} />
             </Row>
           </div>
+
+          <div className="border-t border-slate-100 mt-3 pt-3">
+            <h3 className="font-display font-bold text-xs mb-1">Calendar week</h3>
+            <p className="text-xs text-slate-500 mb-2">Which days appear on the calendar. Untick days you never operate to give the rest more room.</p>
+            <div className="flex gap-3 flex-wrap">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => {
+                const days = (p.calendar_days || "0,1,2,3,4,5,6").split(",").map(Number);
+                const on = days.includes(i);
+                return (
+                  <label key={d} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="checkbox" className="accent-navy" checked={on}
+                      onChange={() => {
+                        const next = on ? days.filter((x) => x !== i) : [...days, i].sort((a, b) => a - b);
+                        if (next.length === 0) return; // never allow zero days
+                        set("calendar_days", next.join(","));
+                      }} />
+                    {d}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>

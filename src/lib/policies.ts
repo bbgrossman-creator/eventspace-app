@@ -18,6 +18,8 @@ export interface Policies {
   service_hours: number;
   bussing_hours: number;
   changeover_overlap_hours: number;
+  /** Comma-separated weekday indices to show on the calendar (0=Sun..6=Sat). */
+  calendar_days: string;
 }
 
 export const POLICY_DEFAULTS: Policies = {
@@ -35,6 +37,7 @@ export const POLICY_DEFAULTS: Policies = {
   service_hours: 2.5,
   bussing_hours: 1,
   changeover_overlap_hours: 0.5,
+  calendar_days: "0,1,2,3,4,5,6",
 };
 
 const NUMERIC: (keyof Policies)[] = [

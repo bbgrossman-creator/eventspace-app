@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { loadPolicies } from "@/lib/policies";
 import { Booking, fmtTime, menuBadge, parseLocalDate, stageFor, deriveGuests } from "@/lib/workflow";
 import StatusPipeline from "@/components/StatusPipeline";
 
@@ -56,6 +57,14 @@ export default function Calendar() {
   const [filter, setFilter] = useState<"both" | "events" | "calls" | "other">("both");
   const [touches, setTouches] = useState<TouchRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [fetchErr, setFetchErr] = useState("");
+  const [calDays, setCalDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  useEffect(() => {
+    loadPolicies().then((p) => {
+      const d = (p.calendar_days || "0,1,2,3,4,5,6").split(",").map(Number).filter((n) => n >= 0 && n <= 6);
+      if (d.length) setCalDays(d);
+    });
+  }, []);
 
   // Range to fetch depends on view
   const range = useMemo(() => {
@@ -70,6 +79,7 @@ export default function Calendar() {
   }, [view, anchor]);
 
   const loadCal = useCallback(() => {
+    setFetchErr("");
     // Fetch bookings whose EVENT date OR whose CALL date falls in range, so both
     // kinds of items can appear. Two queries (Supabase can't OR across columns
     // cleanly here), then dedupe.
@@ -86,7 +96,8 @@ export default function Calendar() {
       .eq("status", "scheduled")
       .gte("scheduled_at", s + "T00:00:00").lte("scheduled_at", e + "T23:59:59")
       .then(async ({ data, error }) => {
-        if (error || !data?.length) { setTouches([]); return; }
+        if (error) { setFetchErr((p) => p + ` Touchpoints: ${error.message}.`); setTouches([]); return; }
+        if (!data?.length) { setTouches([]); return; }
         const ids = Array.from(new Set(data.map((t) => t.booking_id)));
         const { data: bk } = await supabase.from("bookings").select("*").in("id", ids);
         const bmap = new Map((bk ?? []).map((b) => [b.id, b as Booking]));
@@ -94,7 +105,10 @@ export default function Calendar() {
       });
     supabase.from("tasks").select("*").eq("done", false)
       .gte("due_date", s).lte("due_date", e)
-      .then(({ data }) => setTasks((data ?? []) as TaskRow[]));
+      .then(({ data, error }) => {
+        if (error) { setFetchErr((p) => p + ` Tasks: ${error.message}.`); setTasks([]); return; }
+        setTasks((data ?? []) as TaskRow[]);
+      });
   }, [range.start, range.end]);
 
   useEffect(() => { loadCal(); }, [loadCal]);
@@ -126,10 +140,12 @@ export default function Calendar() {
     if (filter === "both" || filter === "other") {
       for (const t of touches) {
         if (!t.scheduled_at) continue;
-        const d = new Date(t.scheduled_at);
-        push(fmtISOLocal(d), {
+        // Read day + wall-clock straight from the stored string — immune to
+        // timezone drift regardless of how the timestamp was saved.
+        const raw = String(t.scheduled_at);
+        push(raw.slice(0, 10), {
           kind: "touch", booking: t.bookings ?? undefined, id: `tp-${t.id}`,
-          time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+          time: raw.slice(11, 16),
           icon: TP_ICONS[t.kind] ?? "📌", label: TP_LABELS[t.kind] ?? t.kind, sub: t.notes ?? "",
         });
       }
@@ -168,6 +184,10 @@ export default function Calendar() {
           <h1 className="font-display text-3xl font-bold tracking-tight">Calendar</h1>
           <p className="text-sm text-slate-500 mt-1">{title} · {Array.from(byDate.values()).reduce((n, l) => n + l.length, 0)} item{Array.from(byDate.values()).reduce((n, l) => n + l.length, 0) === 1 ? "" : "s"}</p>
           <div className="gold-rule mt-3" />
+          {fetchErr && (
+            <p className="text-xs text-red-600 mt-2">⚠️ Calendar data problem —{fetchErr} Run the touchpoints/tasks SQL or check table access.</p>
+          )}
+          <p className="text-[10px] text-slate-300 mt-1">in range: {bookings.length} bookings · {touches.length} touchpoints · {tasks.length} tasks</p>
         </div>
         <div className="flex gap-3 flex-wrap">
           {/* Calls / Bookings / Both filter */}
@@ -200,7 +220,7 @@ export default function Calendar() {
         </div>
       </header>
 
-      {view === "week" ? <WeekView anchor={anchor} byDate={byDate} /> : (
+      {view === "week" ? <WeekView anchor={anchor} byDate={byDate} days={calDays} /> : (
         <MonthView anchor={anchor} byDate={byDate}
           onDayClick={(d) => { setView("week"); setAnchor(startOfWeek(d)); }} />
       )}
@@ -209,10 +229,12 @@ export default function Calendar() {
 }
 
 // ─── WEEK VIEW (rich cards) ───
-function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, CalItem[]> }) {
+function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, CalItem[]>; days: number[] }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-7 gap-3">
-      {DAYS.map((name, i) => {
+    <div className="grid gap-3"
+      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+      {days.map((i) => {
+        const name = DAYS[i];
         const date = new Date(anchor); date.setDate(date.getDate() + i);
         const isToday = date.toDateString() === new Date().toDateString();
         const list = byDate.get(fmtISO(date)) ?? [];
@@ -278,9 +300,9 @@ function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, CalIte
                       const heads = (g.gendered ? g.men + g.women : g.adults) + g.children;
                       return heads > 0 ? `${heads} guests` : "? guests";
                     })()}</div>
-                    <div className="mt-2 flex items-center justify-between">
+                    <div className="mt-2 space-y-1">
                       <StatusPipeline currentStage={st.stageIndex} compact />
-                      <span className="text-[10px] font-semibold" style={{ color: st.textColor }}>{st.icon} {st.action}</span>
+                      <div className="text-[10px] font-semibold truncate" style={{ color: st.textColor }}>{st.icon} {st.action}</div>
                     </div>
                   </Link>
                 );

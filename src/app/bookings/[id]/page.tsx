@@ -1170,6 +1170,21 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
   const [kind, setKind] = useState("walkthrough");
   const [when, setWhen] = useState("");
   const [notes, setNotes] = useState("");
+  const [tpErr, setTpErr] = useState("");
+
+  // Which touchpoint types make sense at this booking's stage:
+  // - tasting: only while the menu is still open (it's the menu's finalizer)
+  // - walkthrough / contract: only before the paid/complete phase
+  // - follow-up: always (including after completion — "book the next simcha")
+  const idx = stageFor(b.status).stageIndex;
+  const allowed = Object.keys(TP_META).filter((k) => {
+    if (k === "followup") return true;
+    if (b.status === "cancelled") return false;
+    if (k === "tasting") return !hasMenu(b) && idx <= 2;
+    return idx <= 5; // walkthrough, contract
+  });
+  const blocked = Object.keys(TP_META).filter((k) => !allowed.includes(k));
+  useEffect(() => { if (!allowed.includes(kind)) setKind(allowed[0] ?? "followup"); }, [allowed, kind]);
 
   const loadTp = useCallback(async () => {
     const { data } = await supabase.from("touchpoints").select("*")
@@ -1179,10 +1194,12 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
   useEffect(() => { loadTp(); }, [loadTp]);
 
   async function add() {
-    await supabase.from("touchpoints").insert({
+    setTpErr("");
+    const { error } = await supabase.from("touchpoints").insert({
       booking_id: b.id, invoice_num: b.invoice_num, kind,
       scheduled_at: when || null, notes: notes.trim() || null,
     });
+    if (error) { setTpErr(`Couldn't save: ${error.message} — run the touchpoints SQL if the table is missing.`); return; }
     await logActivity(b.id, b.invoice_num, `${TP_META[kind].label} Scheduled`,
       when ? `Set for ${new Date(when).toLocaleString()}` : "Added (no time set yet)");
     setAdding(false); setWhen(""); setNotes(""); loadTp();
@@ -1227,7 +1244,7 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
         <div key={t.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 last:border-0 text-sm flex-wrap">
           <span className={t.status === "completed" ? "line-through text-slate-400" : ""}>
             {TP_META[t.kind]?.icon} <b>{TP_META[t.kind]?.label ?? t.kind}</b>
-            {t.scheduled_at ? ` — ${new Date(t.scheduled_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : " — no time set"}
+            {t.scheduled_at ? ` — ${fmtDate(String(t.scheduled_at).slice(0, 10))} ${fmtTime(String(t.scheduled_at).slice(11, 16))}` : " — no time set"}
             {t.notes ? <span className="text-slate-500"> · {t.notes}</span> : ""}
           </span>
           <span className="flex gap-2 text-xs">
@@ -1242,8 +1259,14 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
         <div className="mt-3 grid sm:grid-cols-4 gap-2 items-end">
           <div><label className="label">Type</label>
             <select className="field" value={kind} onChange={(e) => setKind(e.target.value)}>
-              {Object.entries(TP_META).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-            </select></div>
+              {allowed.map((k) => <option key={k} value={k}>{TP_META[k].icon} {TP_META[k].label}</option>)}
+            </select>
+            {blocked.length > 0 && (
+              <p className="text-[10px] text-slate-400 mt-1">
+                Not available at this stage: {blocked.map((k) => TP_META[k].label).join(", ")}
+                {blocked.includes("tasting") && hasMenu(b) ? " (menu already finalized)" : ""}
+              </p>
+            )}</div>
           <div><label className="label">When</label>
             <input className="field" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></div>
           <div><label className="label">Note</label>
@@ -1253,6 +1276,7 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
             <button className="btn-primary !py-2 !px-4 text-sm" onClick={add}>Add</button>
             <button className="btn-ghost !py-2 !px-3 text-sm" onClick={() => setAdding(false)}>Cancel</button>
           </div>
+          {tpErr && <p className="text-red-600 text-xs sm:col-span-4">{tpErr}</p>}
         </div>
       )}
     </div>
