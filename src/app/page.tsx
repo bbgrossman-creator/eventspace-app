@@ -6,15 +6,13 @@ import {
   Booking, Task, buildTasks, daysLabel, fmtDate, fmtTime, menuBadge, parseLocalDate, isHoldExpired, hasMenu } from "@/lib/workflow";
 import { loadPolicies } from "@/lib/policies";
 import StatusPipeline from "@/components/StatusPipeline";
+import TodoPanel from "@/components/TodoPanel";
 
 export default function DailyOps() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [callsToday, setCallsToday] = useState<Booking[]>([]);
   const [expiredHolds, setExpiredHolds] = useState<Booking[]>([]);
-  const [todos, setTodos] = useState<{ id: string; title: string; due_date: string | null; due_time: string | null; done: boolean }[]>([]);
-  const [newTask, setNewTask] = useState(""); const [newDue, setNewDue] = useState(""); const [newTime, setNewTime] = useState("");
-  const [showTasks, setShowTasks] = useState(false);
-  const [taskErr, setTaskErr] = useState("");
+  const [todoOverdue, setTodoOverdue] = useState(0);
   const [err, setErr] = useState("");
 
   async function load() {
@@ -29,34 +27,6 @@ export default function DailyOps() {
     setTasks(buildTasks(bookings, { menuOverdueHours: pol.menu_call_overdue_hours }));
     setExpiredHolds(bookings.filter((b) =>
       b.status === "hold_expired" || (b.status === "on_hold" && isHoldExpired(b))));
-    const { data: t, error: tErr } = await supabase.from("tasks").select("*")
-      .eq("done", false)
-      .order("due_date", { ascending: true, nullsFirst: false });
-    if (tErr) { setTaskErr(`Tasks: ${tErr.message}`); setTodos([]); }
-    else {
-      const rows = (t ?? []) as typeof todos;
-      // Four urgency bands: Overdue → Today → Undated(anytime) → Future.
-      // A future date signals "not yet"; leaving it undated keeps it actionable-now.
-      // Within Overdue/Today, timed items order by clock; Future is soonest-first.
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const rank = (t: typeof rows[number]) => {
-        if (!t.due_date) return 2; // Undated → between Today and Future
-        const d = parseLocalDate(t.due_date); d.setHours(0, 0, 0, 0);
-        if (d < today) return 0;   // Overdue
-        if (d.getTime() === today.getTime()) return 1; // Today
-        return 3;                  // Future
-      };
-      rows.sort((a, b) => {
-        const ra = rank(a), rb = rank(b);
-        if (ra !== rb) return ra - rb;
-        // Within a band: by date then time. Future = soonest first; overdue =
-        // oldest first (most overdue on top); undated = by time only.
-        const ka = `${a.due_date ?? "0000-00-00"}T${a.due_time ?? "99:99"}`;
-        const kb = `${b.due_date ?? "0000-00-00"}T${b.due_time ?? "99:99"}`;
-        return ka.localeCompare(kb);
-      });
-      setTaskErr(""); setTodos(rows);
-    }
 
     const todayStr = new Date().toDateString();
     setCallsToday(
@@ -95,7 +65,8 @@ export default function DailyOps() {
   });
 
   return (
-    <div>
+    <div className="xl:flex xl:gap-6 xl:items-start">
+      <div className="flex-1 min-w-0">
       <header className="mb-8">
         <h1 className="font-display text-3xl font-bold tracking-tight">Daily Ops</h1>
         <p className="text-sm text-slate-500 mt-1">
@@ -105,102 +76,12 @@ export default function DailyOps() {
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Stat label="Urgent tasks" value={urgent.length} tone="text-red-600" />
+        <Stat label="Urgent (incl. to-dos)" value={urgent.length + todoOverdue} tone="text-red-600" />
         <Stat label="Events this week" value={eventsThisWeek.length} tone="text-amber-600" />
         <Stat label="Events upcoming" value={eventsUpcoming.length} tone="text-emerald-600" />
         <Stat label="Active bookings" value={activeBookings.length} tone="text-navy" />
       </div>
 
-      {/* General tasks — not tied to a booking. Collapsed to one line until opened. */}
-      {!showTasks ? (
-        <p className="mb-6 -mt-2">
-          <button className="text-xs text-slate-400 hover:text-navy underline" onClick={() => setShowTasks(true)}>
-            📝 Tasks{todos.length > 0 ? ` (${todos.length} open)` : " — add one"}
-          </button>
-        </p>
-      ) : (
-      <section className="card p-5 mb-8">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-display font-bold text-sm">📝 Tasks{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
-          <div className="flex items-center gap-3">
-            <button className="text-xs text-slate-400 hover:text-navy underline" onClick={() => load()} title="Refresh">↻ Refresh</button>
-            <button className="text-xs text-slate-400 underline" onClick={() => setShowTasks(false)}>hide</button>
-          </div>
-        </div>
-        {todos.map((t, idx) => {
-          const bandOf = (x: typeof todos[number]) => {
-            if (!x.due_date) return "Anytime";
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            const d = parseLocalDate(x.due_date); d.setHours(0, 0, 0, 0);
-            if (d < today) return "Overdue";
-            if (d.getTime() === today.getTime()) return "Today";
-            return "Upcoming";
-          };
-          const band = bandOf(t);
-          const showHeader = idx === 0 || bandOf(todos[idx - 1]) !== band;
-          const headColor = band === "Overdue" ? "text-red-600" : band === "Today" ? "text-navy" : "text-slate-400";
-          return (
-            <div key={t.id}>
-              {showHeader && (
-                <div className={`text-[10px] font-bold uppercase tracking-wider mt-2 mb-0.5 ${headColor}`}>{band}</div>
-              )}
-              <label className="flex items-center gap-2.5 py-1.5 border-b border-slate-50 text-sm cursor-pointer">
-            <input type="checkbox" className="accent-navy"
-              onChange={async () => {
-                await supabase.from("tasks").update({ done: true }).eq("id", t.id);
-                setTodos((prev) => prev.filter((x) => x.id !== t.id));
-              }} />
-            <span className="flex-1">{t.title}</span>
-            {t.due_date && (() => {
-              // Deadline semantics: "due by" this date/time. Overdue when past
-              // the date — or past the time if one is set on today's date.
-              const now = new Date();
-              const due = parseLocalDate(t.due_date);
-              if (t.due_time) { const [h, m] = t.due_time.split(":").map(Number); due.setHours(h, m, 0, 0); }
-              else due.setHours(23, 59, 59, 0);
-              const overdue = due < now;
-              return (
-                <span className={`text-xs ${overdue ? "text-red-600 font-semibold" : "text-slate-400"}`}>
-                  {fmtDate(t.due_date)}{t.due_time ? ` · by ${fmtTime(t.due_time)}` : ""}{overdue ? " · OVERDUE" : ""}
-                </span>
-              );
-            })()}
-          </label>
-            </div>
-          );
-        })}
-        <div className="flex gap-2 mt-2 flex-wrap items-end">
-          <div className="flex-1 min-w-[160px]">
-            <label className="text-[10px] text-slate-400 uppercase font-semibold">Task</label>
-            <input className="field !py-1.5 w-full text-sm" placeholder="Add a task…"
-              value={newTask} onChange={(e) => setNewTask(e.target.value)}
-              onKeyDown={async (e) => {
-                if (e.key === "Enter" && newTask.trim()) {
-                  const { error } = await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null, due_time: newTime || null });
-                  if (error) { setTaskErr(`Couldn't save: ${error.message} — run task_time.sql if the due_time column is missing.`); return; }
-                  setNewTask(""); setNewDue(""); setNewTime(""); load();
-                }
-              }} />
-          </div>
-          <div>
-            <label className="text-[10px] text-slate-400 uppercase font-semibold">Date <span className="normal-case text-slate-300">(optional)</span></label>
-            <input type="date" className="field !py-1.5 w-full text-sm" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
-          </div>
-          <div>
-            <label className="text-[10px] text-slate-400 uppercase font-semibold">Time <span className="normal-case text-slate-300">(optional)</span></label>
-            <input type="time" className="field !py-1.5 w-full text-sm" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
-          </div>
-          <button className="btn-primary !py-1.5 !px-4 text-sm"
-            onClick={async () => {
-              if (!newTask.trim()) return;
-              const { error } = await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null, due_time: newTime || null });
-              if (error) { setTaskErr(`Couldn't save: ${error.message} — run task_time.sql if the due_time column is missing.`); return; }
-              setNewTask(""); setNewDue(""); setNewTime(""); load();
-            }}>Add</button>
-        </div>
-        {taskErr && <p className="text-red-600 text-xs mt-2">{taskErr}</p>}
-      </section>
-      )}
 
       {callsToday.length > 0 && (
         <section className="card p-5 mb-8 border-l-4 border-gold">
@@ -242,6 +123,14 @@ export default function DailyOps() {
           <p>No active bookings. Start with a <Link href="/bookings/new" className="text-navy font-semibold underline">new inquiry</Link>.</p>
         </div>
       )}
+      </div>
+
+      {/* To-Do rail: fixed in view on desktop with its own scroll; stacks below on smaller screens. */}
+      <aside className="xl:w-80 xl:shrink-0 mt-8 xl:mt-0">
+        <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
+          <TodoPanel onOverdueCount={setTodoOverdue} />
+        </div>
+      </aside>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import { loadSopNote } from "@/lib/sop";
 import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
+import TodoPanel from "@/components/TodoPanel";
 import { STAGE_TO_STATUS, hasMenu, TIMELINE_MILESTONES, STAGES, findConflicts } from "@/lib/workflow";
 
 interface Payment {
@@ -296,6 +297,12 @@ export default function BookingDetail() {
       {/* Optional touchpoints: walkthrough / tasting / contract / follow-up.
           Hidden until the rep adds one — never a pipeline stage. */}
       <TouchpointsPanel b={b} onChange={load} />
+
+      {/* This booking's to-dos — same rows as the Daily Ops To-Do rail,
+          filtered to this booking; new ones are pre-linked to it. */}
+      <div className="mb-5">
+        <TodoPanel bookingId={b.id} bookingInvoice={b.invoice_num} />
+      </div>
 
       {msg && (
         <div className={`rounded-lg px-4 py-3 mb-5 text-sm font-semibold ${msg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
