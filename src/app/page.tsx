@@ -35,10 +35,24 @@ export default function DailyOps() {
     if (tErr) { setTaskErr(`Tasks: ${tErr.message}`); setTodos([]); }
     else {
       const rows = (t ?? []) as typeof todos;
-      // Deadline sort: by date, then time within the day (no-time = end of day).
+      // Four urgency bands: Overdue → Today → Undated(anytime) → Future.
+      // A future date signals "not yet"; leaving it undated keeps it actionable-now.
+      // Within Overdue/Today, timed items order by clock; Future is soonest-first.
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const rank = (t: typeof rows[number]) => {
+        if (!t.due_date) return 2; // Undated → between Today and Future
+        const d = parseLocalDate(t.due_date); d.setHours(0, 0, 0, 0);
+        if (d < today) return 0;   // Overdue
+        if (d.getTime() === today.getTime()) return 1; // Today
+        return 3;                  // Future
+      };
       rows.sort((a, b) => {
-        const ka = `${a.due_date ?? "9999-12-31"}T${a.due_time ?? "99:99"}`;
-        const kb = `${b.due_date ?? "9999-12-31"}T${b.due_time ?? "99:99"}`;
+        const ra = rank(a), rb = rank(b);
+        if (ra !== rb) return ra - rb;
+        // Within a band: by date then time. Future = soonest first; overdue =
+        // oldest first (most overdue on top); undated = by time only.
+        const ka = `${a.due_date ?? "0000-00-00"}T${a.due_time ?? "99:99"}`;
+        const kb = `${b.due_date ?? "0000-00-00"}T${b.due_time ?? "99:99"}`;
         return ka.localeCompare(kb);
       });
       setTaskErr(""); setTodos(rows);
@@ -113,8 +127,24 @@ export default function DailyOps() {
             <button className="text-xs text-slate-400 underline" onClick={() => setShowTasks(false)}>hide</button>
           </div>
         </div>
-        {todos.map((t) => (
-          <label key={t.id} className="flex items-center gap-2.5 py-1.5 border-b border-slate-50 last:border-0 text-sm cursor-pointer">
+        {todos.map((t, idx) => {
+          const bandOf = (x: typeof todos[number]) => {
+            if (!x.due_date) return "Anytime";
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const d = parseLocalDate(x.due_date); d.setHours(0, 0, 0, 0);
+            if (d < today) return "Overdue";
+            if (d.getTime() === today.getTime()) return "Today";
+            return "Upcoming";
+          };
+          const band = bandOf(t);
+          const showHeader = idx === 0 || bandOf(todos[idx - 1]) !== band;
+          const headColor = band === "Overdue" ? "text-red-600" : band === "Today" ? "text-navy" : "text-slate-400";
+          return (
+            <div key={t.id}>
+              {showHeader && (
+                <div className={`text-[10px] font-bold uppercase tracking-wider mt-2 mb-0.5 ${headColor}`}>{band}</div>
+              )}
+              <label className="flex items-center gap-2.5 py-1.5 border-b border-slate-50 text-sm cursor-pointer">
             <input type="checkbox" className="accent-navy"
               onChange={async () => {
                 await supabase.from("tasks").update({ done: true }).eq("id", t.id);
@@ -131,12 +161,14 @@ export default function DailyOps() {
               const overdue = due < now;
               return (
                 <span className={`text-xs ${overdue ? "text-red-600 font-semibold" : "text-slate-400"}`}>
-                  {fmtDate(t.due_date)}{t.due_time ? ` · ${fmtTime(t.due_time)}` : ""}{overdue ? " · OVERDUE" : ""}
+                  {fmtDate(t.due_date)}{t.due_time ? ` · by ${fmtTime(t.due_time)}` : ""}{overdue ? " · OVERDUE" : ""}
                 </span>
               );
             })()}
           </label>
-        ))}
+            </div>
+          );
+        })}
         <div className="flex gap-2 mt-2 flex-wrap items-end">
           <div className="flex-1 min-w-[160px]">
             <label className="text-[10px] text-slate-400 uppercase font-semibold">Task</label>
