@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -64,7 +64,7 @@ export default function Calendar() {
     return { start: gridStart, end: gridEnd };
   }, [view, anchor]);
 
-  useEffect(() => {
+  const loadCal = useCallback(() => {
     // Fetch bookings whose EVENT date OR whose CALL date falls in range, so both
     // kinds of items can appear. Two queries (Supabase can't OR across columns
     // cleanly here), then dedupe.
@@ -85,6 +85,13 @@ export default function Calendar() {
       .gte("due_date", s).lte("due_date", e)
       .then(({ data }) => setTasks((data ?? []) as TaskRow[]));
   }, [range.start, range.end]);
+
+  useEffect(() => { loadCal(); }, [loadCal]);
+  useEffect(() => {
+    const onFocus = () => loadCal();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loadCal]);
 
   // Build calendar items: each booking yields an EVENT item (on event_date) and,
   // if a call is scheduled, a CALL item (on menu_discussion_date's day).
@@ -161,6 +168,10 @@ export default function Calendar() {
               </button>
             ))}
           </div>
+          <button onClick={loadCal} title="Refresh"
+            className="px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
+            ↻
+          </button>
           {/* View toggle */}
           <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden">
             {(["week", "month"] as const).map((v) => (

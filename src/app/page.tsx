@@ -98,7 +98,10 @@ export default function DailyOps() {
       <section className="card p-5 mb-8">
         <div className="flex items-center justify-between mb-2">
           <h2 className="font-display font-bold text-sm">📝 Tasks{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
-          <button className="text-xs text-slate-400 underline" onClick={() => setShowTasks(false)}>hide</button>
+          <div className="flex items-center gap-3">
+            <button className="text-xs text-slate-400 hover:text-navy underline" onClick={() => load()} title="Refresh">↻ Refresh</button>
+            <button className="text-xs text-slate-400 underline" onClick={() => setShowTasks(false)}>hide</button>
+          </div>
         </div>
         {todos.map((t) => (
           <label key={t.id} className="flex items-center gap-2.5 py-1.5 border-b border-slate-50 last:border-0 text-sm cursor-pointer">
@@ -115,17 +118,26 @@ export default function DailyOps() {
             )}
           </label>
         ))}
-        <div className="flex gap-2 mt-2 flex-wrap">
-          <input className="field !py-1.5 flex-1 min-w-[160px] text-sm" placeholder="Add a task…"
-            value={newTask} onChange={(e) => setNewTask(e.target.value)}
-            onKeyDown={async (e) => {
-              if (e.key === "Enter" && newTask.trim()) {
-                await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null, due_time: newTime || null });
-                setNewTask(""); setNewDue(""); setNewTime(""); load();
-              }
-            }} />
-          <input type="date" className="field !py-1.5 text-sm" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
-          <input type="time" className="field !py-1.5 text-sm" value={newTime} onChange={(e) => setNewTime(e.target.value)} title="Optional time — leave blank for all-day" />
+        <div className="flex gap-2 mt-2 flex-wrap items-end">
+          <div className="flex-1 min-w-[160px]">
+            <label className="text-[10px] text-slate-400 uppercase font-semibold">Task</label>
+            <input className="field !py-1.5 w-full text-sm" placeholder="Add a task…"
+              value={newTask} onChange={(e) => setNewTask(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter" && newTask.trim()) {
+                  await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null, due_time: newTime || null });
+                  setNewTask(""); setNewDue(""); setNewTime(""); load();
+                }
+              }} />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400 uppercase font-semibold">Date <span className="normal-case text-slate-300">(optional)</span></label>
+            <input type="date" className="field !py-1.5 w-full text-sm" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[10px] text-slate-400 uppercase font-semibold">Time <span className="normal-case text-slate-300">(optional)</span></label>
+            <input type="time" className="field !py-1.5 w-full text-sm" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
+          </div>
           <button className="btn-primary !py-1.5 !px-4 text-sm"
             onClick={async () => {
               if (!newTask.trim()) return;
