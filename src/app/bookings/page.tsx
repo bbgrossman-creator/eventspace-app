@@ -112,12 +112,12 @@ export default function BookingsList() {
                       </Link>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-medium">{b.contact_name}</div>
-                      <div className="text-xs text-slate-500">{b.event_name || b.event_type}</div>
+                      <div className="font-semibold text-[15px] text-ink">{b.contact_name}</div>
+                      <div className="text-[13px] text-slate-500">{b.event_name || b.event_type}</div>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-400 text-[13px]">
                       {fmtDate(b.event_date)}
-                      <span className="text-slate-400"> · {fmtTime(b.event_time)}</span>
+                      <span className="text-slate-300"> · {fmtTime(b.event_time)}</span>
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-xs">{menuBadge(b.menu_type)}</td>
                     <td className="px-4 py-3 hidden md:table-cell">{b.total_with_tax ? fmtMoney(b.total_with_tax) : "—"}</td>

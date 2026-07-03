@@ -65,8 +65,7 @@ export default function DailyOps() {
   });
 
   return (
-    <div className="xl:flex xl:gap-6 xl:items-start">
-      <div className="flex-1 min-w-0">
+    <div>
       <header className="mb-8">
         <h1 className="font-display text-3xl font-bold tracking-tight">Daily Ops</h1>
         <p className="text-sm text-slate-500 mt-1">
@@ -74,6 +73,9 @@ export default function DailyOps() {
         </p>
         <div className="gold-rule mt-3" />
       </header>
+
+    <div className="xl:flex xl:gap-6 xl:items-start">
+      <div className="flex-1 min-w-0">
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Stat label="Urgent (incl. to-dos)" value={urgent.length + todoOverdue} tone="text-red-600" />
@@ -125,12 +127,13 @@ export default function DailyOps() {
       )}
       </div>
 
-      {/* To-Do rail: fixed in view on desktop with its own scroll; stacks below on smaller screens. */}
-      <aside className="xl:w-80 xl:shrink-0 mt-8 xl:mt-0">
-        <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
+      {/* To-Do rail: floats in view on desktop with its own scroll; stacks below on smaller screens. */}
+      <aside className="xl:w-[30%] xl:max-w-md xl:shrink-0 mt-8 xl:mt-0">
+        <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
           <TodoPanel onOverdueCount={setTodoOverdue} />
         </div>
       </aside>
+    </div>
     </div>
   );
 }

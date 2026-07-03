@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { loadPolicies } from "@/lib/policies";
-import { Booking, fmtTime, menuBadge, parseLocalDate, stageFor, deriveGuests } from "@/lib/workflow";
+import { Booking, fmtDate, fmtTime, menuBadge, parseLocalDate, stageFor, deriveGuests } from "@/lib/workflow";
 import StatusPipeline from "@/components/StatusPipeline";
 
 const DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
@@ -15,6 +15,7 @@ type CalItem = {
   kind: "event" | "call" | "touch" | "task";
   booking?: Booking; time: string;
   icon?: string; label?: string; sub?: string; id: string;
+  task?: TaskRow; // task items carry their row for links/assignee/complete
 };
 
 const TP_ICONS: Record<string, string> = {
@@ -28,7 +29,11 @@ interface TouchRow {
   id: string; booking_id: string; kind: string; scheduled_at: string | null;
   status: string; notes: string | null; bookings: Booking | null;
 }
-interface TaskRow { id: string; title: string; due_date: string | null; due_time: string | null; done: boolean; }
+interface TaskRow {
+  id: string; title: string; due_date: string | null; due_time: string | null; done: boolean;
+  booking_id?: string | null; invoice_num?: string | null; assignee?: string | null;
+  customer?: string | null; // resolved from the linked booking
+}
 
 function startOfWeek(d: Date) {
   const w = new Date(d); w.setHours(0, 0, 0, 0);
@@ -106,9 +111,16 @@ export default function Calendar() {
       });
     supabase.from("tasks").select("*").eq("done", false)
       .gte("due_date", s).lte("due_date", e)
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (error) { setFetchErr((p) => p + ` Tasks: ${error.message}.`); setTasks([]); return; }
-        setTasks((data ?? []) as TaskRow[]);
+        const rows = (data ?? []) as TaskRow[];
+        const ids = Array.from(new Set(rows.map((t) => t.booking_id).filter(Boolean))) as string[];
+        if (ids.length) {
+          const { data: bk } = await supabase.from("bookings").select("id,contact_name").in("id", ids);
+          const nm = new Map((bk ?? []).map((b) => [b.id, b.contact_name as string]));
+          rows.forEach((t) => { if (t.booking_id) t.customer = nm.get(t.booking_id) ?? null; });
+        }
+        setTasks(rows);
       });
     // Diagnostic totals: how many exist overall, and how many lack a date/time
     // (those can never appear on a calendar). Settles "why isn't X showing".
@@ -123,6 +135,10 @@ export default function Calendar() {
   }, [range.start, range.end]);
 
   useEffect(() => { loadCal(); }, [loadCal]);
+  const completeTask = useCallback(async (id: string) => {
+    await supabase.from("tasks").update({ done: true }).eq("id", id);
+    loadCal();
+  }, [loadCal]);
   useEffect(() => {
     const onFocus = () => loadCal();
     window.addEventListener("focus", onFocus);
@@ -162,7 +178,7 @@ export default function Calendar() {
       }
       for (const t of tasks) {
         if (!t.due_date) continue;
-        push(t.due_date, { kind: "task", id: `task-${t.id}`, time: t.due_time ?? "", icon: "📝", label: t.title });
+        push(t.due_date, { kind: "task", id: `task-${t.id}`, time: t.due_time ?? "", icon: "📝", label: t.title, task: t });
       }
     }
     for (const list of Array.from(m.values()))
@@ -233,16 +249,48 @@ export default function Calendar() {
         </div>
       </header>
 
-      {view === "week" ? <WeekView anchor={anchor} byDate={byDate} days={calDays} /> : (
-        <MonthView anchor={anchor} byDate={byDate}
+      {view === "week" ? <WeekView anchor={anchor} byDate={byDate} days={calDays} onCompleteTask={completeTask} /> : (
+        <MonthView anchor={anchor} byDate={byDate} onCompleteTask={completeTask}
           onDayClick={(d) => { setView("week"); setAnchor(startOfWeek(d)); }} />
       )}
     </div>
   );
 }
 
+// ─── HOVER POPOVER (all tile kinds) ───
+// Compact tiles by default; hovering floats an enlarged card ABOVE the grid
+// (no layout shift) with the full details + actions. Notion/Linear-style.
+function HoverCard({ children, pop }: { children: React.ReactNode; pop: React.ReactNode }) {
+  return (
+    <div className="relative group">
+      {children}
+      <div className="invisible opacity-0 scale-95 group-hover:visible group-hover:opacity-100 group-hover:scale-100 transition-all duration-150 ease-out absolute left-1/2 -translate-x-1/2 -top-2 z-50 w-[280px] pointer-events-none group-hover:pointer-events-auto">
+        <div className="rounded-xl bg-white shadow-2xl ring-1 ring-slate-200 p-3.5">
+          {pop}
+        </div>
+      </div>
+    </div>
+  );
+}
+function PopActions({ bookingId, taskId, onCompleteTask }: {
+  bookingId?: string | null; taskId?: string; onCompleteTask?: (id: string) => void;
+}) {
+  if (!bookingId && !taskId) return null;
+  return (
+    <div className="flex gap-1.5 mt-2.5">
+      {bookingId && (
+        <Link href={`/bookings/${bookingId}`} className="btn-primary !py-1 !px-3 !text-[11px]">Open Booking →</Link>
+      )}
+      {taskId && onCompleteTask && (
+        <button className="!py-1 !px-3 text-[11px] font-semibold rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+          onClick={() => onCompleteTask(taskId)}>✓ Mark Complete</button>
+      )}
+    </div>
+  );
+}
+
 // ─── WEEK VIEW (rich cards) ───
-function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, CalItem[]>; days: number[] }) {
+function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDate: Map<string, CalItem[]>; days: number[]; onCompleteTask: (id: string) => void }) {
   return (
     <div
       className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-[repeat(var(--cd),minmax(0,1fr))]"
@@ -263,20 +311,57 @@ function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, 
                 <p className="text-center text-[11px] text-slate-300 pt-8">Nothing scheduled</p>
               ) : list.map((item) => {
                 if (item.kind === "task") {
+                  const tk = item.task;
                   return (
-                    <div key={item.id} className="block rounded-lg border border-slate-300 border-dashed bg-slate-50 p-3">
+                    <HoverCard key={item.id} pop={
+                      <div className="text-sm">
+                        <div className="font-display font-bold text-slate-700 mb-1">📝 To-Do</div>
+                        <div className="font-medium">{item.label}</div>
+                        <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+                          {tk?.assignee && <div>👤 {tk.assignee}</div>}
+                          {tk?.booking_id && <div>🔗 #{tk.invoice_num}{tk.customer ? ` — ${tk.customer}` : ""}</div>}
+                          {tk?.due_date && <div>⏰ {fmtDate(tk.due_date)}{item.time ? ` · by ${fmtTime(item.time)}` : ""}</div>}
+                        </div>
+                        <PopActions bookingId={tk?.booking_id} taskId={tk?.id} onCompleteTask={onCompleteTask} />
+                      </div>
+                    }>
+                    <div className="block rounded-lg border border-slate-300 border-dashed bg-slate-50 p-3">
                       <div className="flex justify-between items-baseline">
-                        <span className="font-display font-bold text-slate-600 text-sm">📝 Task</span>
+                        <span className="font-display font-bold text-slate-600 text-sm">📝 To-Do</span>
                         {item.time && <span className="text-xs font-semibold text-slate-500">by {fmtTime(item.time)}</span>}
                       </div>
                       <div className="text-sm truncate">{item.label}</div>
+                      <div className="text-[11px] text-slate-500 truncate">
+                        {tk?.assignee ? `👤 ${tk.assignee}` : ""}
+                        {tk?.booking_id ? (
+                          <>{tk?.assignee ? " · " : ""}
+                            <Link href={`/bookings/${tk.booking_id}`} className="text-navy underline" onClick={(e) => e.stopPropagation()}>
+                              #{tk.invoice_num}
+                            </Link>
+                            {tk.customer ? ` ${tk.customer}` : ""}
+                          </>
+                        ) : null}
+                      </div>
                     </div>
+                    </HoverCard>
                   );
                 }
                 const b = item.booking!;
                 if (item.kind === "touch") {
                   return (
-                    <Link key={item.id} href={`/bookings/${b.id}`}
+                    <HoverCard key={item.id} pop={
+                      <div className="text-sm">
+                        <div className="font-display font-bold text-amber-700 mb-1">{item.icon} {item.label}</div>
+                        <div className="font-medium">{b.contact_name}</div>
+                        <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+                          <div>#{b.invoice_num} · {fmtTime(item.time)}</div>
+                          {item.sub && <div className="whitespace-pre-wrap">📝 {item.sub}</div>}
+                          {b.event_date && <div>Event: {fmtDate(b.event_date)}</div>}
+                        </div>
+                        <PopActions bookingId={b.id} />
+                      </div>
+                    }>
+                    <Link href={`/bookings/${b.id}`}
                       className="block rounded-lg border-2 border-amber-200 bg-amber-50 p-3 hover:border-amber-400 hover:shadow-md transition-all">
                       <div className="flex justify-between items-baseline">
                         <span className="font-display font-bold text-amber-700 text-sm">{item.icon} {item.label}</span>
@@ -285,12 +370,25 @@ function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, 
                       <div className="text-sm font-medium truncate">{b.contact_name}</div>
                       <div className="text-[11px] text-slate-500 truncate">#{b.invoice_num}{item.sub ? ` · ${item.sub}` : ""}</div>
                     </Link>
+                    </HoverCard>
                   );
                 }
                 if (item.kind === "call") {
                   // Phone-call card — visually distinct (pink, phone icon).
                   return (
-                    <Link key={`call-${b.id}`} href={`/bookings/${b.id}`}
+                    <HoverCard key={`call-${b.id}`} pop={
+                      <div className="text-sm">
+                        <div className="font-display font-bold text-pink-700 mb-1">📞 Menu Call · {fmtTime(item.time)}</div>
+                        <div className="font-medium">{b.contact_name}</div>
+                        <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+                          <div>#{b.invoice_num}</div>
+                          {b.phone && <div>☎️ {b.phone}</div>}
+                          <div>Event: {b.event_date ? fmtDate(b.event_date) : "TBD"} · {b.event_name || b.event_type || ""}</div>
+                        </div>
+                        <PopActions bookingId={b.id} />
+                      </div>
+                    }>
+                    <Link href={`/bookings/${b.id}`}
                       className="block rounded-lg border-2 border-pink-200 bg-pink-50 p-3 hover:border-pink-400 hover:shadow-md transition-all">
                       <div className="flex justify-between items-baseline">
                         <span className="font-display font-bold text-pink-700 text-sm">📞 Menu Call</span>
@@ -299,11 +397,29 @@ function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, 
                       <div className="text-sm font-medium truncate">{b.contact_name}</div>
                       <div className="text-[11px] text-slate-500 truncate">#{b.invoice_num} · event {b.event_date ? parseLocalDate(b.event_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "TBD"}</div>
                     </Link>
+                    </HoverCard>
                   );
                 }
                 const st = stageFor(b.status);
+                const heads = (() => {
+                  const g = deriveGuests(b);
+                  const h = (g.gendered ? g.men + g.women : g.adults) + g.children;
+                  return h > 0 ? `${h} guests` : "guests TBD";
+                })();
                 return (
-                  <Link key={`ev-${b.id}`} href={`/bookings/${b.id}`}
+                  <HoverCard key={`ev-${b.id}`} pop={
+                    <div className="text-sm">
+                      <div className="font-display font-bold text-navy mb-1">#{b.invoice_num} · {fmtTime(item.time)}</div>
+                      <div className="font-medium">{b.contact_name}</div>
+                      <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+                        <div>{b.event_name || b.event_type || "Event"}</div>
+                        <div>{menuBadge(b.menu_type)} · {heads}</div>
+                        <div style={{ color: st.textColor }} className="font-semibold">{st.icon} {st.action}</div>
+                      </div>
+                      <PopActions bookingId={b.id} />
+                    </div>
+                  }>
+                  <Link href={`/bookings/${b.id}`}
                     className="block rounded-lg border border-slate-200 p-3 hover:border-navy hover:shadow-md transition-all"
                     style={{ background: st.color + "55" }}>
                     <div className="flex justify-between items-baseline">
@@ -322,6 +438,7 @@ function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, 
                       <div className="text-[10px] font-semibold truncate" style={{ color: st.textColor }}>{st.icon} {st.action}</div>
                     </div>
                   </Link>
+                  </HoverCard>
                 );
               })}
             </div>
@@ -333,7 +450,8 @@ function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, 
 }
 
 // ─── MONTH VIEW (compact grid, all 7 days, Fri/Sat dimmed) ───
-function MonthView({ anchor, byDate, onDayClick }: {
+function MonthView({ anchor, byDate, onDayClick, onCompleteTask }: {
+  onCompleteTask: (id: string) => void;
   anchor: Date; byDate: Map<string, CalItem[]>; onDayClick: (d: Date) => void;
 }) {
   const router = useRouter();
@@ -377,17 +495,31 @@ function MonthView({ anchor, byDate, onDayClick }: {
                 {shown.map((item) => {
                   if (item.kind === "task" || item.kind === "touch") {
                     const b = item.booking;
+                    const tk = item.task;
                     return (
-                      <button key={item.id}
+                      <HoverCard key={item.id} pop={
+                        <div className="text-sm" onClick={(e) => e.stopPropagation()}>
+                          <div className="font-display font-bold text-slate-700 mb-1">{item.icon} {item.kind === "task" ? "To-Do" : item.label}</div>
+                          <div className="font-medium">{item.kind === "task" ? item.label : b?.contact_name}</div>
+                          <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+                            {tk?.assignee && <div>👤 {tk.assignee}</div>}
+                            {(b || tk?.booking_id) && <div>🔗 #{b?.invoice_num ?? tk?.invoice_num}{tk?.customer ? ` — ${tk.customer}` : b ? ` — ${b.contact_name}` : ""}</div>}
+                            {item.time && <div>⏰ {item.kind === "task" ? "by " : ""}{fmtTime(item.time)}</div>}
+                            {item.sub && <div className="whitespace-pre-wrap">📝 {item.sub}</div>}
+                          </div>
+                          <PopActions bookingId={b?.id ?? tk?.booking_id} taskId={tk?.id} onCompleteTask={onCompleteTask} />
+                        </div>
+                      }>
+                      <button
                         onClick={(e) => { e.stopPropagation(); if (b) router.push(`/bookings/${b.id}`); }}
                         className="w-full flex items-center gap-1 rounded px-1 py-0.5 text-left hover:ring-1 hover:ring-navy"
-                        style={{ background: item.kind === "task" ? "#F1F5F9" : "#FEF3C7" }}
-                        title={`${item.icon} ${item.label}${b ? `: ${b.contact_name}` : ""}${item.time ? ` · ${fmtTime(item.time)}` : ""}`}>
+                        style={{ background: item.kind === "task" ? "#F1F5F9" : "#FEF3C7" }}>
                         <span className="text-[10px] shrink-0">{item.icon}</span>
                         <span className="text-[10px] font-medium truncate text-slate-700">
                           {item.time ? fmtTime(item.time).replace(":00", "") + " " : ""}{b ? shortName(b) : item.label}
                         </span>
                       </button>
+                      </HoverCard>
                     );
                   }
                   const b = item.booking!;
@@ -395,16 +527,32 @@ function MonthView({ anchor, byDate, onDayClick }: {
                   const bg = isCall ? "#FCE7F3" : stageFor(b.status).color;
                   const fg = isCall ? "#BE185D" : stageFor(b.status).textColor;
                   return (
-                    <button key={`${item.kind}-${b.id}`}
+                    <HoverCard key={`${item.kind}-${b.id}`} pop={
+                      <div className="text-sm" onClick={(e) => e.stopPropagation()}>
+                        <div className="font-display font-bold mb-1" style={{ color: isCall ? "#BE185D" : "#1F4E79" }}>
+                          {isCall ? "📞 Menu Call" : `#${b.invoice_num}`} · {fmtTime(item.time)}
+                        </div>
+                        <div className="font-medium">{b.contact_name}</div>
+                        <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
+                          {!isCall && <div>{b.event_name || b.event_type || "Event"}</div>}
+                          {isCall && <div>#{b.invoice_num} · event {b.event_date ? fmtDate(b.event_date) : "TBD"}</div>}
+                          <div className="font-semibold" style={{ color: stageFor(b.status).textColor }}>
+                            {stageFor(b.status).icon} {stageFor(b.status).action}
+                          </div>
+                        </div>
+                        <PopActions bookingId={b.id} />
+                      </div>
+                    }>
+                    <button
                       onClick={(e) => { e.stopPropagation(); router.push(`/bookings/${b.id}`); }}
                       className="w-full flex items-center gap-1 rounded px-1 py-0.5 text-left hover:ring-1 hover:ring-navy"
-                      style={{ background: bg }}
-                      title={`${isCall ? "📞 Menu call" : "Event"}: #${b.invoice_num} ${b.contact_name} · ${fmtTime(item.time)}`}>
+                      style={{ background: bg }}>
                       <span className="text-[10px] shrink-0">{isCall ? "📞" : ""}</span>
                       <span className="text-[10px] font-medium truncate" style={{ color: fg }}>
                         {fmtTime(item.time).replace(":00", "")} {shortName(b)}
                       </span>
                     </button>
+                    </HoverCard>
                   );
                 })}
                 {extra > 0 && (

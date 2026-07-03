@@ -55,7 +55,7 @@ export default function Sidebar() {
         <div className="text-[11px] tracking-[0.25em] text-gold font-semibold mt-0.5">BY BURGER BAR</div>
         <div className="gold-rule mt-4" />
       </div>
-      <nav className="flex-1 px-3 space-y-1">
+      <nav className="flex-1 px-4 space-y-1.5">
         {NAV.map((n) => {
           const active = n.href === "/" ? path === "/" : path.startsWith(n.href) && (n.href !== "/bookings" || path === "/bookings" || path.match(/^\/bookings\/(?!new)/));
           return (
@@ -89,7 +89,7 @@ export default function Sidebar() {
                     const active = path.startsWith(n.href);
                     return (
                       <Link key={n.href} href={n.href}
-                        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                        className={`flex items-center gap-2.5 rounded-lg pl-9 pr-3 py-2 text-[13px] transition-colors ${
                           active ? "bg-white/10 text-white font-medium" : "text-slate-400 hover:bg-white/5 hover:text-white"
                         }`}>
                         <span className="text-xs">{n.icon}</span>

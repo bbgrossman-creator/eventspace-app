@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [charges, setCharges] = useState<ChargeRowDb[]>([]);
+  const [showAllAddons, setShowAllAddons] = useState(false);
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [periodPreset, setPeriodPreset] = useState<"all" | "week" | "month" | "year" | "custom">("all");
@@ -380,25 +381,37 @@ export default function Dashboard() {
       </div>
       {addonBreakdown.length > 0 && (
         <div className="card p-5 mb-8">
-          <SectionTitle>Top Add-Ons by Revenue</SectionTitle>
-          <table className="w-full text-sm mt-2">
-            <thead>
-              <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-                <th className="py-1.5 font-semibold">Add-On</th>
-                <th className="py-1.5 font-semibold text-right">Revenue</th>
-                <th className="py-1.5 font-semibold text-right">Jobs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {addonBreakdown.map((a) => (
-                <tr key={a.name} className="border-b border-slate-50 last:border-0">
-                  <td className="py-1.5">{a.name}</td>
-                  <td className="py-1.5 text-right font-medium">{fmtMoney(a.revenue)}</td>
-                  <td className="py-1.5 text-right text-slate-500">{a.jobs}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SectionTitle>Top 5 Add-Ons</SectionTitle>
+          {(() => {
+            const totalRev = addonBreakdown.reduce((t, a) => t + a.revenue, 0) || 1;
+            const top = showAllAddons ? addonBreakdown : addonBreakdown.slice(0, 5);
+            const max = addonBreakdown[0]?.revenue || 1;
+            return (
+              <div className="mt-2 space-y-2">
+                {top.map((a) => (
+                  <div key={a.name} className="text-sm">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="truncate font-medium">{a.name}</span>
+                      <span className="whitespace-nowrap text-right">
+                        <span className="font-semibold">{fmtMoney(a.revenue)}</span>
+                        <span className="text-xs text-slate-400"> · {a.jobs} job{a.jobs === 1 ? "" : "s"} · {Math.round((a.revenue / totalRev) * 100)}%</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-100 mt-1">
+                      <div className="h-1.5 rounded-full bg-gold" style={{ width: `${Math.max(4, (a.revenue / max) * 100)}%` }} />
+                    </div>
+                  </div>
+                ))}
+                {addonBreakdown.length > 5 && (
+                  <button
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors mt-1"
+                    onClick={() => setShowAllAddons((v) => !v)}>
+                    {showAllAddons ? "− Show top 5 only" : `＋ View all ${addonBreakdown.length} add-ons`}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

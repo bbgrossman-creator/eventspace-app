@@ -186,17 +186,17 @@ export default function NewInquiry() {
           {/* Optional second contact — hidden until needed (e.g. spouse, event planner) */}
           {!showContact2 ? (
             <div className="sm:col-span-2">
-              <button type="button" className="text-xs text-navy underline" onClick={() => setShowContact2(true)}>
-                ＋ Add a second contact
+              <button type="button" className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors" onClick={() => setShowContact2(true)}>
+                ➕ Add Secondary Contact
               </button>
             </div>
           ) : (
             <>
               <div className="sm:col-span-2 flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500">Second contact</span>
-                <button type="button" className="text-xs text-slate-400 underline"
+                <button type="button" className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 bg-white hover:bg-navy/5 border border-slate-200 rounded-full px-3 py-1 transition-colors"
                   onClick={() => { setShowContact2(false); set("contact2_name", ""); set("contact2_phone", ""); set("contact2_email", ""); }}>
-                  remove
+                  − Remove Secondary Contact
                 </button>
               </div>
               <div><label className="label">Name</label>

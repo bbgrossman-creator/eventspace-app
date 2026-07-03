@@ -301,7 +301,7 @@ export default function BookingDetail() {
       {/* This booking's to-dos — same rows as the Daily Ops To-Do rail,
           filtered to this booking; new ones are pre-linked to it. */}
       <div className="mb-5">
-        <TodoPanel bookingId={b.id} bookingInvoice={b.invoice_num} />
+        <TodoPanel bookingId={b.id} bookingInvoice={b.invoice_num} variant="embedded" />
       </div>
 
       {msg && (
@@ -1234,8 +1234,8 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
   if (items.length === 0 && !adding) {
     return (
       <p className="mb-5 -mt-1">
-        <button className="text-xs text-slate-400 hover:text-navy underline" onClick={() => setAdding(true)}>
-          ＋ Add touchpoint (walkthrough · tasting · contract · follow-up)
+        <button className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors" onClick={() => setAdding(true)}>
+          ＋ Add Touchpoint <span className="font-normal text-slate-400">(walkthrough · tasting · contract · follow-up)</span>
         </button>
       </p>
     );
@@ -1295,14 +1295,20 @@ function SopNote({ statusKey }: { statusKey: string }) {
   const [open, setOpen] = useState(false);
   useEffect(() => { loadSopNote(statusKey).then(setBody); }, [statusKey]);
   if (!body) return null;
+  if (!open) {
+    return (
+      <p className="mb-5">
+        <button className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors" onClick={() => setOpen(true)}>＋ Show guidance</button>
+      </p>
+    );
+  }
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 mb-5 overflow-hidden">
-      <button onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-slate-100">
+    <div className="rounded-xl ring-1 ring-slate-900/[0.05] bg-slate-50 mb-5 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5">
         <span className="text-sm font-semibold text-slate-700">📋 What to do here</span>
-        <span className="text-slate-400 text-xs">{open ? "▲ hide" : "▼ show"}</span>
-      </button>
-      {open && <p className="px-4 pb-3 text-sm text-slate-600 whitespace-pre-line">{body}</p>}
+        <button className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors" onClick={() => setOpen(false)}>− Hide guidance</button>
+      </div>
+      <p className="px-4 pb-3 text-sm text-slate-600 whitespace-pre-line">{body}</p>
     </div>
   );
 }

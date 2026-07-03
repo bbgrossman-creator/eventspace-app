@@ -36,9 +36,12 @@ function bandOf(t: Todo): "Overdue" | "Today" | "Anytime" | "Upcoming" {
 }
 const BAND_ORDER = { Overdue: 0, Today: 1, Anytime: 2, Upcoming: 3 } as const;
 
-export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount }: {
+export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, variant = "rail" }: {
   bookingId?: string; bookingInvoice?: string;
   onOverdueCount?: (n: number) => void;
+  /** "rail" = Daily Ops right rail (salmon workspace, entry form always visible).
+   *  "embedded" = inside a booking page (neutral, list-first, form behind a button). */
+  variant?: "rail" | "embedded";
 }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [staff, setStaff] = useState<StaffRow[]>([]);
@@ -51,6 +54,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount }:
   const [assignee, setAssignee] = useState("");
   const [linkBooking, setLinkBooking] = useState("");
   const [collapsed, setCollapsed] = useState(false);
+  const [showForm, setShowForm] = useState(variant === "rail");
 
   const load = useCallback(async () => {
     let q = supabase.from("tasks").select("*").eq("done", false);
@@ -107,16 +111,19 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount }:
   // Collapsed-to-a-button when empty (and not on a booking page).
   if (todos.length === 0 && collapsed) {
     return (
-      <button className="text-xs text-slate-400 hover:text-navy underline" onClick={() => setCollapsed(false)}>
-        📝 To-Do List — add one
+      <button className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors" onClick={() => setCollapsed(false)}>
+        ＋ To-Do List
       </button>
     );
   }
 
+  const rail = variant === "rail";
   return (
-    <section className="card p-4">
+    <section className={rail
+      ? "rounded-2xl p-4 shadow-lg shadow-[#fa8072]/20 ring-1 ring-[#fa8072]/15 bg-gradient-to-b from-[#FFF6F3] via-[#FFEDE7] to-[#FFE3DA]"
+      : "card p-4"}>
       <div className="flex items-center justify-between mb-2">
-        <h2 className="font-display font-bold text-sm">📝 To-Do List{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
+        <h2 className={`font-display font-bold text-sm ${rail ? "text-[#7C2D12]" : ""}`}>📝 To-Do List{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
         <div className="flex items-center gap-2.5">
           <button className="text-xs text-slate-400 hover:text-navy underline" onClick={load} title="Refresh">↻</button>
           {todos.length === 0 && !bookingId && (
@@ -140,7 +147,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount }:
       {shown.map((t, idx) => {
         const band = bandOf(t);
         const showHeader = idx === 0 || bandOf(shown[idx - 1]) !== band;
-        const headColor = band === "Overdue" ? "text-red-600" : band === "Today" ? "text-navy" : "text-slate-400";
+        const headColor = band === "Overdue" ? "text-red-600" : band === "Today" ? (rail ? "text-[#9A3412]" : "text-navy") : (rail ? "text-[#C2724F]" : "text-slate-400");
         const d = dueDateTime(t);
         const overdue = d !== null && d < new Date();
         return (
@@ -148,7 +155,9 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount }:
             {showHeader && (
               <div className={`text-[10px] font-bold uppercase tracking-wider mt-2 mb-0.5 ${headColor}`}>{band}</div>
             )}
-            <div className="flex items-start gap-2 py-1.5 border-b border-slate-50 text-sm">
+            <div className={`flex items-start gap-2 py-1.5 px-2 rounded-lg text-sm ${rail
+              ? (idx % 2 === 0 ? "bg-white/55" : "bg-[#FFD9CE]/45")
+              : (idx % 2 === 0 ? "bg-white" : "bg-slate-50/70")}`}>
               <input type="checkbox" className="accent-navy mt-0.5"
                 onChange={async () => {
                   await supabase.from("tasks").update({ done: true }).eq("id", t.id);
@@ -175,28 +184,44 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount }:
         );
       })}
 
-      {/* Add form */}
-      <div className="mt-3 space-y-1.5">
-        <input className="field !py-1.5 w-full text-sm" placeholder={bookingId ? "Add a to-do for this booking…" : "Add a to-do…"}
+      {/* Add form: on the rail it's the darkest salmon section, always present.
+          Embedded (booking page) it hides behind an "＋ Add To-Do" chip. */}
+      {!showForm ? (
+        <div className="mt-3">
+          <button
+            className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors"
+            onClick={() => setShowForm(true)}>
+            ＋ Add To-Do
+          </button>
+        </div>
+      ) : (
+      <div className={`mt-3 space-y-1.5 rounded-xl p-2.5 ${rail ? "bg-[#F9BFAE]/70 ring-1 ring-[#fa8072]/25" : "bg-slate-50 ring-1 ring-slate-100"}`}>
+        <input className="field !py-1.5 w-full text-sm !bg-white" placeholder={bookingId ? "Add a to-do for this booking…" : "Add a to-do…"}
           value={title} onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-        <div className="flex gap-1.5 flex-wrap">
-          <input type="date" className="field !py-1 !text-xs" value={due} onChange={(e) => setDue(e.target.value)} title="Due date (optional)" />
-          <input type="time" className="field !py-1 !text-xs" value={time} onChange={(e) => setTime(e.target.value)} title="Due-by time (optional)" />
-          <select className="field !py-1 !text-xs" value={assignee} onChange={(e) => setAssignee(e.target.value)} title="Assignee">
+        <div className="grid grid-cols-2 gap-1.5">
+          <input type="date" className="field !py-1 !text-xs !bg-white" value={due} onChange={(e) => setDue(e.target.value)} title="Due date (optional)" />
+          <input type="time" className="field !py-1 !text-xs !bg-white" value={time} onChange={(e) => setTime(e.target.value)} title="Due-by time (optional)" />
+        </div>
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[110px]" value={assignee} onChange={(e) => setAssignee(e.target.value)} title="Assignee">
             <option value="">👤 Unassigned</option>
             {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
           {!bookingId && (
-            <select className="field !py-1 !text-xs max-w-[160px]" value={linkBooking} onChange={(e) => setLinkBooking(e.target.value)} title="Link to a booking (optional)">
+            <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[130px] max-w-[170px]" value={linkBooking} onChange={(e) => setLinkBooking(e.target.value)} title="Link to a booking (optional)">
               <option value="">🔗 No booking</option>
               {bookings.map((b) => <option key={b.id} value={b.id}>#{b.invoice_num} {b.contact_name}</option>)}
             </select>
           )}
-          <button className="btn-primary !py-1 !px-3 text-xs" onClick={add}>Add</button>
+          <button className="btn-primary !py-1 !px-3.5 text-xs" onClick={add}>Add</button>
+          {!rail && (
+            <button className="text-xs text-slate-400 underline" onClick={() => setShowForm(false)}>cancel</button>
+          )}
         </div>
-        <p className="text-[10px] text-slate-300">Date/time = due by (deadline). Leave blank for “anytime”.</p>
+        <p className={`text-[10px] ${rail ? "text-[#B45309]/60" : "text-slate-300"}`}>Date/time = due by (deadline). Leave blank for “anytime”.</p>
       </div>
+      )}
       {err && <p className="text-red-600 text-xs mt-2">{err}</p>}
     </section>
   );
