@@ -27,7 +27,7 @@ interface TouchRow {
   id: string; booking_id: string; kind: string; scheduled_at: string | null;
   status: string; notes: string | null; bookings: Booking | null;
 }
-interface TaskRow { id: string; title: string; due_date: string | null; done: boolean; }
+interface TaskRow { id: string; title: string; due_date: string | null; due_time: string | null; done: boolean; }
 
 function startOfWeek(d: Date) {
   const w = new Date(d); w.setHours(0, 0, 0, 0);
@@ -117,7 +117,7 @@ export default function Calendar() {
       }
       for (const t of tasks) {
         if (!t.due_date) continue;
-        push(t.due_date, { kind: "task", id: `task-${t.id}`, time: "", icon: "📝", label: t.title });
+        push(t.due_date, { kind: "task", id: `task-${t.id}`, time: t.due_time ?? "", icon: "📝", label: t.title });
       }
     }
     for (const list of Array.from(m.values()))

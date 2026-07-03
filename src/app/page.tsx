@@ -11,8 +11,8 @@ export default function DailyOps() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [callsToday, setCallsToday] = useState<Booking[]>([]);
   const [expiredHolds, setExpiredHolds] = useState<Booking[]>([]);
-  const [todos, setTodos] = useState<{ id: string; title: string; due_date: string | null; done: boolean }[]>([]);
-  const [newTask, setNewTask] = useState(""); const [newDue, setNewDue] = useState("");
+  const [todos, setTodos] = useState<{ id: string; title: string; due_date: string | null; due_time: string | null; done: boolean }[]>([]);
+  const [newTask, setNewTask] = useState(""); const [newDue, setNewDue] = useState(""); const [newTime, setNewTime] = useState("");
   const [showTasks, setShowTasks] = useState(false);
   const [err, setErr] = useState("");
 
@@ -29,7 +29,9 @@ export default function DailyOps() {
     setExpiredHolds(bookings.filter((b) =>
       b.status === "hold_expired" || (b.status === "on_hold" && isHoldExpired(b))));
     const { data: t } = await supabase.from("tasks").select("*")
-      .eq("done", false).order("due_date", { ascending: true, nullsFirst: false });
+      .eq("done", false)
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("due_time", { ascending: true, nullsFirst: true });
     setTodos((t ?? []) as typeof todos);
 
     const todayStr = new Date().toDateString();
@@ -108,7 +110,7 @@ export default function DailyOps() {
             <span className="flex-1">{t.title}</span>
             {t.due_date && (
               <span className={`text-xs ${parseLocalDate(t.due_date) < new Date(new Date().toDateString()) ? "text-red-600 font-semibold" : "text-slate-400"}`}>
-                {fmtDate(t.due_date)}
+                {fmtDate(t.due_date)}{t.due_time ? ` · ${fmtTime(t.due_time)}` : ""}
               </span>
             )}
           </label>
@@ -118,16 +120,17 @@ export default function DailyOps() {
             value={newTask} onChange={(e) => setNewTask(e.target.value)}
             onKeyDown={async (e) => {
               if (e.key === "Enter" && newTask.trim()) {
-                await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null });
-                setNewTask(""); setNewDue(""); load();
+                await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null, due_time: newTime || null });
+                setNewTask(""); setNewDue(""); setNewTime(""); load();
               }
             }} />
           <input type="date" className="field !py-1.5 text-sm" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
+          <input type="time" className="field !py-1.5 text-sm" value={newTime} onChange={(e) => setNewTime(e.target.value)} title="Optional time — leave blank for all-day" />
           <button className="btn-primary !py-1.5 !px-4 text-sm"
             onClick={async () => {
               if (!newTask.trim()) return;
-              await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null });
-              setNewTask(""); setNewDue(""); load();
+              await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null, due_time: newTime || null });
+              setNewTask(""); setNewDue(""); setNewTime(""); load();
             }}>Add</button>
         </div>
       </section>
