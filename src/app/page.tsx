@@ -13,6 +13,7 @@ export default function DailyOps() {
   const [expiredHolds, setExpiredHolds] = useState<Booking[]>([]);
   const [todos, setTodos] = useState<{ id: string; title: string; due_date: string | null; done: boolean }[]>([]);
   const [newTask, setNewTask] = useState(""); const [newDue, setNewDue] = useState("");
+  const [showTasks, setShowTasks] = useState(false);
   const [err, setErr] = useState("");
 
   async function load() {
@@ -84,9 +85,19 @@ export default function DailyOps() {
         <Stat label="Active bookings" value={activeBookings.length} tone="text-navy" />
       </div>
 
-      {/* General tasks — not tied to a booking ("call the linen vendor Tuesday"). */}
+      {/* General tasks — not tied to a booking. Collapsed to one line until opened. */}
+      {!showTasks ? (
+        <p className="mb-6 -mt-2">
+          <button className="text-xs text-slate-400 hover:text-navy underline" onClick={() => setShowTasks(true)}>
+            📝 Tasks{todos.length > 0 ? ` (${todos.length} open)` : " — add one"}
+          </button>
+        </p>
+      ) : (
       <section className="card p-5 mb-8">
-        <h2 className="font-display font-bold text-sm mb-2">📝 Tasks{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-display font-bold text-sm">📝 Tasks{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
+          <button className="text-xs text-slate-400 underline" onClick={() => setShowTasks(false)}>hide</button>
+        </div>
         {todos.map((t) => (
           <label key={t.id} className="flex items-center gap-2.5 py-1.5 border-b border-slate-50 last:border-0 text-sm cursor-pointer">
             <input type="checkbox" className="accent-navy"
@@ -120,6 +131,7 @@ export default function DailyOps() {
             }}>Add</button>
         </div>
       </section>
+      )}
 
       {callsToday.length > 0 && (
         <section className="card p-5 mb-8 border-l-4 border-gold">

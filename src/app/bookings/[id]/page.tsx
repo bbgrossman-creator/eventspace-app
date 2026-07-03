@@ -17,13 +17,13 @@ import { PRICING, calcCCFee, grossUpForCC, buffetBaseTotal, invoiceTotals } from
 import { regenerateMenuCharges } from "@/lib/menuCharges";
 import { bookingFinancials } from "@/lib/finance";
 import ApprovalField from "@/components/ApprovalField";
-import { loadPolicies, Policies } from "@/lib/policies";
+import { loadPolicies, Policies, changeoverMinutes } from "@/lib/policies";
 import { billableHours } from "@/lib/billingHours";
 import { loadSopNote } from "@/lib/sop";
 import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
-import { STAGE_TO_STATUS, hasMenu, TIMELINE_MILESTONES, STAGES } from "@/lib/workflow";
+import { STAGE_TO_STATUS, hasMenu, TIMELINE_MILESTONES, STAGES, findConflicts } from "@/lib/workflow";
 
 interface Payment {
   id: string; payment_type: string; method: string; check_number?: string | null;
@@ -518,9 +518,13 @@ export default function BookingDetail() {
           {(b.status === "completed" || b.status === "paid_awaiting_event") && (
             <button className="btn-warn" onClick={() => setPanel(panel === "amend" ? "" : "amend")}>📝 Add Amendment (extra guests/charges)</button>
           )}
+          {b.status !== "cancelled" && (
+            <button className="btn-ghost" onClick={() => setPanel(panel === "edit" ? "" : "edit")}>✏️ Edit Details</button>
+          )}
         </div>
 
         {/* Inline panels */}
+        {panel === "edit" && <EditDetailsForm b={b} done={() => { setPanel(""); load(); }} />}
         {panel === "deposit" && <DepositForm b={b} done={() => { setPanel(""); load(); setMsg({ ok: true, text: "Deposit recorded ✓" }); }} />}
         {panel === "payment" && fin && <PaymentForm b={b} fin={fin} done={() => { setPanel(""); load(); setMsg({ ok: true, text: "Payment recorded ✓" }); }} />}
         {panel === "charge" && <ChargeForm b={b} isAdjustment={b.status === "completed"} done={async () => {
@@ -1656,6 +1660,126 @@ function GuestCountForm({ b, done, advance }: { b: Booking; done: () => void; ad
 }
 
 // ─── Cancel with refund options ───
+const EDIT_EVENT_TYPES = ["Bar Mitzvah", "Bat Mitzvah", "Wedding", "Engagement", "Sheva Brochos", "Birthday Party", "Corporate Event", "Other"];
+const EDIT_TIMES = Array.from({ length: 13 }, (_, i) => `${(11 + i).toString().padStart(2, "0")}:00`);
+
+/** Edit a booking's details after creation. A date/time change re-runs
+ *  conflict detection live — a confirmed-booking clash requires an explicit
+ *  override; an unconfirmed-hold clash warns but allows. */
+function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
+  const [f, setF] = useState({
+    contact_name: b.contact_name ?? "", phone: b.phone ?? "", email: b.email ?? "",
+    contact2_name: b.contact2_name ?? "", contact2_phone: b.contact2_phone ?? "", contact2_email: b.contact2_email ?? "",
+    event_type: b.event_type ?? "", event_name: b.event_name ?? "",
+    event_date: b.event_date ?? "", event_time: b.event_time ?? "19:00",
+    expected_hours: (b as { expected_hours?: number | null }).expected_hours?.toString() ?? "",
+  });
+  const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const [all, setAll] = useState<Booking[]>([]);
+  const [pol, setPol] = useState<Policies | null>(null);
+  const [override, setOverride] = useState(false);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    supabase.from("bookings").select("*").neq("status", "cancelled")
+      .then(({ data }) => setAll((data ?? []) as Booking[]));
+    loadPolicies().then(setPol);
+  }, []);
+
+  const dateChanged = f.event_date !== (b.event_date ?? "") || f.event_time !== (b.event_time ?? "");
+  const conflicts = dateChanged && f.event_date && f.event_time && pol
+    ? findConflicts(all, f.event_date, f.event_time, b.id, {
+        newHours: f.expected_hours ? Number(f.expected_hours) : pol.service_hours,
+        defaultHours: pol.service_hours,
+        bufferMin: changeoverMinutes(pol),
+      })
+    : [];
+  const confirmedClash = conflicts.some((c) =>
+    !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status));
+
+  async function save() {
+    if (!f.contact_name.trim()) { setErr("Customer name is required."); return; }
+    if (!f.event_date || !f.event_time) { setErr("Event date and time are required."); return; }
+    if (confirmedClash && !override) { setErr("The new date/time clashes with a CONFIRMED booking — tick the override to save anyway, or pick another slot."); return; }
+    setSaving(true);
+    const moved = dateChanged
+      ? ` Event moved: ${b.event_date ?? "?"} ${b.event_time ?? ""} → ${f.event_date} ${f.event_time}.`
+      : "";
+    await supabase.from("bookings").update({
+      contact_name: f.contact_name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null,
+      contact2_name: f.contact2_name.trim() || null, contact2_phone: f.contact2_phone.trim() || null,
+      contact2_email: f.contact2_email.trim() || null,
+      event_type: f.event_type || null, event_name: f.event_name.trim() || null,
+      event_date: f.event_date, event_time: f.event_time,
+      expected_hours: f.expected_hours ? Number(f.expected_hours) : null,
+    }).eq("id", b.id);
+    await logActivity(b.id, b.invoice_num, "Details Edited",
+      `Booking details updated.${moved}${confirmedClash ? " ⚠️ Saved OVER a confirmed-booking conflict (rep override)." : conflicts.length ? " Note: clashes with an unconfirmed hold." : ""}`,
+      confirmedClash || conflicts.length ? "WARNING" : "SUCCESS");
+    setSaving(false);
+    done();
+  }
+
+  return (
+    <Panel title="✏️ Edit booking details">
+      <div className="grid sm:grid-cols-3 gap-3">
+        <div><label className="label">Customer name *</label>
+          <input className="field" value={f.contact_name} onChange={(e) => set("contact_name", e.target.value)} /></div>
+        <div><label className="label">Phone</label>
+          <input className="field" value={f.phone} onChange={(e) => set("phone", e.target.value)} /></div>
+        <div><label className="label">Email</label>
+          <input className="field" type="email" value={f.email} onChange={(e) => set("email", e.target.value)} /></div>
+        <div><label className="label">2nd contact name</label>
+          <input className="field" value={f.contact2_name} onChange={(e) => set("contact2_name", e.target.value)} /></div>
+        <div><label className="label">2nd phone</label>
+          <input className="field" value={f.contact2_phone} onChange={(e) => set("contact2_phone", e.target.value)} /></div>
+        <div><label className="label">2nd email</label>
+          <input className="field" type="email" value={f.contact2_email} onChange={(e) => set("contact2_email", e.target.value)} /></div>
+        <div><label className="label">Event type</label>
+          <select className="field" value={f.event_type} onChange={(e) => set("event_type", e.target.value)}>
+            <option value="">— Select —</option>
+            {EDIT_EVENT_TYPES.map((t) => <option key={t}>{t}</option>)}
+          </select></div>
+        <div><label className="label">Event name</label>
+          <input className="field" value={f.event_name} onChange={(e) => set("event_name", e.target.value)} /></div>
+        <div><label className="label">Expected duration (hrs)</label>
+          <input className="field" type="number" step="0.5" min="0" value={f.expected_hours}
+            onChange={(e) => set("expected_hours", e.target.value)} placeholder="standard" /></div>
+        <div><label className="label">Event date</label>
+          <input className="field" type="date" value={f.event_date} onChange={(e) => set("event_date", e.target.value)} /></div>
+        <div><label className="label">Start time</label>
+          <select className="field" value={f.event_time} onChange={(e) => set("event_time", e.target.value)}>
+            {EDIT_TIMES.map((t) => <option key={t} value={t}>{fmtTime(t)}</option>)}
+          </select></div>
+      </div>
+
+      {dateChanged && conflicts.length > 0 && (
+        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+          <p className="font-bold mb-1">⚠️ New date/time clashes with:</p>
+          {conflicts.map((c) => (
+            <p key={c.id} className="text-xs">• #{c.invoice_num} {c.contact_name} at {fmtTime(c.event_time)} — {["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status) ? "hold (unconfirmed)" : "CONFIRMED BOOKING"}</p>
+          ))}
+          {confirmedClash && (
+            <label className="flex items-center gap-2 mt-2 text-xs font-semibold cursor-pointer">
+              <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} />
+              Save anyway (I understand this double-books a confirmed slot)
+            </label>
+          )}
+        </div>
+      )}
+      {dateChanged && conflicts.length === 0 && f.event_date && (
+        <p className="mt-3 text-xs text-emerald-700 font-semibold">✅ New date/time is clear — no conflicts.</p>
+      )}
+
+      {err && <p className="text-red-600 text-sm mt-2">{err}</p>}
+      <div className="flex gap-2 mt-4">
+        <button className="btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save Changes"}</button>
+      </div>
+    </Panel>
+  );
+}
+
 function CancelForm({ b, done }: { b: Booking; done: () => void }) {
   const dep = Number(b.deposit_amount ?? 0);
   const [refund, setRefund] = useState<"full" | "credit" | "none">(dep > 0 ? "full" : "none");
