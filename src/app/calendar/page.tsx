@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { Booking, fmtTime, menuBadge, parseLocalDate, stageFor, deriveGuests } from "@/lib/workflow";
 import StatusPipeline from "@/components/StatusPipeline";
 
-const DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"];
+const DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // A calendar item is either the event itself or the menu-discussion phone call.
@@ -38,6 +38,11 @@ function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 function fmtISO(d: Date) { return d.toISOString().slice(0, 10); }
+/** Local-date ISO (YYYY-MM-DD) — avoids the UTC shift that toISOString causes
+ *  for evening clock times, which otherwise buckets items onto the wrong day. */
+function fmtISOLocal(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function shortName(b: Booking) {
   const n = b.contact_name?.split(" ").slice(-1)[0] ?? b.contact_name ?? "";
   return n.length > 10 ? n.slice(0, 9) + "…" : n;
@@ -55,7 +60,7 @@ export default function Calendar() {
   // Range to fetch depends on view
   const range = useMemo(() => {
     if (view === "week") {
-      const end = new Date(anchor); end.setDate(end.getDate() + 4);
+      const end = new Date(anchor); end.setDate(end.getDate() + 6);
       return { start: anchor, end };
     }
     const first = startOfMonth(anchor);
@@ -77,10 +82,16 @@ export default function Calendar() {
       for (const b of [...(ev.data ?? []), ...(calls.data ?? [])] as Booking[]) map.set(b.id, b);
       setBookings(Array.from(map.values()));
     });
-    supabase.from("touchpoints").select("*, bookings(*)")
+    supabase.from("touchpoints").select("*")
       .eq("status", "scheduled")
       .gte("scheduled_at", s + "T00:00:00").lte("scheduled_at", e + "T23:59:59")
-      .then(({ data }) => setTouches((data ?? []) as unknown as TouchRow[]));
+      .then(async ({ data, error }) => {
+        if (error || !data?.length) { setTouches([]); return; }
+        const ids = Array.from(new Set(data.map((t) => t.booking_id)));
+        const { data: bk } = await supabase.from("bookings").select("*").in("id", ids);
+        const bmap = new Map((bk ?? []).map((b) => [b.id, b as Booking]));
+        setTouches(data.map((t) => ({ ...t, bookings: bmap.get(t.booking_id) ?? null })) as unknown as TouchRow[]);
+      });
     supabase.from("tasks").select("*").eq("done", false)
       .gte("due_date", s).lte("due_date", e)
       .then(({ data }) => setTasks((data ?? []) as TaskRow[]));
@@ -107,7 +118,7 @@ export default function Calendar() {
       }
       if ((filter === "both" || filter === "calls") && b.menu_discussion_date) {
         const d = new Date(b.menu_discussion_date);
-        const dateStr = fmtISO(d);
+        const dateStr = fmtISOLocal(d);
         const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
         push(dateStr, { kind: "call", booking: b, time, id: `call-${b.id}` });
       }
@@ -116,7 +127,7 @@ export default function Calendar() {
       for (const t of touches) {
         if (!t.scheduled_at) continue;
         const d = new Date(t.scheduled_at);
-        push(fmtISO(d), {
+        push(fmtISOLocal(d), {
           kind: "touch", booking: t.bookings ?? undefined, id: `tp-${t.id}`,
           time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
           icon: TP_ICONS[t.kind] ?? "📌", label: TP_LABELS[t.kind] ?? t.kind, sub: t.notes ?? "",
@@ -200,7 +211,7 @@ export default function Calendar() {
 // ─── WEEK VIEW (rich cards) ───
 function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, CalItem[]> }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-7 gap-3">
       {DAYS.map((name, i) => {
         const date = new Date(anchor); date.setDate(date.getDate() + i);
         const isToday = date.toDateString() === new Date().toDateString();
@@ -318,7 +329,7 @@ function MonthView({ anchor, byDate, onDayClick }: {
               onClick={() => onDayClick(d)}
               className={`min-h-[104px] rounded-lg border p-1.5 cursor-pointer transition-colors
                 ${inMonth ? "bg-white" : "bg-slate-50"} 
-                ${weekend ? "opacity-60" : ""}
+                
                 ${isToday ? "border-gold border-2" : "border-slate-200 hover:border-navy"}`}>
               <div className={`text-xs font-semibold mb-1 ${inMonth ? (isToday ? "text-gold" : "text-slate-600") : "text-slate-300"}`}>
                 {d.getDate()}
@@ -366,7 +377,7 @@ function MonthView({ anchor, byDate, onDayClick }: {
         })}
       </div>
       <p className="text-[11px] text-slate-400 mt-3">
-        📞 = menu call · click to open · click a day to jump to that week · Fri/Sat dimmed (Sun–Thu operating week)
+        📞 = menu call · click to open · click a day to jump to that week
       </p>
     </div>
   );
