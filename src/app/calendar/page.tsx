@@ -10,7 +10,24 @@ const DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // A calendar item is either the event itself or the menu-discussion phone call.
-type CalItem = { kind: "event" | "call"; booking: Booking; time: string };
+type CalItem = {
+  kind: "event" | "call" | "touch" | "task";
+  booking?: Booking; time: string;
+  icon?: string; label?: string; sub?: string; id: string;
+};
+
+const TP_ICONS: Record<string, string> = {
+  walkthrough: "🚶", tasting: "🍽️", contract: "✍️", followup: "☎️",
+};
+const TP_LABELS: Record<string, string> = {
+  walkthrough: "Walkthrough", tasting: "Tasting", contract: "Contract Signing", followup: "Follow-Up",
+};
+
+interface TouchRow {
+  id: string; booking_id: string; kind: string; scheduled_at: string | null;
+  status: string; notes: string | null; bookings: Booking | null;
+}
+interface TaskRow { id: string; title: string; due_date: string | null; done: boolean; }
 
 function startOfWeek(d: Date) {
   const w = new Date(d); w.setHours(0, 0, 0, 0);
@@ -31,7 +48,9 @@ export default function Calendar() {
   const [view, setView] = useState<"week" | "month">("week");
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [filter, setFilter] = useState<"both" | "events" | "calls">("both");
+  const [filter, setFilter] = useState<"both" | "events" | "calls" | "other">("both");
+  const [touches, setTouches] = useState<TouchRow[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
 
   // Range to fetch depends on view
   const range = useMemo(() => {
@@ -58,6 +77,13 @@ export default function Calendar() {
       for (const b of [...(ev.data ?? []), ...(calls.data ?? [])] as Booking[]) map.set(b.id, b);
       setBookings(Array.from(map.values()));
     });
+    supabase.from("touchpoints").select("*, bookings(*)")
+      .eq("status", "scheduled")
+      .gte("scheduled_at", s + "T00:00:00").lte("scheduled_at", e + "T23:59:59")
+      .then(({ data }) => setTouches((data ?? []) as unknown as TouchRow[]));
+    supabase.from("tasks").select("*").eq("done", false)
+      .gte("due_date", s).lte("due_date", e)
+      .then(({ data }) => setTasks((data ?? []) as TaskRow[]));
   }, [range.start, range.end]);
 
   // Build calendar items: each booking yields an EVENT item (on event_date) and,
@@ -70,19 +96,34 @@ export default function Calendar() {
     }
     for (const b of bookings) {
       if ((filter === "both" || filter === "events") && b.event_date) {
-        push(b.event_date, { kind: "event", booking: b, time: b.event_time ?? "" });
+        push(b.event_date, { kind: "event", booking: b, time: b.event_time ?? "", id: `ev-${b.id}` });
       }
       if ((filter === "both" || filter === "calls") && b.menu_discussion_date) {
         const d = new Date(b.menu_discussion_date);
         const dateStr = fmtISO(d);
         const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-        push(dateStr, { kind: "call", booking: b, time });
+        push(dateStr, { kind: "call", booking: b, time, id: `call-${b.id}` });
+      }
+    }
+    if (filter === "both" || filter === "other") {
+      for (const t of touches) {
+        if (!t.scheduled_at) continue;
+        const d = new Date(t.scheduled_at);
+        push(fmtISO(d), {
+          kind: "touch", booking: t.bookings ?? undefined, id: `tp-${t.id}`,
+          time: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+          icon: TP_ICONS[t.kind] ?? "📌", label: TP_LABELS[t.kind] ?? t.kind, sub: t.notes ?? "",
+        });
+      }
+      for (const t of tasks) {
+        if (!t.due_date) continue;
+        push(t.due_date, { kind: "task", id: `task-${t.id}`, time: "", icon: "📝", label: t.title });
       }
     }
     for (const list of Array.from(m.values()))
       list.sort((a, z) => (a.time || "99").localeCompare(z.time || "99"));
     return m;
-  }, [bookings, filter]);
+  }, [bookings, touches, tasks, filter]);
 
   function shift(dir: -1 | 1) {
     const a = new Date(anchor);
@@ -113,7 +154,7 @@ export default function Calendar() {
         <div className="flex gap-3 flex-wrap">
           {/* Calls / Bookings / Both filter */}
           <div className="flex rounded-lg border border-slate-200 bg-white overflow-hidden">
-            {([["both", "Both"], ["events", "📅 Bookings"], ["calls", "📞 Calls"]] as const).map(([v, lbl]) => (
+            {([["both", "All"], ["events", "📅 Bookings"], ["calls", "📞 Calls"], ["other", "📌 Other"]] as const).map(([v, lbl]) => (
               <button key={v} onClick={() => setFilter(v)}
                 className={`px-3 py-2 text-sm font-medium ${filter === v ? "bg-navy text-white" : "text-slate-600 hover:bg-slate-50"}`}>
                 {lbl}
@@ -163,7 +204,28 @@ function WeekView({ anchor, byDate }: { anchor: Date; byDate: Map<string, CalIte
               {list.length === 0 ? (
                 <p className="text-center text-[11px] text-slate-300 pt-8">Nothing scheduled</p>
               ) : list.map((item) => {
-                const b = item.booking;
+                if (item.kind === "task") {
+                  return (
+                    <div key={item.id} className="block rounded-lg border border-slate-300 border-dashed bg-slate-50 p-3">
+                      <span className="font-display font-bold text-slate-600 text-sm">📝 Task</span>
+                      <div className="text-sm truncate">{item.label}</div>
+                    </div>
+                  );
+                }
+                const b = item.booking!;
+                if (item.kind === "touch") {
+                  return (
+                    <Link key={item.id} href={`/bookings/${b.id}`}
+                      className="block rounded-lg border-2 border-amber-200 bg-amber-50 p-3 hover:border-amber-400 hover:shadow-md transition-all">
+                      <div className="flex justify-between items-baseline">
+                        <span className="font-display font-bold text-amber-700 text-sm">{item.icon} {item.label}</span>
+                        <span className="text-xs font-semibold text-amber-700">{fmtTime(item.time)}</span>
+                      </div>
+                      <div className="text-sm font-medium truncate">{b.contact_name}</div>
+                      <div className="text-[11px] text-slate-500 truncate">#{b.invoice_num}{item.sub ? ` · ${item.sub}` : ""}</div>
+                    </Link>
+                  );
+                }
                 if (item.kind === "call") {
                   // Phone-call card — visually distinct (pink, phone icon).
                   return (
@@ -252,7 +314,22 @@ function MonthView({ anchor, byDate, onDayClick }: {
               </div>
               <div className="space-y-1">
                 {shown.map((item) => {
-                  const b = item.booking;
+                  if (item.kind === "task" || item.kind === "touch") {
+                    const b = item.booking;
+                    return (
+                      <button key={item.id}
+                        onClick={(e) => { e.stopPropagation(); if (b) router.push(`/bookings/${b.id}`); }}
+                        className="w-full flex items-center gap-1 rounded px-1 py-0.5 text-left hover:ring-1 hover:ring-navy"
+                        style={{ background: item.kind === "task" ? "#F1F5F9" : "#FEF3C7" }}
+                        title={`${item.icon} ${item.label}${b ? `: ${b.contact_name}` : ""}${item.time ? ` · ${fmtTime(item.time)}` : ""}`}>
+                        <span className="text-[10px] shrink-0">{item.icon}</span>
+                        <span className="text-[10px] font-medium truncate text-slate-700">
+                          {item.time ? fmtTime(item.time).replace(":00", "") + " " : ""}{b ? shortName(b) : item.label}
+                        </span>
+                      </button>
+                    );
+                  }
+                  const b = item.booking!;
                   const isCall = item.kind === "call";
                   const bg = isCall ? "#FCE7F3" : stageFor(b.status).color;
                   const fg = isCall ? "#BE185D" : stageFor(b.status).textColor;

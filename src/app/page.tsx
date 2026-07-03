@@ -11,6 +11,8 @@ export default function DailyOps() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [callsToday, setCallsToday] = useState<Booking[]>([]);
   const [expiredHolds, setExpiredHolds] = useState<Booking[]>([]);
+  const [todos, setTodos] = useState<{ id: string; title: string; due_date: string | null; done: boolean }[]>([]);
+  const [newTask, setNewTask] = useState(""); const [newDue, setNewDue] = useState("");
   const [err, setErr] = useState("");
 
   async function load() {
@@ -25,6 +27,9 @@ export default function DailyOps() {
     setTasks(buildTasks(bookings, { menuOverdueHours: pol.menu_call_overdue_hours }));
     setExpiredHolds(bookings.filter((b) =>
       b.status === "hold_expired" || (b.status === "on_hold" && isHoldExpired(b))));
+    const { data: t } = await supabase.from("tasks").select("*")
+      .eq("done", false).order("due_date", { ascending: true, nullsFirst: false });
+    setTodos((t ?? []) as typeof todos);
 
     const todayStr = new Date().toDateString();
     setCallsToday(
@@ -78,6 +83,43 @@ export default function DailyOps() {
         <Stat label="Events upcoming" value={eventsUpcoming.length} tone="text-emerald-600" />
         <Stat label="Active bookings" value={activeBookings.length} tone="text-navy" />
       </div>
+
+      {/* General tasks — not tied to a booking ("call the linen vendor Tuesday"). */}
+      <section className="card p-5 mb-8">
+        <h2 className="font-display font-bold text-sm mb-2">📝 Tasks{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
+        {todos.map((t) => (
+          <label key={t.id} className="flex items-center gap-2.5 py-1.5 border-b border-slate-50 last:border-0 text-sm cursor-pointer">
+            <input type="checkbox" className="accent-navy"
+              onChange={async () => {
+                await supabase.from("tasks").update({ done: true }).eq("id", t.id);
+                setTodos((prev) => prev.filter((x) => x.id !== t.id));
+              }} />
+            <span className="flex-1">{t.title}</span>
+            {t.due_date && (
+              <span className={`text-xs ${parseLocalDate(t.due_date) < new Date(new Date().toDateString()) ? "text-red-600 font-semibold" : "text-slate-400"}`}>
+                {fmtDate(t.due_date)}
+              </span>
+            )}
+          </label>
+        ))}
+        <div className="flex gap-2 mt-2 flex-wrap">
+          <input className="field !py-1.5 flex-1 min-w-[160px] text-sm" placeholder="Add a task…"
+            value={newTask} onChange={(e) => setNewTask(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === "Enter" && newTask.trim()) {
+                await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null });
+                setNewTask(""); setNewDue(""); load();
+              }
+            }} />
+          <input type="date" className="field !py-1.5 text-sm" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
+          <button className="btn-primary !py-1.5 !px-4 text-sm"
+            onClick={async () => {
+              if (!newTask.trim()) return;
+              await supabase.from("tasks").insert({ title: newTask.trim(), due_date: newDue || null });
+              setNewTask(""); setNewDue(""); load();
+            }}>Add</button>
+        </div>
+      </section>
 
       {callsToday.length > 0 && (
         <section className="card p-5 mb-8 border-l-4 border-gold">

@@ -293,6 +293,10 @@ export default function BookingDetail() {
       {/* SOP / playbook note for the current stage (editable in back office) */}
       <SopNote statusKey={holdExpired ? "hold_expired" : b.status} />
 
+      {/* Optional touchpoints: walkthrough / tasting / contract / follow-up.
+          Hidden until the rep adds one — never a pipeline stage. */}
+      <TouchpointsPanel b={b} onChange={load} />
+
       {msg && (
         <div className={`rounded-lg px-4 py-3 mb-5 text-sm font-semibold ${msg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
           {msg.text}
@@ -1141,6 +1145,116 @@ function ConflictPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
 }
 
 // ─── SOP note for the current stage (collapsible; editable in back office) ───
+const TP_META: Record<string, { icon: string; label: string }> = {
+  walkthrough: { icon: "🚶", label: "Walkthrough" },
+  tasting: { icon: "🍽️", label: "Tasting" },
+  contract: { icon: "✍️", label: "Contract Signing" },
+  followup: { icon: "☎️", label: "Follow-Up" },
+};
+
+interface Touchpoint {
+  id: string; kind: string; scheduled_at: string | null;
+  status: string; notes: string | null;
+}
+
+/** Optional, booking-tied appointments (walkthrough / tasting / contract /
+ *  follow-up). Hidden until added; completing a tasting offers to finalize
+ *  the menu, since a tasting is usually the menu's finalizer when it happens. */
+function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
+  const [items, setItems] = useState<Touchpoint[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [kind, setKind] = useState("walkthrough");
+  const [when, setWhen] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const loadTp = useCallback(async () => {
+    const { data } = await supabase.from("touchpoints").select("*")
+      .eq("booking_id", b.id).order("scheduled_at", { ascending: true });
+    setItems((data ?? []) as Touchpoint[]);
+  }, [b.id]);
+  useEffect(() => { loadTp(); }, [loadTp]);
+
+  async function add() {
+    await supabase.from("touchpoints").insert({
+      booking_id: b.id, invoice_num: b.invoice_num, kind,
+      scheduled_at: when || null, notes: notes.trim() || null,
+    });
+    await logActivity(b.id, b.invoice_num, `${TP_META[kind].label} Scheduled`,
+      when ? `Set for ${new Date(when).toLocaleString()}` : "Added (no time set yet)");
+    setAdding(false); setWhen(""); setNotes(""); loadTp();
+  }
+
+  async function complete(t: Touchpoint) {
+    await supabase.from("touchpoints").update({ status: "completed" }).eq("id", t.id);
+    await logActivity(b.id, b.invoice_num, `${TP_META[t.kind]?.label ?? t.kind} Completed`, t.notes ?? "");
+    if (t.kind === "tasting" && !hasMenu(b) &&
+        confirm("Tasting completed — also mark the menu as finalized?")) {
+      await supabase.from("bookings").update({ menu_completed: true }).eq("id", b.id);
+      await logActivity(b.id, b.invoice_num, "Menu Finalized at Tasting",
+        "Menu locked in at the tasting.");
+      onChange();
+    }
+    loadTp();
+  }
+
+  async function remove(t: Touchpoint) {
+    if (!confirm(`Remove this ${TP_META[t.kind]?.label.toLowerCase() ?? "touchpoint"}?`)) return;
+    await supabase.from("touchpoints").delete().eq("id", t.id);
+    loadTp();
+  }
+
+  if (items.length === 0 && !adding) {
+    return (
+      <p className="mb-5 -mt-1">
+        <button className="text-xs text-slate-400 hover:text-navy underline" onClick={() => setAdding(true)}>
+          ＋ Add touchpoint (walkthrough · tasting · contract · follow-up)
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <div className="card p-4 mb-5">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-display font-bold text-sm">📌 Touchpoints</h3>
+        {!adding && <button className="text-xs text-navy underline" onClick={() => setAdding(true)}>＋ Add</button>}
+      </div>
+      {items.map((t) => (
+        <div key={t.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 last:border-0 text-sm flex-wrap">
+          <span className={t.status === "completed" ? "line-through text-slate-400" : ""}>
+            {TP_META[t.kind]?.icon} <b>{TP_META[t.kind]?.label ?? t.kind}</b>
+            {t.scheduled_at ? ` — ${new Date(t.scheduled_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : " — no time set"}
+            {t.notes ? <span className="text-slate-500"> · {t.notes}</span> : ""}
+          </span>
+          <span className="flex gap-2 text-xs">
+            {t.status !== "completed" && (
+              <button className="text-emerald-700 underline" onClick={() => complete(t)}>✓ Complete</button>
+            )}
+            <button className="text-slate-400 underline" onClick={() => remove(t)}>remove</button>
+          </span>
+        </div>
+      ))}
+      {adding && (
+        <div className="mt-3 grid sm:grid-cols-4 gap-2 items-end">
+          <div><label className="label">Type</label>
+            <select className="field" value={kind} onChange={(e) => setKind(e.target.value)}>
+              {Object.entries(TP_META).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+            </select></div>
+          <div><label className="label">When</label>
+            <input className="field" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></div>
+          <div><label className="label">Note</label>
+            <input className="field" value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder={kind === "followup" ? "e.g. call back re: pricing" : "optional"} /></div>
+          <div className="flex gap-2">
+            <button className="btn-primary !py-2 !px-4 text-sm" onClick={add}>Add</button>
+            <button className="btn-ghost !py-2 !px-3 text-sm" onClick={() => setAdding(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SopNote({ statusKey }: { statusKey: string }) {
   const [body, setBody] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
