@@ -19,6 +19,15 @@ interface PackageGuide {
 const EVENT_TYPES = ["Bar Mitzvah", "Bat Mitzvah", "Wedding", "Engagement", "Sheva Brochos", "Birthday Party", "Corporate Event", "Other"];
 const TIMES = Array.from({ length: 13 }, (_, i) => `${(11 + i).toString().padStart(2, "0")}:00`);
 
+function SectionHead({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 mb-3">
+      <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap">{children}</h3>
+      <div className="h-px bg-slate-100 flex-1" />
+    </div>
+  );
+}
+
 export default function NewInquiry() {
   const router = useRouter();
   const [all, setAll] = useState<Booking[]>([]);
@@ -174,7 +183,10 @@ export default function NewInquiry() {
         <div className="gold-rule mt-3" />
       </header>
 
-      <div className="card p-6 space-y-4">
+      <div className="card p-6 space-y-6">
+        {/* 1 — Customer */}
+        <div>
+        <SectionHead>Customer Information</SectionHead>
         <div className="grid sm:grid-cols-2 gap-4">
           <div><label className="label">Customer name *</label>
             <input className="field" value={f.contact_name} onChange={(e) => set("contact_name", e.target.value)} /></div>
@@ -187,7 +199,7 @@ export default function NewInquiry() {
           {!showContact2 ? (
             <div className="sm:col-span-2">
               <button type="button" className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors" onClick={() => setShowContact2(true)}>
-                ➕ Add Secondary Contact
+                ➕ Secondary Contact
               </button>
             </div>
           ) : (
@@ -207,6 +219,13 @@ export default function NewInquiry() {
                 <input className="field" type="email" value={f.contact2_email} onChange={(e) => set("contact2_email", e.target.value)} /></div>
             </>
           )}
+        </div>
+        </div>
+
+        {/* 2 — Event (type + date lead: the two facts that matter most after the name) */}
+        <div>
+        <SectionHead>Event Details</SectionHead>
+        <div className="grid sm:grid-cols-2 gap-4">
           <div><label className="label">Event type</label>
             <select className="field" value={f.event_type} onChange={(e) => set("event_type", e.target.value)}>
               <option value="">— Select —</option>
@@ -224,8 +243,13 @@ export default function NewInquiry() {
               placeholder={pol ? String(pol.default_event_hours) : "4"} />
             <p className="text-[11px] text-slate-400 mt-1">Leave blank for standard. A shorter event may fit alongside another.</p>
           </div>
-          <div className="sm:col-span-2"><label className="label">Notes</label>
-            <textarea className="field" rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} /></div>
+        </div>
+        </div>
+
+        {/* 3 — Notes */}
+        <div>
+        <SectionHead>Additional Notes</SectionHead>
+          <textarea className="field" rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything worth remembering from the call…" />
         </div>
 
         {dupes.length > 0 && (
@@ -363,7 +387,7 @@ export default function NewInquiry() {
 
         <div className="flex gap-3 pt-1">
           <button onClick={createBooking} disabled={saving} className="btn-primary flex-1">
-            {saving ? "Creating…" : conflicts.length > 0 ? "Create as Conflict (review)" : "Create Hold (24h)"}
+            {saving ? "Creating…" : conflicts.length > 0 ? "Create as Conflict (review)" : "Create 24-Hour Hold"}
           </button>
         </div>
       </div>
