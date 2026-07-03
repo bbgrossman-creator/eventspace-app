@@ -265,7 +265,10 @@ function WeekView({ anchor, byDate, days }: { anchor: Date; byDate: Map<string, 
                 if (item.kind === "task") {
                   return (
                     <div key={item.id} className="block rounded-lg border border-slate-300 border-dashed bg-slate-50 p-3">
-                      <span className="font-display font-bold text-slate-600 text-sm">📝 Task</span>
+                      <div className="flex justify-between items-baseline">
+                        <span className="font-display font-bold text-slate-600 text-sm">📝 Task</span>
+                        {item.time && <span className="text-xs font-semibold text-slate-500">by {fmtTime(item.time)}</span>}
+                      </div>
                       <div className="text-sm truncate">{item.label}</div>
                     </div>
                   );
