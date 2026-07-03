@@ -1260,13 +1260,7 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
           <div><label className="label">Type</label>
             <select className="field" value={kind} onChange={(e) => setKind(e.target.value)}>
               {allowed.map((k) => <option key={k} value={k}>{TP_META[k].icon} {TP_META[k].label}</option>)}
-            </select>
-            {blocked.length > 0 && (
-              <p className="text-[10px] text-slate-400 mt-1">
-                Not available at this stage: {blocked.map((k) => TP_META[k].label).join(", ")}
-                {blocked.includes("tasting") && hasMenu(b) ? " (menu already finalized)" : ""}
-              </p>
-            )}</div>
+            </select></div>
           <div><label className="label">When</label>
             <input className="field" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></div>
           <div><label className="label">Note</label>
@@ -1277,6 +1271,12 @@ function TouchpointsPanel({ b, onChange }: { b: Booking; onChange: () => void })
             <button className="btn-ghost !py-2 !px-3 text-sm" onClick={() => setAdding(false)}>Cancel</button>
           </div>
           {tpErr && <p className="text-red-600 text-xs sm:col-span-4">{tpErr}</p>}
+          {blocked.length > 0 && (
+            <p className="text-[10px] text-slate-400 sm:col-span-4">
+              Not available at this stage: {blocked.map((k) => TP_META[k].label).join(", ")}
+              {blocked.includes("tasting") && hasMenu(b) ? " (menu already finalized)" : ""}
+            </p>
+          )}
         </div>
       )}
     </div>

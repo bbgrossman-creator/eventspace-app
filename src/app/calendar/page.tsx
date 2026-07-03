@@ -58,6 +58,7 @@ export default function Calendar() {
   const [touches, setTouches] = useState<TouchRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [fetchErr, setFetchErr] = useState("");
+  const [diag, setDiag] = useState({ tpTotal: 0, tpNoTime: 0, taskTotal: 0, taskNoDate: 0 });
   const [calDays, setCalDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   useEffect(() => {
     loadPolicies().then((p) => {
@@ -109,6 +110,16 @@ export default function Calendar() {
         if (error) { setFetchErr((p) => p + ` Tasks: ${error.message}.`); setTasks([]); return; }
         setTasks((data ?? []) as TaskRow[]);
       });
+    // Diagnostic totals: how many exist overall, and how many lack a date/time
+    // (those can never appear on a calendar). Settles "why isn't X showing".
+    Promise.all([
+      supabase.from("touchpoints").select("*", { count: "exact", head: true }).eq("status", "scheduled"),
+      supabase.from("touchpoints").select("*", { count: "exact", head: true }).eq("status", "scheduled").is("scheduled_at", null),
+      supabase.from("tasks").select("*", { count: "exact", head: true }).eq("done", false),
+      supabase.from("tasks").select("*", { count: "exact", head: true }).eq("done", false).is("due_date", null),
+    ]).then(([a, b, c, d]) => setDiag({
+      tpTotal: a.count ?? 0, tpNoTime: b.count ?? 0, taskTotal: c.count ?? 0, taskNoDate: d.count ?? 0,
+    }));
   }, [range.start, range.end]);
 
   useEffect(() => { loadCal(); }, [loadCal]);
@@ -187,7 +198,9 @@ export default function Calendar() {
           {fetchErr && (
             <p className="text-xs text-red-600 mt-2">⚠️ Calendar data problem —{fetchErr} Run the touchpoints/tasks SQL or check table access.</p>
           )}
-          <p className="text-[10px] text-slate-300 mt-1">in range: {bookings.length} bookings · {touches.length} touchpoints · {tasks.length} tasks</p>
+          <p className="text-[10px] text-slate-400 mt-1">
+            in range: {bookings.length} bookings · {touches.length} of {diag.tpTotal} touchpoints{diag.tpNoTime > 0 ? ` (${diag.tpNoTime} have no time set — can't appear)` : ""} · {tasks.length} of {diag.taskTotal} tasks{diag.taskNoDate > 0 ? ` (${diag.taskNoDate} have no date — can't appear)` : ""}
+          </p>
         </div>
         <div className="flex gap-3 flex-wrap">
           {/* Calls / Bookings / Both filter */}
