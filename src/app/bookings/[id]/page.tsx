@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
 import AddressAutocomplete, { PlaceValue } from "@/components/AddressAutocomplete";
-import BookingStory from "@/components/BookingStory";
+import OpsWorkspace from "@/components/OpsWorkspace";
 import CustomerSnapshot from "@/components/CustomerSnapshot";
 import FilesPanel from "@/components/FilesPanel";
 import {
@@ -27,7 +27,6 @@ import { loadSopNote } from "@/lib/sop";
 import { sendEmail } from "@/lib/sendEmail";
 import { runActionAutomation } from "@/lib/automation";
 import StatusPipeline from "@/components/StatusPipeline";
-import TodoPanel from "@/components/TodoPanel";
 import { STAGE_TO_STATUS, hasMenu, TIMELINE_MILESTONES, STAGES, findConflicts, HOLD_HOURS } from "@/lib/workflow";
 
 interface Payment {
@@ -245,7 +244,8 @@ export default function BookingDetail() {
     : "";
 
   return (
-    <div className="max-w-3xl">
+    <div className="xl:flex xl:gap-6 xl:items-start">
+    <div className="flex-1 min-w-0 max-w-3xl">
       {/* Header */}
       <header className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -363,12 +363,6 @@ export default function BookingDetail() {
             setStatus("lead_lost", "Lead Marked Lost", "Opportunity closed — did not convert.");
           }
         }} />
-
-      {/* This booking's to-dos — same rows as the Daily Ops To-Do rail,
-          filtered to this booking; new ones are pre-linked to it. */}
-      <div className="mb-5">
-        <TodoPanel bookingId={b.id} bookingInvoice={b.invoice_num} variant="embedded" />
-      </div>
 
       {msg && (
         <div className={`rounded-lg px-4 py-3 mb-5 text-sm font-semibold ${msg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
@@ -807,10 +801,31 @@ export default function BookingDetail() {
       {/* Everything attached to the event */}
       <FilesPanel b={b} />
 
-      {/* The story: single source of history, on demand. Replaces Activity. */}
-      <BookingStory b={b} />
+      {/* Activity — the audit trail: facts the system recorded. The work
+          narrative lives in the Operations rail (Progress). */}
+      <div className="card p-5">
+        <h2 className="font-display font-bold text-sm mb-3">🕐 Activity</h2>
+        <div className="space-y-2">
+          {log.map((l) => (
+            <div key={l.id} className="flex gap-3 text-xs">
+              <span className="text-slate-400 w-32 shrink-0">{new Date(l.created_at).toLocaleString()}</span>
+              <span className={`font-semibold w-44 shrink-0 ${l.result === "WARNING" ? "text-amber-600" : l.result === "FAILED" ? "text-red-600" : ""}`}>{l.action}</span>
+              <span className="text-slate-600">{l.details}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <button className="text-xs text-slate-400 hover:text-navy mt-6" onClick={() => router.push("/bookings")}>← Back to bookings</button>
+    </div>
+
+    {/* ── Operations Workspace: proportional 30%, sticky, never collapsible.
+        The left side explains the event; this side explains the work. ── */}
+    <aside className="xl:w-[30%] xl:max-w-[520px] xl:shrink-0 mt-8 xl:mt-0">
+      <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
+        <OpsWorkspace b={b} />
+      </div>
+    </aside>
     </div>
   );
 }
