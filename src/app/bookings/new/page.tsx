@@ -46,7 +46,13 @@ export default function NewInquiry() {
   const [rooms, setRooms] = useState<{ id: string; name: string; guest_capacity: number | null }[]>([]);
   const [roomId, setRoomId] = useState<string>("");
   const [locType, setLocType] = useState<"on_prem" | "off_prem">("on_prem");
-  const [offAddr, setOffAddr] = useState("");
+  const [addrVenue, setAddrVenue] = useState("");
+  const [addrStreet, setAddrStreet] = useState("");
+  const [addrCity, setAddrCity] = useState("");
+  const [wtLoad, setWtLoad] = useState<"normal" | "heavy" | "vheavy">("normal");
+  // Composed single-line address stored on the booking.
+  const offAddr = [addrVenue.trim() && `${addrVenue.trim()} —`, addrStreet.trim(), addrCity.trim()]
+    .filter(Boolean).join(" ").replace(" — ,", " —");
   const [estGuests, setEstGuests] = useState("");
   const [capOverride, setCapOverride] = useState(false);
   useEffect(() => {
@@ -100,8 +106,9 @@ export default function NewInquiry() {
   const cap = (() => {
     if (!pol || pol.capacity_enabled !== 1 || !f.event_date) return null;
     const used = dayCapacityUsed(all, f.event_date, pol);
-    const mine = capacityPointsFor(estGuests ? Number(estGuests) : 0, null, pol);
-    return { used, mine, total: pol.daily_capacity_points, over: used + mine > pol.daily_capacity_points };
+    const extra = locType === "off_prem" ? ({ normal: 0, heavy: 1, vheavy: 2 }[wtLoad]) : 0;
+    const mine = capacityPointsFor(estGuests ? Number(estGuests) : 0, null, pol) + extra;
+    return { used, mine, extra, total: pol.daily_capacity_points, over: used + mine > pol.daily_capacity_points };
   })();
 
   const confirmedClash = conflicts.some((c) =>
@@ -155,7 +162,8 @@ export default function NewInquiry() {
       contact2_email: f.contact2_email.trim() || null,
       room_id: locType === "on_prem" ? (roomId || null) : null,
       location_type: locType,
-      offprem_address: locType === "off_prem" ? (offAddr.trim() || null) : null,
+      offprem_address: locType === "off_prem" ? (offAddr || null) : null,
+      capacity_points: cap?.extra ? cap.mine : null,
       est_guests: estGuests ? Number(estGuests) : null,
       event_type: f.event_type || null,
       event_date: f.event_date || null, event_time: f.event_time || null,
@@ -186,7 +194,7 @@ export default function NewInquiry() {
     if (!f.event_type) { setErr("Event type is required."); return; }
     if (!f.event_date) { setErr("Event date is required."); return; }
     if (!f.event_time) { setErr("Event time is required."); return; }
-    if (locType === "off_prem" && !offAddr.trim()) { setErr("Enter the job address for an off-premise event."); return; }
+    if (locType === "off_prem" && (!addrStreet.trim() || !addrCity.trim())) { setErr("Enter the street address and city for an off-premise event."); return; }
     if (cap?.over && !capOverride) { setErr("This day is at production capacity — tick the override to book anyway, or pick another date."); return; }
     setSaving(true);
 
@@ -233,7 +241,8 @@ export default function NewInquiry() {
         contact2_email: f.contact2_email.trim() || null,
         room_id: locType === "on_prem" ? (roomId || null) : null,
         location_type: locType,
-        offprem_address: locType === "off_prem" ? offAddr.trim() : null,
+        offprem_address: locType === "off_prem" ? offAddr : null,
+        capacity_points: cap?.extra ? cap.mine : null,
         est_guests: estGuests ? Number(estGuests) : null,
         event_type: f.event_type || null,
         event_date: f.event_date || null,
@@ -393,23 +402,55 @@ export default function NewInquiry() {
             })()}
           </div>
 
-          {/* Location — hidden entirely for a single-room caterer with no off-prem */}
-          {(rooms.length > 1 || pol?.offprem_enabled === 1) && (
+          {/* WHERE is the first decision — a booking KIND, not a room pick.
+              Radio only appears when off-prem is enabled; otherwise a plain
+              room select (only when there's more than one room). */}
+          {pol?.offprem_enabled === 1 ? (
+            <div className="sm:col-span-2">
+              <label className="label">Where is this event being held?</label>
+              <div className="flex gap-5 flex-wrap mt-1">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" className="accent-navy" checked={locType === "on_prem"}
+                    onChange={() => setLocType("on_prem")} />
+                  🏛️ At one of our venues
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" className="accent-navy" checked={locType === "off_prem"}
+                    onChange={() => setLocType("off_prem")} />
+                  📍 Off-premise catering
+                </label>
+              </div>
+            </div>
+          ) : null}
+          {locType === "on_prem" && rooms.length > 1 && (
+            <div><label className="label">Venue / Room *</label>
+              <select className="field" value={roomId} onChange={(e) => setRoomId(e.target.value)}>
+                {rooms.map((r) => <option key={r.id} value={r.id}>🏛️ {r.name}{r.guest_capacity ? ` (seats ${r.guest_capacity})` : ""}</option>)}
+              </select></div>
+          )}
+          {locType === "off_prem" && (
             <>
-              <div><label className="label">Location</label>
-                <select className="field" value={locType === "off_prem" ? "off_prem" : roomId}
-                  onChange={(e) => {
-                    if (e.target.value === "off_prem") setLocType("off_prem");
-                    else { setLocType("on_prem"); setRoomId(e.target.value); }
-                  }}>
-                  {rooms.map((r) => <option key={r.id} value={r.id}>🏛️ {r.name}{r.guest_capacity ? ` (seats ${r.guest_capacity})` : ""}</option>)}
-                  {pol?.offprem_enabled === 1 && <option value="off_prem">📍 Off-premise</option>}
-                </select></div>
-              {locType === "off_prem" && (
-                <div><label className="label">Job address *</label>
-                  <input className="field" value={offAddr} onChange={(e) => setOffAddr(e.target.value)}
-                    placeholder="street, city — where the job happens" /></div>
-              )}
+              <div className="sm:col-span-2 grid sm:grid-cols-2 gap-4 rounded-xl bg-slate-50 ring-1 ring-slate-100 p-4">
+                <div className="sm:col-span-2"><label className="label">Venue / business name <span className="text-slate-300">(optional)</span></label>
+                  <input className="field" value={addrVenue} onChange={(e) => setAddrVenue(e.target.value)}
+                    placeholder="e.g. Bais Yaakov ballroom" /></div>
+                <div><label className="label">Street address *</label>
+                  <input className="field" value={addrStreet} onChange={(e) => setAddrStreet(e.target.value)}
+                    placeholder="123 Cedar Ave" /></div>
+                <div><label className="label">City, State ZIP *</label>
+                  <input className="field" value={addrCity} onChange={(e) => setAddrCity(e.target.value)}
+                    placeholder="Lakewood, NJ 08701" /></div>
+                <div className="sm:col-span-2"><label className="label">Travel / production weight</label>
+                  <div className="flex gap-4 flex-wrap mt-1">
+                    {([["normal", "Nearby (normal)"], ["heavy", "Regional (+1 point)"], ["vheavy", "Long distance (+2 points)"]] as const).map(([v, lbl]) => (
+                      <label key={v} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input type="radio" className="accent-navy" checked={wtLoad === v} onChange={() => setWtLoad(v)} />
+                        {lbl}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>

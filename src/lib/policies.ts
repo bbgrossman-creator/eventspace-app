@@ -58,14 +58,6 @@ export const POLICY_DEFAULTS: Policies = {
   daily_capacity_points: 4,
 };
 
-const NUMERIC: (keyof Policies)[] = [
-  "hold_hours", "refusal_deadline_hours", "default_event_hours",
-  "overtime_increment_min", "overtime_rate",
-  "turnaround_buffer_min", "max_service_hours",
-  "setup_hours", "service_hours", "bussing_hours", "changeover_overlap_hours",
-  "menu_call_overdue_hours",
-];
-
 /** Load all policy settings, falling back to defaults for any that are unset. */
 export async function loadPolicies(): Promise<Policies> {
   const { data } = await supabase.from("app_settings").select("key,value");
@@ -74,7 +66,7 @@ export async function loadPolicies(): Promise<Policies> {
   for (const k of Object.keys(POLICY_DEFAULTS) as (keyof Policies)[]) {
     const raw = map.get(k);
     if (raw == null) continue;
-    if (NUMERIC.includes(k)) (out[k] as number) = Number(raw);
+    if (typeof POLICY_DEFAULTS[k] === "number") (out[k] as number) = Number(raw);
     else (out[k] as string) = raw;
   }
   return out;
