@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
 import {
@@ -1243,6 +1243,10 @@ function TouchpointsPanel({ b, onChange, onConvert, onMarkLost }: {
   const [tpAssignee, setTpAssignee] = useState("");
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
   const [leadNext, setLeadNext] = useState(false);
+  const addRowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (adding) setTimeout(() => addRowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 40);
+  }, [adding]);
   useEffect(() => {
     supabase.from("staff").select("id,name").eq("active", true).order("sort_order")
       .then(({ data }) => setStaff((data ?? []) as { id: string; name: string }[]));
@@ -1355,7 +1359,7 @@ function TouchpointsPanel({ b, onChange, onConvert, onMarkLost }: {
         </div>
       ))}
       {adding && (
-        <div className="mt-3 grid sm:grid-cols-5 gap-2 items-end">
+        <div ref={addRowRef} className="mt-3 grid sm:grid-cols-5 gap-2 items-end">
           <div><label className="label">Type</label>
             <select className="field" value={kind} onChange={(e) => setKind(e.target.value)}>
               {allowed.map((k) => <option key={k} value={k}>{TP_META[k].icon} {TP_META[k].label}</option>)}

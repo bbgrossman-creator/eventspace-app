@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { fmtDate, fmtTime, parseLocalDate } from "@/lib/workflow";
@@ -55,6 +55,13 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   const [linkBooking, setLinkBooking] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  // Expanding near the bottom must not hide the form below the fold: scroll
+  // the NEAREST scrollable ancestor (the rail's own scrollbar, or the page)
+  // just enough to reveal it. "nearest" does exactly that.
+  useEffect(() => {
+    if (showForm) setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 40);
+  }, [showForm]);
 
   const load = useCallback(async () => {
     let q = supabase.from("tasks").select("*").eq("done", false);
@@ -200,7 +207,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
           </button>
         </div>
       ) : (
-      <div className={`mt-3 space-y-1.5 rounded-xl p-2.5 ${rail ? "bg-[#F9BFAE]/70 ring-1 ring-[#fa8072]/25" : "bg-slate-50 ring-1 ring-slate-100"}`}>
+      <div ref={formRef} className={`mt-3 space-y-1.5 rounded-xl p-2.5 ${rail ? "bg-[#F9BFAE]/70 ring-1 ring-[#fa8072]/25" : "bg-slate-50 ring-1 ring-slate-100"}`}>
         <input className="field !py-1.5 w-full text-sm !bg-white" placeholder={bookingId ? "Add a to-do for this booking…" : "Add a to-do…"}
           value={title} onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") add(); }} />

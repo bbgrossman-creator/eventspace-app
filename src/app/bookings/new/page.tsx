@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase, logActivity } from "@/lib/supabase";
@@ -43,6 +43,14 @@ export default function NewInquiry() {
   const [wtAssignee, setWtAssignee] = useState("");
   const [wtNotes, setWtNotes] = useState("");
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
+  const wtRef = useRef<HTMLDivElement>(null);
+  const c2Ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showWalkthrough) setTimeout(() => wtRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 40);
+  }, [showWalkthrough]);
+  useEffect(() => {
+    if (showContact2) setTimeout(() => c2Ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 40);
+  }, [showContact2]);
   useEffect(() => {
     supabase.from("staff").select("id,name").eq("active", true).order("sort_order")
       .then(({ data }) => setStaff((data ?? []) as { id: string; name: string }[]));
@@ -70,6 +78,17 @@ export default function NewInquiry() {
           bufferMin: changeoverMinutes(pol),
         })
       : (f.event_date && f.event_time ? findConflicts(all, f.event_date, f.event_time) : []);
+
+  const confirmedClash = conflicts.some((c) =>
+    !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status));
+  // Smooth-scroll to a panel and pulse it so the eye lands there.
+  function jumpTo(id: string) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("pulse-alert");
+    setTimeout(() => el.classList.remove("pulse-alert"), 2600);
+  }
 
   // Duplicate-inquiry check: same phone (or email) already on an active booking.
   // Warns — doesn't block — so a spouse calling twice doesn't create a silent double.
@@ -240,6 +259,35 @@ export default function NewInquiry() {
       </header>
 
       <div className="card p-6 space-y-6">
+        {/* Sticky alert strip: severity-tiered, stays visible while the issue
+            exists. Red = clashes a CONFIRMED booking · blue = soft scheduling
+            note (unconfirmed hold) · amber = duplicate customer. */}
+        {(conflicts.length > 0 || dupes.length > 0) && (
+          <div className="sticky top-2 z-30 space-y-1.5 -mx-2">
+            {conflicts.length > 0 && (
+              <div className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-lg ${
+                confirmedClash
+                  ? "bg-red-600 text-white"
+                  : "bg-sky-50 text-sky-900 ring-1 ring-sky-200"
+              }`}>
+                <span>{confirmedClash ? "⚠️ Booking conflict detected — clashes a confirmed booking" : "ℹ️ Scheduling note — this time overlaps an unconfirmed hold"}</span>
+                <button type="button" onClick={() => jumpTo("conflict-panel")}
+                  className={`text-xs underline underline-offset-2 whitespace-nowrap ${confirmedClash ? "text-white/90 hover:text-white" : "text-sky-700 hover:text-sky-900"}`}>
+                  Review details ↓
+                </button>
+              </div>
+            )}
+            {dupes.length > 0 && (
+              <div className="flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm font-semibold bg-amber-100 text-amber-900 ring-1 ring-amber-300 shadow-lg">
+                <span>👥 This contact already has {dupes.length === 1 ? "a booking" : "bookings"} on file</span>
+                <button type="button" onClick={() => jumpTo("dupes-panel")}
+                  className="text-xs underline underline-offset-2 text-amber-800 hover:text-amber-950 whitespace-nowrap">
+                  Review details ↓
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {/* 1 — Customer */}
         <div>
         <SectionHead>Customer Information</SectionHead>
@@ -260,7 +308,7 @@ export default function NewInquiry() {
             </div>
           ) : (
             <>
-              <div className="sm:col-span-2 flex items-center justify-between">
+              <div ref={c2Ref} className="sm:col-span-2 flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500">Second contact</span>
                 <button type="button" className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 bg-white hover:bg-navy/5 border border-slate-200 rounded-full px-3 py-1 transition-colors"
                   onClick={() => { setShowContact2(false); set("contact2_name", ""); set("contact2_phone", ""); set("contact2_email", ""); }}>
@@ -309,7 +357,7 @@ export default function NewInquiry() {
         </div>
 
         {dupes.length > 0 && (
-          <div className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
+          <div id="dupes-panel" className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
             <p className="font-bold mb-1">👥 This contact already has {dupes.length === 1 ? "a booking" : `${dupes.length} bookings`}</p>
             {dupes.slice(0, 4).map((d) => (
               <p key={d.id} className="text-xs">
@@ -332,7 +380,7 @@ export default function NewInquiry() {
               )}
             </div>
           ) : (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
+            <div id="conflict-panel" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
               <p className="font-bold mb-1">⚠️ Time conflict on this date</p>
               {conflicts.map((c) => {
                 const isBooked = !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status);
@@ -459,7 +507,7 @@ export default function NewInquiry() {
         </div>
 
         {showWalkthrough && (
-          <div className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-4 space-y-3">
+          <div ref={wtRef} className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-4 space-y-3">
             <p className="text-xs text-slate-500">
               Creates a <b>lead</b> (L-number — no hold, no invoice) with the walkthrough on the calendar. The date above is optional and stays an estimate.
             </p>

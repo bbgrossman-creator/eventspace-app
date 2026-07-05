@@ -34,3 +34,10 @@ body {
   body { background: white !important; }
   .card { box-shadow: none !important; border-radius: 0 !important; }
 }
+
+/* Attention pulse for jump-to-panel ("Review details ↓") */
+.pulse-alert { animation: pulseAlert 1.2s ease-in-out 2; }
+@keyframes pulseAlert {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+  50%      { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0.30); }
+}
