@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
+import { matchHousehold, computeCustomerStats, CustomerChargeRow } from "@/lib/customer";
 import { Booking, fmtDate, fmtMoney } from "@/lib/workflow";
 import { PRICING } from "@/lib/pricing";
 import {
@@ -200,6 +201,7 @@ export default function MenuForm() {
         <p className="text-sm text-slate-500 mt-1">
           {b.contact_name} · {b.event_name || b.event_type} · {fmtDate(b.event_date)}
         </p>
+        <FrequentAddons b={b} />
         {template.base.notes && <p className="text-xs text-slate-500 mt-2 max-w-xl">{template.base.notes}</p>}
         <div className="gold-rule mt-3" />
       </header>
@@ -463,5 +465,33 @@ function CountBadge({ n, min, max, optional }: { n: number; min: number; max: nu
     <span className={`text-[11px] font-bold rounded-full px-2.5 py-1 ${ok ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}`}>
       {n} of {min === max ? min : `${min}–${max}`} selected{optional && n === 0 ? " (optional)" : ""}
     </span>
+  );
+}
+
+/** "Frequently ordered by this customer" — the operational nudge, living where
+ *  the add-on conversation actually happens (not on the identity card). */
+function FrequentAddons({ b }: { b: Booking }) {
+  const [addons, setAddons] = useState<string[]>([]);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("bookings").select("*");
+      if (!data) return;
+      const mine = matchHousehold(data as Booking[], b);
+      if (mine.length <= 1) return;
+      const ids = mine.map((x) => x.id);
+      const { data: ch } = await supabase.from("charges")
+        .select("booking_id,unit_price,quantity,taxable,description").in("booking_id", ids);
+      const stats = computeCustomerStats(mine, (ch ?? []) as CustomerChargeRow[], [], new Map());
+      setAddons(stats?.favAddons ?? []);
+    })();
+  }, [b]);
+  if (!addons.length) return null;
+  return (
+    <p className="text-xs text-slate-500 mt-1.5">
+      💡 Frequently ordered by this customer:{" "}
+      {addons.map((a, i) => (
+        <span key={a}><b className="text-navy">{a}</b>{i < addons.length - 1 ? " · " : ""}</span>
+      ))}
+    </p>
   );
 }

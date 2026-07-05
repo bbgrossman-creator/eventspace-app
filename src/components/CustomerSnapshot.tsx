@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Booking, fmtDate } from "@/lib/workflow";
+import { Booking } from "@/lib/workflow";
 import {
   matchHousehold, computeCustomerStats, CustomerChargeRow, CustomerPayRow,
 } from "@/lib/customer";
@@ -44,39 +44,43 @@ export default function CustomerSnapshot({ b }: { b: Booking }) {
   if (err) return <p className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 mb-5">⚠️ {err}</p>;
   if (!stats) return null;
 
-  const cell = (label: string, value: string) => (
-    <div className="min-w-0">
-      <div className="text-[9px] font-bold tracking-wider text-white/40 uppercase">{label}</div>
-      <div className="text-sm font-semibold truncate">{value}</div>
-    </div>
+  // Three questions only: how valuable · have we worked together · what do
+  // they usually do. Identity + planning; operational hints live elsewhere.
+  const metric = (value: string, label: string, tone = "") => (
+    <span className="whitespace-nowrap">
+      <b className={`font-semibold ${tone}`}>{value}</b>
+      <span className="text-white/45 text-[11px]"> {label}</span>
+    </span>
   );
 
   return (
-    <section className="rounded-2xl bg-ink text-white p-5 mb-5 shadow-lg">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="font-display font-bold text-base">{b.contact_name}</div>
-          <div className="text-[11px] text-white/50">
-            Customer since {stats.since ?? "—"}{stats.tier ? <span className="text-gold font-semibold"> · {stats.tier}</span> : ""}
-          </div>
-        </div>
+    <section className="rounded-2xl bg-ink text-white px-5 py-4 mb-5 shadow-lg">
+      <div className="text-[9px] font-bold tracking-[0.18em] text-white/30 uppercase mb-1">Customer Snapshot</div>
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <div className="font-display font-bold text-base">{b.contact_name}</div>
         <Link href={`/customers/${b.id}`}
-          className="text-[11px] font-bold rounded-full bg-gold/90 hover:bg-gold text-ink px-3.5 py-1.5 transition-colors whitespace-nowrap">
+          className="text-[11px] font-semibold text-white/55 hover:text-white underline underline-offset-2 whitespace-nowrap">
           Open Customer Profile →
         </Link>
       </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 mt-3">
-        {cell("Events", String(stats.events))}
-        {cell("Lifetime revenue", fmtMoney(stats.lifetime))}
-        {cell("Outstanding", stats.outstanding > 0 ? fmtMoney(stats.outstanding) : "None")}
-        {cell("Upcoming", String(stats.upcoming))}
-        {stats.avgGuests != null && cell("Avg event", `${stats.avgGuests} guests`)}
-        {stats.lastEvent && cell("Last event", fmtDate(stats.lastEvent))}
-        {stats.favRoom && cell("Favorite room", stats.favRoom)}
-        {stats.favMenu && cell("Favorite menu", stats.favMenu)}
-        {stats.favAddons.length > 0 && cell("Always orders", stats.favAddons.slice(0, 2).join(", "))}
+      <div className="text-[11px] text-white/50 mb-2.5">
+        {stats.tier ? <span className="text-gold font-semibold">{stats.tier}</span> : "Returning"}
+        {" • "}Customer since {stats.since ?? "—"}
       </div>
+
+      <div className="flex gap-x-6 gap-y-1 flex-wrap text-sm">
+        {metric(String(stats.events), stats.events === 1 ? "event" : "events")}
+        {metric(fmtMoney(stats.lifetime), "lifetime")}
+        {metric(stats.outstanding > 0 ? fmtMoney(stats.outstanding) : "None", "outstanding",
+          stats.outstanding > 0 ? "text-red-300" : "text-emerald-300")}
+      </div>
+      {(stats.avgGuests != null || stats.favRoom || stats.favMenu) && (
+        <div className="flex gap-x-6 gap-y-1 flex-wrap text-sm mt-1">
+          {stats.avgGuests != null && metric(`${stats.avgGuests}`, "avg guests")}
+          {stats.favRoom && metric(stats.favRoom, "favorite room")}
+          {stats.favMenu && metric(stats.favMenu, "favorite menu")}
+        </div>
+      )}
     </section>
   );
 }
