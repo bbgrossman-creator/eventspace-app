@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
 import AddressAutocomplete, { PlaceValue } from "@/components/AddressAutocomplete";
 import BookingStory from "@/components/BookingStory";
+import CustomerSnapshot from "@/components/CustomerSnapshot";
 import {
   Booking,
   Status,
@@ -302,6 +303,10 @@ export default function BookingDetail() {
           </>
         )}
       </div>
+
+      {/* Relationship read: who is this customer to us? (renders only when
+          the phone/email matches other bookings — a first-timer shows nothing) */}
+      <CustomerSnapshot b={b} />
 
       {/* Pipeline + current status */}
       {stage.stageIndex >= 0 && (
