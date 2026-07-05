@@ -269,7 +269,114 @@ export default function BookingDetail() {
         <div className="gold-rule mt-3" />
       </header>
 
-      <BookingStory b={b} balance={fin?.balance ?? null}>
+
+      {/* Contact strip */}
+      <div className="card px-5 py-4 mb-5 grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+        <Info label="Contact" value={b.contact_name} />
+        <Info label="Phone" value={b.phone || "—"} link={b.phone ? `tel:${b.phone}` : undefined} />
+        <Info label="Email" value={b.email || "—"} link={b.email ? `mailto:${b.email}` : undefined} />
+        <Info label="Guests" value={(() => {
+          const g = deriveGuests(b);
+          const heads = (g.gendered ? g.men + g.women : g.adults) + g.children;
+          if (heads <= 0) return "TBD";
+          const suffix = g.source === "confirmed" ? "" : " (est.)";
+          return g.gendered
+            ? `${heads}${suffix}`
+            : `${heads}${suffix}`;
+        })()} />
+        {(b.location_type === "off_prem" || (b.room_id && roomsMap.size > 1)) && (
+          b.location_type === "off_prem" ? (
+            <Info label="Location" value={`📍 ${b.offprem_address ?? "Off-premise"}`}
+              link={(b as { offprem_place_id?: string }).offprem_place_id
+                ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.offprem_address ?? "")}&query_place_id=${(b as { offprem_place_id?: string }).offprem_place_id}`
+                : b.offprem_address ? `https://maps.google.com/?q=${encodeURIComponent(b.offprem_address)}` : undefined} />
+          ) : (
+            <Info label="Location" value={`🏛️ ${roomsMap.get(b.room_id!) ?? "—"}`} />
+          )
+        )}
+        {b.contact2_name && (
+          <>
+            <Info label="2nd Contact" value={b.contact2_name} />
+            <Info label="2nd Phone" value={b.contact2_phone || "—"} link={b.contact2_phone ? `tel:${b.contact2_phone}` : undefined} />
+            <Info label="2nd Email" value={b.contact2_email || "—"} link={b.contact2_email ? `mailto:${b.contact2_email}` : undefined} />
+          </>
+        )}
+      </div>
+
+      {/* Pipeline + current status */}
+      {stage.stageIndex >= 0 && (
+        <div className="card p-5 mb-5">
+          <StatusPipeline currentStage={stage.stageIndex} onStageClick={(i) => {
+            const target = STAGE_TO_STATUS[i];
+            if (target === b.status) return;
+            // Guard: can't jump to invoice/count steps without a completed menu
+            const needsMenu = ["send_est_invoice", "confirm_guest_count", "send_final_invoice", "collect_payment", "completed"];
+            if (needsMenu.includes(target) && !hasMenu(b)) {
+              setMsg({ ok: false, text: "Complete the menu first — this booking has no menu selections yet." });
+              return;
+            }
+            const forward = STAGES[target].stageIndex > stage.stageIndex;
+            const verb = forward ? "Advance" : "Move back";
+            if (confirm(`${verb} this booking to "${TIMELINE_MILESTONES[i]}"?`)) {
+              setStatus(target, `Moved to ${TIMELINE_MILESTONES[i]}`, forward ? "Advanced manually" : "Moved back manually");
+            }
+          }} />
+          <p className="text-[11px] text-slate-400 mt-2">Tap any stage to move this booking forward or back.</p>
+        </div>
+      )}
+      <div className="rounded-2xl px-5 py-4 mb-5 flex items-center justify-between"
+        style={{ background: stage.color, color: stage.textColor }}>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider opacity-70">Current status</div>
+          <div className="font-display font-bold text-lg">
+            {b.status === "schedule_menu_discussion"
+              ? (discussionState(b, overdueHrs) === "menu_in"
+                  ? "📋 Menu Received — Review & Complete"
+                  : discussionState(b, overdueHrs) === "overdue"
+                  ? "⚠️ Menu Call Missed — Follow Up"
+                  : discussionState(b, overdueHrs) === "scheduled"
+                    ? "📞 Booked — Menu Call Scheduled"
+                    : `${stage.icon} ${stage.label}`)
+              : `${stage.icon} ${stage.label}`}
+          </div>
+        </div>
+        {b.status === "on_hold" && b.hold_expires && (
+          <div className="text-xs font-semibold text-right">
+            {holdExpired
+              ? <span className="text-red-600">⏰ EXPIRED {new Date(b.hold_expires).toLocaleString()}</span>
+              : <><div><HoldCountdown expires={b.hold_expires} /></div>
+                  <div className="opacity-70 font-normal">expires {new Date(b.hold_expires).toLocaleString()}</div></>}
+          </div>
+        )}
+      </div>
+
+      {/* SOP / playbook note for the current stage (editable in back office) */}
+      <SopNote statusKey={holdExpired ? "hold_expired" : b.status} />
+
+      {/* Optional touchpoints: walkthrough / tasting / contract / follow-up.
+          Hidden until the rep adds one — never a pipeline stage. */}
+      <TouchpointsPanel b={b} onChange={load} onConvert={convertLead}
+        onMarkLost={() => {
+          if (confirm("Mark this lead as lost? You can reopen it later.")) {
+            setStatus("lead_lost", "Lead Marked Lost", "Opportunity closed — did not convert.");
+          }
+        }} />
+
+      {/* This booking's to-dos — same rows as the Daily Ops To-Do rail,
+          filtered to this booking; new ones are pre-linked to it. */}
+      <div className="mb-5">
+        <TodoPanel bookingId={b.id} bookingInvoice={b.invoice_num} variant="embedded" />
+      </div>
+
+      {msg && (
+        <div className={`rounded-lg px-4 py-3 mb-5 text-sm font-semibold ${msg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
+          {msg.text}
+        </div>
+      )}
+
+      {/* Conflict context: show what this booking conflicts with */}
+      {b.status === "conflict" && <ConflictPanel b={b} onChange={load} />}
+
       {/* First-right-of-refusal: this booking holds a date someone else wants */}
       {b.refusal_challenger && <RefusalPanel b={b} onChange={load} setMsg={setMsg} />}
 
@@ -517,114 +624,6 @@ export default function BookingDetail() {
         {panel === "cancel" && <CancelForm b={b} done={() => { setPanel(""); load(); }} />}
         {panel === "amend" && <AmendmentForm b={b} adultPP={b.menu_type === "Double Buffet" ? PRICING.BUFFET_DOUBLE_PP : PRICING.FULL_SERVICE_PP} done={() => { setPanel(""); load(); setMsg({ ok: true, text: "Amendment added — booking reopened for payment ✓" }); }} />}
       </div>
-      </BookingStory>
-
-      {/* Contact strip */}
-      <div className="card px-5 py-4 mb-5 grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-        <Info label="Contact" value={b.contact_name} />
-        <Info label="Phone" value={b.phone || "—"} link={b.phone ? `tel:${b.phone}` : undefined} />
-        <Info label="Email" value={b.email || "—"} link={b.email ? `mailto:${b.email}` : undefined} />
-        <Info label="Guests" value={(() => {
-          const g = deriveGuests(b);
-          const heads = (g.gendered ? g.men + g.women : g.adults) + g.children;
-          if (heads <= 0) return "TBD";
-          const suffix = g.source === "confirmed" ? "" : " (est.)";
-          return g.gendered
-            ? `${heads}${suffix}`
-            : `${heads}${suffix}`;
-        })()} />
-        {(b.location_type === "off_prem" || (b.room_id && roomsMap.size > 1)) && (
-          b.location_type === "off_prem" ? (
-            <Info label="Location" value={`📍 ${b.offprem_address ?? "Off-premise"}`}
-              link={(b as { offprem_place_id?: string }).offprem_place_id
-                ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.offprem_address ?? "")}&query_place_id=${(b as { offprem_place_id?: string }).offprem_place_id}`
-                : b.offprem_address ? `https://maps.google.com/?q=${encodeURIComponent(b.offprem_address)}` : undefined} />
-          ) : (
-            <Info label="Location" value={`🏛️ ${roomsMap.get(b.room_id!) ?? "—"}`} />
-          )
-        )}
-        {b.contact2_name && (
-          <>
-            <Info label="2nd Contact" value={b.contact2_name} />
-            <Info label="2nd Phone" value={b.contact2_phone || "—"} link={b.contact2_phone ? `tel:${b.contact2_phone}` : undefined} />
-            <Info label="2nd Email" value={b.contact2_email || "—"} link={b.contact2_email ? `mailto:${b.contact2_email}` : undefined} />
-          </>
-        )}
-      </div>
-
-      {/* Pipeline + current status */}
-      {stage.stageIndex >= 0 && (
-        <div className="card p-5 mb-5">
-          <StatusPipeline currentStage={stage.stageIndex} onStageClick={(i) => {
-            const target = STAGE_TO_STATUS[i];
-            if (target === b.status) return;
-            // Guard: can't jump to invoice/count steps without a completed menu
-            const needsMenu = ["send_est_invoice", "confirm_guest_count", "send_final_invoice", "collect_payment", "completed"];
-            if (needsMenu.includes(target) && !hasMenu(b)) {
-              setMsg({ ok: false, text: "Complete the menu first — this booking has no menu selections yet." });
-              return;
-            }
-            const forward = STAGES[target].stageIndex > stage.stageIndex;
-            const verb = forward ? "Advance" : "Move back";
-            if (confirm(`${verb} this booking to "${TIMELINE_MILESTONES[i]}"?`)) {
-              setStatus(target, `Moved to ${TIMELINE_MILESTONES[i]}`, forward ? "Advanced manually" : "Moved back manually");
-            }
-          }} />
-          <p className="text-[11px] text-slate-400 mt-2">Tap any stage to move this booking forward or back.</p>
-        </div>
-      )}
-      <div className="rounded-2xl px-5 py-4 mb-5 flex items-center justify-between"
-        style={{ background: stage.color, color: stage.textColor }}>
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider opacity-70">Current status</div>
-          <div className="font-display font-bold text-lg">
-            {b.status === "schedule_menu_discussion"
-              ? (discussionState(b, overdueHrs) === "menu_in"
-                  ? "📋 Menu Received — Review & Complete"
-                  : discussionState(b, overdueHrs) === "overdue"
-                  ? "⚠️ Menu Call Missed — Follow Up"
-                  : discussionState(b, overdueHrs) === "scheduled"
-                    ? "📞 Booked — Menu Call Scheduled"
-                    : `${stage.icon} ${stage.label}`)
-              : `${stage.icon} ${stage.label}`}
-          </div>
-        </div>
-        {b.status === "on_hold" && b.hold_expires && (
-          <div className="text-xs font-semibold text-right">
-            {holdExpired
-              ? <span className="text-red-600">⏰ EXPIRED {new Date(b.hold_expires).toLocaleString()}</span>
-              : <><div><HoldCountdown expires={b.hold_expires} /></div>
-                  <div className="opacity-70 font-normal">expires {new Date(b.hold_expires).toLocaleString()}</div></>}
-          </div>
-        )}
-      </div>
-
-      {/* SOP / playbook note for the current stage (editable in back office) */}
-      <SopNote statusKey={holdExpired ? "hold_expired" : b.status} />
-
-      {/* Optional touchpoints: walkthrough / tasting / contract / follow-up.
-          Hidden until the rep adds one — never a pipeline stage. */}
-      <TouchpointsPanel b={b} onChange={load} onConvert={convertLead}
-        onMarkLost={() => {
-          if (confirm("Mark this lead as lost? You can reopen it later.")) {
-            setStatus("lead_lost", "Lead Marked Lost", "Opportunity closed — did not convert.");
-          }
-        }} />
-
-      {/* This booking's to-dos — same rows as the Daily Ops To-Do rail,
-          filtered to this booking; new ones are pre-linked to it. */}
-      <div className="mb-5">
-        <TodoPanel bookingId={b.id} bookingInvoice={b.invoice_num} variant="embedded" />
-      </div>
-
-      {msg && (
-        <div className={`rounded-lg px-4 py-3 mb-5 text-sm font-semibold ${msg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
-          {msg.text}
-        </div>
-      )}
-
-      {/* Conflict context: show what this booking conflicts with */}
-      {b.status === "conflict" && <ConflictPanel b={b} onChange={load} />}
 
       {/* Menu selections summary */}
       {(() => {
@@ -803,19 +802,8 @@ export default function BookingDetail() {
         )}
       </div>
 
-      {/* Activity */}
-      <div className="card p-5">
-        <h2 className="font-display font-bold text-sm mb-3">🕐 Activity</h2>
-        <div className="space-y-2">
-          {log.map((l) => (
-            <div key={l.id} className="flex gap-3 text-xs">
-              <span className="text-slate-400 w-32 shrink-0">{new Date(l.created_at).toLocaleString()}</span>
-              <span className={`font-semibold w-44 shrink-0 ${l.result === "WARNING" ? "text-amber-600" : l.result === "FAILED" ? "text-red-600" : ""}`}>{l.action}</span>
-              <span className="text-slate-600">{l.details}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* The story: single source of history, on demand. Replaces Activity. */}
+      <BookingStory b={b} />
 
       <button className="text-xs text-slate-400 hover:text-navy mt-6" onClick={() => router.push("/bookings")}>← Back to bookings</button>
     </div>
