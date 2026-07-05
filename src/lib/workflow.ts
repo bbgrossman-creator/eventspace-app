@@ -445,3 +445,101 @@ export function daysLabel(daysUntil: number): string {
   if (daysUntil > 900) return "No date";
   return `${daysUntil} days`;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENT INTELLIGENCE — deterministic "business intelligence wearing an AI
+// costume": health scoring and next-best-action, computed from the status
+// ladder, financials, and contact recency. No LLM, always correct, free.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface HealthInput {
+  balance: number;              // outstanding balance (0 if paid)
+  depositReceived: boolean;
+  lastHumanContactDays: number | null;  // days since a human touched/spoke; null = never
+  nextTouchpointAt: string | null;      // ISO of next scheduled touchpoint
+}
+
+export interface EventHealth {
+  score: number;                // 0–100
+  tier: "healthy" | "attention" | "risk";
+  tierLabel: string;            // 🟢 Healthy etc.
+  missing: string[];            // human-readable gaps, priority-ordered
+}
+
+/** Stage-derived facts every scorer needs. */
+function pipelineFacts(b: Booking) {
+  const idx = stageFor(b.status).stageIndex;
+  return {
+    idx,
+    depositStage: idx >= 1,                    // past on_hold ⇒ deposit collected
+    menuDone: hasMenu(b),
+    countConfirmed: idx >= 5,                  // at/past send_final_invoice
+  };
+}
+
+/** 0–100 health for an active booking. Deductions are additive; proximity to
+ *  the event amplifies open gaps (a missing menu 3 days out is an emergency;
+ *  90 days out it's Tuesday). */
+export function eventHealth(b: Booking, inp: HealthInput): EventHealth {
+  const facts = pipelineFacts(b);
+  const missing: string[] = [];
+  let ded = 0;
+
+  let daysUntil = 999;
+  if (b.event_date) {
+    const ed = parseLocalDate(b.event_date); ed.setHours(0, 0, 0, 0);
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    daysUntil = Math.ceil((ed.getTime() - t.getTime()) / 86400000);
+  }
+
+  if (!facts.depositStage && !inp.depositReceived) { ded += 20; missing.push("Deposit"); }
+  if (!facts.menuDone) { ded += 15; missing.push("Menu selection"); }
+  if (!facts.countConfirmed) { ded += 15; missing.push("Guest count"); }
+  if (inp.balance > 0 && facts.idx >= 5) {
+    ded += daysUntil <= 7 ? 20 : 10;
+    missing.push("Final payment");
+  }
+  if (inp.lastHumanContactDays == null || inp.lastHumanContactDays > 14) {
+    ded += 10;
+    missing.push(inp.lastHumanContactDays == null ? "First contact" : `Customer contact (${inp.lastHumanContactDays}d silent)`);
+  }
+  if (b.status === "conflict") { ded += 25; missing.push("Conflict resolution"); }
+  if (isHoldExpired(b)) { ded += 25; missing.push("Expired hold decision"); }
+
+  // Proximity amplifier: unresolved gaps get heavier as the event nears.
+  if (daysUntil <= 7 && missing.length > 0) ded = Math.round(ded * 1.4);
+  else if (daysUntil <= 14 && missing.length > 0) ded = Math.round(ded * 1.2);
+
+  const score = Math.max(0, Math.min(100, 100 - ded));
+  const tier = score >= 80 ? "healthy" : score >= 50 ? "attention" : "risk";
+  return {
+    score, tier, missing,
+    tierLabel: tier === "healthy" ? "🟢 Healthy" : tier === "attention" ? "🟡 Needs Attention" : "🔴 At Risk",
+  };
+}
+
+/** THE single next move — an imperative, not a state. Waiting-On describes;
+ *  this prescribes. Priority-ordered so it names the sharpest gap first. */
+export function nextBestAction(b: Booking, inp: HealthInput): { icon: string; label: string } {
+  const facts = pipelineFacts(b);
+  if (b.status === "lead") return { icon: "🌱", label: "Schedule the next touchpoint — or convert to a hold" };
+  if (b.status === "lead_lost") return { icon: "♻️", label: "Reopen if the customer re-engages" };
+  if (b.status === "completed") return { icon: "💌", label: "Send the thank-you & ask for a referral" };
+  if (b.status === "cancelled") return { icon: "—", label: "No action — booking cancelled" };
+  if (isHoldExpired(b)) return { icon: "⏰", label: "Hold expired — collect the deposit or release the date" };
+  if (b.status === "conflict") return { icon: "⚠️", label: "Resolve the date conflict" };
+  if (!facts.depositStage) return { icon: "💰", label: "Collect the deposit to secure the date" };
+  if (!facts.menuDone) return { icon: "🍽️", label: "Review menu selections with the customer" };
+  if (!facts.countConfirmed) return { icon: "☎️", label: "Call the customer for the final guest count" };
+  if (inp.balance > 0) return { icon: "📧", label: "Send / chase the final payment" };
+  if (inp.lastHumanContactDays != null && inp.lastHumanContactDays > 14)
+    return { icon: "☎️", label: "Check in — no contact in " + inp.lastHumanContactDays + " days" };
+  return { icon: "✅", label: "All set — confirm day-of logistics" };
+}
+
+/** Gray vs colored on the timeline: machine activity vs human decisions. */
+export function isSystemEvent(action: string): boolean {
+  const a = action.toLowerCase();
+  return ["auto", "automatic", "reminder", "expired", "regenerat", "sweep",
+    "deadline", "scheduled email", "system"].some((k) => a.includes(k));
+}
