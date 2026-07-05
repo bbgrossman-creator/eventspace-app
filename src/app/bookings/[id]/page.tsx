@@ -1832,6 +1832,7 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
+  const offAllowed = (pol?.offprem_enabled === 1) || (b.location_type === "off_prem");
   const [roomId, setRoomId] = useState<string>(b.room_id ?? "");
   const [locType, setLocType] = useState<string>(b.location_type ?? "on_prem");
   const [offAddr, setOffAddr] = useState<string>(b.offprem_address ?? "");
@@ -1915,7 +1916,7 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
           <select className="field" value={f.event_time} onChange={(e) => set("event_time", e.target.value)}>
             {EDIT_TIMES.map((t) => <option key={t} value={t}>{fmtTime(t)}</option>)}
           </select></div>
-        {(rooms.length > 1 || locType === "off_prem") && (
+        {(rooms.length > 1 || locType === "off_prem" || offAllowed) && (
           <div><label className="label">Location</label>
             <select className="field" value={locType === "off_prem" ? "off_prem" : roomId}
               onChange={(e) => {
@@ -1923,7 +1924,7 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
                 else { setLocType("on_prem"); setRoomId(e.target.value); }
               }}>
               {rooms.map((r) => <option key={r.id} value={r.id}>🏛️ {r.name}</option>)}
-              <option value="off_prem">📍 Off-premise</option>
+              {offAllowed && <option value="off_prem">📍 Off-premise</option>}
             </select></div>
         )}
         {locType === "off_prem" && (

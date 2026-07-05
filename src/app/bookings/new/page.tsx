@@ -51,6 +51,7 @@ export default function NewInquiry() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [wtLoad, setWtLoad] = useState<"normal" | "heavy" | "vheavy">("normal");
   const addrRef = useRef<HTMLInputElement>(null);
+
   // Composed single-line address stored on the booking.
   const offAddr = [locName.trim() && `${locName.trim()} —`, addrLine.trim()]
     .filter(Boolean).join(" ");
@@ -121,6 +122,22 @@ export default function NewInquiry() {
   }, []);
 
   const [pol, setPol] = useState<Policies | null>(null);
+
+  // The form adapts to configuration — the rep only answers questions that
+  // have more than one possible answer:
+  //   rooms + off-prem  → radio choice
+  //   rooms only        → room select (hidden if just one room)
+  //   off-prem only     → straight to the address form, no question
+  //   neither           → configuration error, reserving disabled
+  const offOn = pol?.offprem_enabled === 1;
+  const hasRooms = rooms.length > 0;
+  const locMode: "choice" | "rooms_only" | "offprem_only" | "none" =
+    hasRooms && offOn ? "choice" : hasRooms ? "rooms_only" : offOn ? "offprem_only" : "none";
+  useEffect(() => {
+    if (locMode === "offprem_only" && locType !== "off_prem") setLocType("off_prem");
+    if (locMode === "rooms_only" && locType !== "on_prem") setLocType("on_prem");
+  }, [locMode, locType]);
+
   useEffect(() => { loadPolicies().then(setPol); }, []);
 
   const conflicts =
@@ -229,6 +246,7 @@ export default function NewInquiry() {
     if (!f.event_type) { setErr("Event type is required."); return; }
     if (!f.event_date) { setErr("Event date is required."); return; }
     if (!f.event_time) { setErr("Event time is required."); return; }
+    if (locMode === "none") { setErr("No bookable locations configured — add a room or enable off-premise in Locations & Capacity."); return; }
     if (locType === "off_prem" && !addrLine.trim()) { setErr("Enter the event address for an off-premise event."); return; }
     if (cap?.over && !capOverride) { setErr("This day is at production capacity — tick the override to book anyway, or pick another date."); return; }
     setSaving(true);
@@ -442,7 +460,12 @@ export default function NewInquiry() {
           {/* WHERE is the first decision — a booking KIND, not a room pick.
               Radio only appears when off-prem is enabled; otherwise a plain
               room select (only when there's more than one room). */}
-          {pol?.offprem_enabled === 1 ? (
+          {locMode === "none" && (
+            <div className="sm:col-span-2 rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
+              <b>⚠️ No bookable locations configured.</b> Every room is inactive and off-premise is disabled — add a room or enable off-premise in <b>Locations &amp; Capacity</b>. Reserving is disabled until then (you can still save a lead).
+            </div>
+          )}
+          {locMode === "choice" ? (
             <div className="sm:col-span-2">
               <label className="label">Where is this event being held?</label>
               <div className="flex gap-5 flex-wrap mt-1">
@@ -650,7 +673,9 @@ export default function NewInquiry() {
             see the room (outlined), or just staying in touch (text). The first
             claims the date; the other two create an L-series lead. */}
         <div className="flex gap-3 pt-1 flex-wrap items-center">
-          <button onClick={createBooking} disabled={saving} className="btn-primary flex-1 min-w-[180px]">
+          <button onClick={createBooking} disabled={saving || locMode === "none"}
+            title={locMode === "none" ? "No bookable locations — configure Locations & Capacity first" : undefined}
+            className="btn-primary flex-1 min-w-[180px] disabled:opacity-50">
             {saving ? "Working…" : conflicts.length > 0 ? "Reserve Date — Conflict (review)" : "Reserve Date (24-Hour Hold)"}
           </button>
           <button onClick={() => setShowWalkthrough((v) => !v)} disabled={saving}
