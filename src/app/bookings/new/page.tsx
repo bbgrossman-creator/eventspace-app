@@ -7,6 +7,7 @@ import { runActionAutomation } from "@/lib/automation";
 import { loadPolicies, Policies, changeoverMinutes } from "@/lib/policies";
 import { Booking, findConflicts, fmtTime, fmtDate, stageFor, HOLD_HOURS, dayCapacityUsed, capacityPointsFor } from "@/lib/workflow";
 import { PRICING } from "@/lib/pricing";
+import AddressAutocomplete, { PlaceValue } from "@/components/AddressAutocomplete";
 import { sendEmail } from "@/lib/sendEmail";
 import { FULL_SERVICE_MENU, BUFFET_MENU, BUSINESS_PHONE } from "@/lib/automation";
 
@@ -17,7 +18,10 @@ interface PackageGuide {
 }
 
 const EVENT_TYPES = ["Bar Mitzvah", "Bat Mitzvah", "Wedding", "Engagement", "Sheva Brochos", "Birthday Party", "Corporate Event", "Other"];
-const TIMES = Array.from({ length: 13 }, (_, i) => `${(11 + i).toString().padStart(2, "0")}:00`);
+const TIMES = Array.from({ length: 25 }, (_, i) => {
+  const mins = 11 * 60 + i * 30;
+  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+});
 
 function SectionHead({ children }: { children: React.ReactNode }) {
   return (
@@ -47,46 +51,29 @@ export default function NewInquiry() {
   const [roomId, setRoomId] = useState<string>("");
   const [locType, setLocType] = useState<"on_prem" | "off_prem">("on_prem");
   const [locName, setLocName] = useState("");
-  const [addrLine, setAddrLine] = useState("");
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [place, setPlace] = useState<PlaceValue | null>(null);
   const [wtLoad, setWtLoad] = useState<"normal" | "heavy" | "vheavy">("normal");
-  const addrRef = useRef<HTMLInputElement>(null);
+  const addrLine = place?.formatted ?? "";
+  const offAddr = [locName.trim() && `${locName.trim()} —`, addrLine.trim()].filter(Boolean).join(" ");
+  // Off-premise address payload — structured components from Places, or a
+  // free-typed manual address with null coordinates. Shared by both inserts.
+  const offFields = () => locType === "off_prem" ? {
+    offprem_address: offAddr || null,
+    offprem_street: place?.street ?? null,
+    offprem_city: place?.city ?? null,
+    offprem_state: place?.state ?? null,
+    offprem_zip: place?.zip ?? null,
+    offprem_lat: place?.lat ?? null,
+    offprem_lng: place?.lng ?? null,
+    offprem_place_id: place?.placeId ?? null,
+    offprem_source: place?.source ?? "manual",
+  } : {
+    offprem_address: null, offprem_street: null, offprem_city: null,
+    offprem_state: null, offprem_zip: null, offprem_lat: null,
+    offprem_lng: null, offprem_place_id: null, offprem_source: null,
+  };
 
-  // Composed single-line address stored on the booking.
-  const offAddr = [locName.trim() && `${locName.trim()} —`, addrLine.trim()]
-    .filter(Boolean).join(" ");
 
-  // Google Places autocomplete — activates only when a Maps key is configured
-  // (NEXT_PUBLIC_GOOGLE_MAPS_KEY in Vercel). Without one, the field is a
-  // normal free-text address line. Selecting a place also captures lat/lng.
-  useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-    if (!key || locType !== "off_prem" || !addrRef.current) return;
-    const w = window as unknown as { google?: { maps?: { places?: { Autocomplete: new (el: HTMLInputElement, opts?: object) => { addListener: (ev: string, cb: () => void) => void; getPlace: () => { formatted_address?: string; geometry?: { location?: { lat: () => number; lng: () => number } } } } } } }; __gmapsLoading?: boolean };
-    const attach = () => {
-      const P = w.google?.maps?.places;
-      if (!P || !addrRef.current) return;
-      const ac = new P.Autocomplete(addrRef.current, { types: ["geocode", "establishment"] });
-      ac.addListener("place_changed", () => {
-        const place = ac.getPlace();
-        if (place.formatted_address) setAddrLine(place.formatted_address);
-        const loc = place.geometry?.location;
-        if (loc) setCoords({ lat: loc.lat(), lng: loc.lng() });
-      });
-    };
-    if (w.google?.maps?.places) { attach(); return; }
-    if (!w.__gmapsLoading) {
-      w.__gmapsLoading = true;
-      const sc = document.createElement("script");
-      sc.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
-      sc.async = true;
-      sc.onload = attach;
-      document.head.appendChild(sc);
-    } else {
-      const t = setInterval(() => { if (w.google?.maps?.places) { clearInterval(t); attach(); } }, 300);
-      return () => clearInterval(t);
-    }
-  }, [locType]);
   const [estGuests, setEstGuests] = useState("");
   const [capOverride, setCapOverride] = useState(false);
   useEffect(() => {
@@ -215,9 +202,7 @@ export default function NewInquiry() {
       contact2_email: f.contact2_email.trim() || null,
       room_id: locType === "on_prem" ? (roomId || null) : null,
       location_type: locType,
-      offprem_address: locType === "off_prem" ? (offAddr || null) : null,
-      offprem_lat: locType === "off_prem" ? coords?.lat ?? null : null,
-      offprem_lng: locType === "off_prem" ? coords?.lng ?? null : null,
+      ...offFields(),
       capacity_points: cap?.extra ? cap.mine : null,
       est_guests: estGuests ? Number(estGuests) : null,
       event_type: f.event_type || null,
@@ -297,9 +282,7 @@ export default function NewInquiry() {
         contact2_email: f.contact2_email.trim() || null,
         room_id: locType === "on_prem" ? (roomId || null) : null,
         location_type: locType,
-        offprem_address: locType === "off_prem" ? offAddr : null,
-        offprem_lat: locType === "off_prem" ? coords?.lat ?? null : null,
-        offprem_lng: locType === "off_prem" ? coords?.lng ?? null : null,
+        ...offFields(),
         capacity_points: cap?.extra ? cap.mine : null,
         est_guests: estGuests ? Number(estGuests) : null,
         event_type: f.event_type || null,
@@ -497,9 +480,10 @@ export default function NewInquiry() {
           {locType === "off_prem" && (
             <div className="sm:col-span-2 grid sm:grid-cols-2 gap-4 rounded-xl bg-slate-50 ring-1 ring-slate-100 p-4 reveal">
               <div className="sm:col-span-2"><label className="label">📍 Event address *</label>
-                <input ref={addrRef} className="field" value={addrLine} onChange={(e) => { setAddrLine(e.target.value); setCoords(null); }}
-                  placeholder={process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ? "Search address…" : "123 Cedar Ave, Lakewood, NJ 08701"} />
-                {coords && <p className="text-[10px] text-emerald-600 mt-1">✓ Address verified &amp; geocoded</p>}
+                <AddressAutocomplete value={addrLine} onChange={setPlace} id="offprem-addr" />
+                {place?.source === "places" && place.lat && (
+                  <p className="text-[10px] text-emerald-600 mt-1">✓ Address verified &amp; geocoded{place.city ? ` — ${place.city}${place.state ? `, ${place.state}` : ""}` : ""}</p>
+                )}
               </div>
               <div className="sm:col-span-2"><label className="label">Location name <span className="text-slate-300">(optional)</span></label>
                 <input className="field" value={locName} onChange={(e) => setLocName(e.target.value)}
@@ -600,9 +584,9 @@ export default function NewInquiry() {
                       <div className="space-y-1">
                         {candidates.map((svc) => {
                           const latestStart = earliest - changeMin - svc * 60;
-                          // The Start-time picker is on an hourly grid, so floor the
-                          // suggestion to the hour — starting earlier still clears.
-                          const snapped = Math.floor(latestStart / 60) * 60;
+                          // Snap DOWN to the half-hour grid only when needed — a true
+                          // 2:30 PM latest start displays as 2:30 PM, not 2:00 PM.
+                          const snapped = Math.floor(latestStart / 30) * 30;
                           const label = fmtMin(snapped);
                           return (
                             <div key={svc} className="flex items-center justify-between text-xs">
@@ -611,7 +595,7 @@ export default function NewInquiry() {
                               </span>
                               {label && (
                                 <button type="button" className="rounded-full border border-blue-300 px-2.5 py-0.5 hover:bg-blue-50"
-                                  onClick={() => { set("expected_hours", String(svc)); set("event_time", `${String(snapped / 60).padStart(2, "0")}:00`); }}>
+                                  onClick={() => { set("expected_hours", String(svc)); set("event_time", `${String(Math.floor(snapped / 60)).padStart(2, "0")}:${String(snapped % 60).padStart(2, "0")}`); }}>
                                   Use {label}
                                 </button>
                               )}

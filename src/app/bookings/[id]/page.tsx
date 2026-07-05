@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
+import AddressAutocomplete, { PlaceValue } from "@/components/AddressAutocomplete";
 import {
   Booking,
   Status,
@@ -284,7 +285,9 @@ export default function BookingDetail() {
         {(b.location_type === "off_prem" || (b.room_id && roomsMap.size > 1)) && (
           b.location_type === "off_prem" ? (
             <Info label="Location" value={`📍 ${b.offprem_address ?? "Off-premise"}`}
-              link={b.offprem_address ? `https://maps.google.com/?q=${encodeURIComponent(b.offprem_address)}` : undefined} />
+              link={(b as { offprem_place_id?: string }).offprem_place_id
+                ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.offprem_address ?? "")}&query_place_id=${(b as { offprem_place_id?: string }).offprem_place_id}`
+                : b.offprem_address ? `https://maps.google.com/?q=${encodeURIComponent(b.offprem_address)}` : undefined} />
           ) : (
             <Info label="Location" value={`🏛️ ${roomsMap.get(b.room_id!) ?? "—"}`} />
           )
@@ -1812,7 +1815,10 @@ function GuestCountForm({ b, done, advance }: { b: Booking; done: () => void; ad
 
 // ─── Cancel with refund options ───
 const EDIT_EVENT_TYPES = ["Bar Mitzvah", "Bat Mitzvah", "Wedding", "Engagement", "Sheva Brochos", "Birthday Party", "Corporate Event", "Other"];
-const EDIT_TIMES = Array.from({ length: 13 }, (_, i) => `${(11 + i).toString().padStart(2, "0")}:00`);
+const EDIT_TIMES = Array.from({ length: 25 }, (_, i) => {
+  const mins = 11 * 60 + i * 30;
+  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+});
 
 /** Edit a booking's details after creation. A date/time change re-runs
  *  conflict detection live — a confirmed-booking clash requires an explicit
@@ -1836,6 +1842,7 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
   const [roomId, setRoomId] = useState<string>(b.room_id ?? "");
   const [locType, setLocType] = useState<string>(b.location_type ?? "on_prem");
   const [offAddr, setOffAddr] = useState<string>(b.offprem_address ?? "");
+  const [offPlace, setOffPlace] = useState<PlaceValue | null>(null);
 
   useEffect(() => {
     supabase.from("bookings").select("*").neq("status", "cancelled")
@@ -1876,6 +1883,12 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
       room_id: locType === "on_prem" ? (roomId || null) : null,
       location_type: locType,
       offprem_address: locType === "off_prem" ? (offAddr.trim() || null) : null,
+      ...(locType === "off_prem" && offPlace ? {
+        offprem_street: offPlace.street, offprem_city: offPlace.city,
+        offprem_state: offPlace.state, offprem_zip: offPlace.zip,
+        offprem_lat: offPlace.lat, offprem_lng: offPlace.lng,
+        offprem_place_id: offPlace.placeId, offprem_source: offPlace.source,
+      } : {}),
       expected_hours: f.expected_hours ? Number(f.expected_hours) : null,
     }).eq("id", b.id);
     await logActivity(b.id, b.invoice_num, "Details Edited",
@@ -1929,7 +1942,8 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
         )}
         {locType === "off_prem" && (
           <div><label className="label">Job address</label>
-            <input className="field" value={offAddr} onChange={(e) => setOffAddr(e.target.value)} /></div>
+            <AddressAutocomplete value={offAddr}
+              onChange={(pv) => { setOffAddr(pv.formatted); setOffPlace(pv); }} /></div>
         )}
       </div>
 

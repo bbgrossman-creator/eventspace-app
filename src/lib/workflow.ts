@@ -104,6 +104,12 @@ export interface Booking {
   capacity_points?: number | null;    // manual override
   offprem_lat?: number | null;
   offprem_lng?: number | null;
+  offprem_street?: string | null;
+  offprem_city?: string | null;
+  offprem_state?: string | null;
+  offprem_zip?: string | null;
+  offprem_place_id?: string | null;
+  offprem_source?: string | null;
   notes: string | null;
   status: Status;
   hold_expires: string | null;
