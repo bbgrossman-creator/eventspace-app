@@ -18,9 +18,16 @@ export default function LocationsPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [fName, setFName] = useState("");
   const [fSeats, setFSeats] = useState("");
+  const [roomsErr, setRoomsErr] = useState("");
+  const [saveErr, setSaveErr] = useState("");
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from("rooms").select("*").order("sort_order");
+    const { data, error } = await supabase.from("rooms").select("*").order("sort_order");
+    if (error) {
+      setRoomsErr(`Rooms couldn't load: ${error.message} — run v101_locations.sql (or fix_rooms_rls.sql if Supabase re-enabled RLS).`);
+      setRooms([]); return;
+    }
+    setRoomsErr("");
     setRooms((data ?? []) as Room[]);
   }, []);
   useEffect(() => { load(); loadPolicies().then(setP); }, [load]);
@@ -37,12 +44,15 @@ export default function LocationsPage() {
   function startEdit(r: Room) { setAddingRoom(false); setEditing(r.id); setFName(r.name); setFSeats(r.guest_capacity?.toString() ?? ""); }
 
   async function saveRoom() {
-    if (!fName.trim()) return;
-    if (editing) {
-      await supabase.from("rooms").update({ name: fName.trim(), guest_capacity: fSeats ? Number(fSeats) : null }).eq("id", editing);
-    } else {
-      const { error } = await supabase.from("rooms").insert({ name: fName.trim(), guest_capacity: fSeats ? Number(fSeats) : null, sort_order: rooms.length });
-      if (error) { flash(error.message); return; }
+    if (!fName.trim()) { setSaveErr("Enter a room name."); return; }
+    setSaveErr("");
+    const payload = { name: fName.trim(), guest_capacity: fSeats ? Number(fSeats) : null };
+    const { error } = editing
+      ? await supabase.from("rooms").update(payload).eq("id", editing)
+      : await supabase.from("rooms").insert({ ...payload, sort_order: rooms.length });
+    if (error) {
+      setSaveErr(`Couldn't save: ${error.message}${error.message.toLowerCase().includes("security") ? " — RLS is blocking writes; run fix_rooms_rls.sql and don't accept Supabase's Enable-RLS prompt." : ""}`);
+      return;
     }
     setAddingRoom(false); setEditing(null); flash("Saved."); load();
   }
@@ -70,9 +80,10 @@ export default function LocationsPage() {
           <input className="field" type="number" min="0" value={fSeats} onChange={(e) => setFSeats(e.target.value)} placeholder="optional" /></div>
         <div className="flex gap-2">
           <button className="btn-primary !py-2 !px-4 text-sm" onClick={saveRoom}>{editing ? "Save" : "Add"}</button>
-          <button className="btn-ghost !py-2 !px-3 text-sm" onClick={() => { setAddingRoom(false); setEditing(null); }}>Cancel</button>
+          <button className="btn-ghost !py-2 !px-3 text-sm" onClick={() => { setAddingRoom(false); setEditing(null); setSaveErr(""); }}>Cancel</button>
         </div>
       </div>
+      {saveErr && <p className="text-red-600 text-xs mt-2 font-medium">{saveErr}</p>}
     </div>
   );
 
@@ -95,7 +106,10 @@ export default function LocationsPage() {
         </div>
         <p className="text-xs text-slate-400 mb-3">Every bookable space. Double-booking is checked per room.</p>
 
-        {rooms.length === 0 && <p className="text-sm text-slate-400 py-4">No rooms yet — add your first space.</p>}
+        {roomsErr && (
+          <p className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 mb-2 font-medium">⚠️ {roomsErr}</p>
+        )}
+        {rooms.length === 0 && !roomsErr && <p className="text-sm text-slate-400 py-4">No rooms yet — add your first space.</p>}
         {rooms.map((r) => (
           editing === r.id ? <div key={r.id}>{roomForm}</div> : (
             <div key={r.id} className={`flex items-center gap-4 py-2.5 border-b border-slate-50 last:border-0 ${!r.active ? "opacity-45" : ""}`}>
