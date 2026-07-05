@@ -244,9 +244,8 @@ export default function BookingDetail() {
     : "";
 
   return (
-    <div className="xl:flex xl:gap-6 xl:items-start">
-    <div className="flex-1 min-w-0 max-w-3xl">
-      {/* Header */}
+    <div>
+      {/* Header — spans both columns: the booking stays the hero */}
       <header className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -266,6 +265,9 @@ export default function BookingDetail() {
         </div>
         <div className="gold-rule mt-3" />
       </header>
+
+    <div className="xl:flex xl:gap-6 xl:items-start">
+    <div className="flex-1 min-w-0 max-w-3xl">
 
 
       {/* Contact strip */}
@@ -821,11 +823,12 @@ export default function BookingDetail() {
 
     {/* ── Operations Workspace: proportional 30%, sticky, never collapsible.
         The left side explains the event; this side explains the work. ── */}
-    <aside className="xl:w-[30%] xl:max-w-[520px] xl:shrink-0 mt-8 xl:mt-0">
+    <aside className="xl:w-[28%] xl:max-w-[480px] xl:shrink-0 mt-8 xl:mt-0">
       <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
         <OpsWorkspace b={b} />
       </div>
     </aside>
+    </div>
     </div>
   );
 }
