@@ -260,11 +260,7 @@ export default function BookingDetail() {
             <span className="font-display font-bold text-lg bg-ink text-white rounded-full px-4 py-1.5">
               #{b.invoice_num}
             </span>
-            {priorBookings > 0 && (
-              <span className="rounded-full bg-goldsoft text-ink text-[11px] font-semibold px-3 py-1">
-                ↩️ Returning customer · {priorBookings} other booking{priorBookings === 1 ? "" : "s"}
-              </span>
-            )}
+
           </div>
         </div>
         <div className="gold-rule mt-3" />
