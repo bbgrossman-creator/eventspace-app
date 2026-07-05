@@ -15,7 +15,7 @@ const NAV = [
 // Back office groups — no section title; the divider tells the story.
 const BACKOFFICE_GROUPS: { title: string; icon: string; items: { href: string; label: string; icon: string }[] }[] = [
   {
-    title: "Menus & Content", icon: "🍽️",
+    title: "Content", icon: "🍽️",
     items: [
       { href: "/templates", label: "Menu Templates", icon: "🧩" },
       { href: "/package-guides", label: "Package Guides", icon: "📣" },
