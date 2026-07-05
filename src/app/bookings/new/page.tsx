@@ -90,9 +90,12 @@ export default function NewInquiry() {
   const [estGuests, setEstGuests] = useState("");
   const [capOverride, setCapOverride] = useState(false);
   useEffect(() => {
-    supabase.from("rooms").select("id,name,guest_capacity").eq("active", true).order("sort_order")
+    supabase.from("rooms").select("id,name,guest_capacity,active").eq("active", true).order("sort_order")
       .then(({ data }) => {
-        const r = (data ?? []) as typeof rooms;
+        // Server filters active=true; filter again client-side so an inactive
+        // room can never count toward the hybrid condition, whatever the query.
+        const r = ((data ?? []) as (typeof rooms[number] & { active?: boolean })[])
+          .filter((x) => x.active !== false);
         setRooms(r);
         if (r.length >= 1) setRoomId(r[0].id);
       });
@@ -460,6 +463,9 @@ export default function NewInquiry() {
           {/* WHERE is the first decision — a booking KIND, not a room pick.
               Radio only appears when off-prem is enabled; otherwise a plain
               room select (only when there's more than one room). */}
+          <p className="sm:col-span-2 text-[9px] text-slate-300 -mb-3">
+            loc-debug: mode={locMode} · activeRooms={rooms.length} · offPrem={offOn ? "on" : "off"}
+          </p>
           {locMode === "none" && (
             <div className="sm:col-span-2 rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
               <b>⚠️ No bookable locations configured.</b> Every room is inactive and off-premise is disabled — add a room or enable off-premise in <b>Locations &amp; Capacity</b>. Reserving is disabled until then (you can still save a lead).
