@@ -1515,7 +1515,9 @@ function RefusalPanel({ b, onChange, setMsg }: {
 // ─── Event hours & overtime — billable time per the Policies settings ───
 function EventHoursPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
   const [policies, setPolicies] = useState<Policies | null>(null);
-  const [start, setStart] = useState((b as { actual_start?: string }).actual_start ?? "");
+  // Default the actual start to the SCHEDULED start — it's on display from the
+  // outset, and the rep only touches it when reality differed from the plan.
+  const [start, setStart] = useState((b as { actual_start?: string }).actual_start ?? b.event_time ?? "");
   const [end, setEnd] = useState((b as { actual_end?: string }).actual_end ?? "");
   const [override, setOverride] = useState(
     (b as { hours_override?: number | null }).hours_override != null
@@ -1544,8 +1546,8 @@ function EventHoursPanel({ b, onChange }: { b: Booking; onChange: () => void }) 
   }
 
   async function resetTimes() {
-    if (!confirm("Clear the actual times and override, back to the default?")) return;
-    setStart(""); setEnd(""); setOverride("");
+    if (!confirm("Reset to default? Start returns to the scheduled time; end and override are cleared.")) return;
+    setStart(b.event_time ?? ""); setEnd(""); setOverride("");
     await supabase.from("bookings").update({
       actual_start: null, actual_end: null, hours_override: null,
     }).eq("id", b.id);
