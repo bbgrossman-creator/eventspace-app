@@ -124,9 +124,9 @@ export default function AddressAutocomplete({
           });
         }}
       />
-      {!KEY && (
+      {!KEY && process.env.NODE_ENV === "development" && (
         <p className="text-[10px] text-amber-600 mt-1">
-          ⓘ Address autocomplete off — set <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to enable suggestions. Typed addresses save normally.
+          ⓘ [dev only] Address autocomplete off — set <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to enable suggestions. Typed addresses save normally.
         </p>
       )}
     </>
