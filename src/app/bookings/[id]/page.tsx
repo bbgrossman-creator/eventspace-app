@@ -5,6 +5,7 @@ import { supabase, logActivity } from "@/lib/supabase";
 import AddressAutocomplete, { PlaceValue } from "@/components/AddressAutocomplete";
 import BookingStory from "@/components/BookingStory";
 import CustomerSnapshot from "@/components/CustomerSnapshot";
+import FilesPanel from "@/components/FilesPanel";
 import {
   Booking,
   Status,
@@ -802,6 +803,9 @@ export default function BookingDetail() {
           </table>
         )}
       </div>
+
+      {/* Everything attached to the event */}
+      <FilesPanel b={b} />
 
       {/* The story: single source of history, on demand. Replaces Activity. */}
       <BookingStory b={b} />

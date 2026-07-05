@@ -75,6 +75,7 @@ export default function CustomerSnapshot({ b }: { b: Booking }) {
         {stats.lastEvent && cell("Last event", fmtDate(stats.lastEvent))}
         {stats.favRoom && cell("Favorite room", stats.favRoom)}
         {stats.favMenu && cell("Favorite menu", stats.favMenu)}
+        {stats.favAddons.length > 0 && cell("Always orders", stats.favAddons.slice(0, 2).join(", "))}
       </div>
     </section>
   );

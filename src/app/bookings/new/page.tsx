@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase, logActivity } from "@/lib/supabase";
@@ -8,6 +8,7 @@ import { loadPolicies, Policies, changeoverMinutes } from "@/lib/policies";
 import { Booking, findConflicts, fmtTime, fmtDate, stageFor, HOLD_HOURS, dayCapacityUsed, capacityPointsFor } from "@/lib/workflow";
 import { PRICING } from "@/lib/pricing";
 import AddressAutocomplete, { PlaceValue } from "@/components/AddressAutocomplete";
+import { matchHousehold, computeCustomerStats, CustomerChargeRow } from "@/lib/customer";
 import { sendEmail } from "@/lib/sendEmail";
 import { FULL_SERVICE_MENU, BUFFET_MENU, BUSINESS_PHONE } from "@/lib/automation";
 
@@ -22,6 +23,10 @@ const TIMES = Array.from({ length: 25 }, (_, i) => {
   const mins = 11 * 60 + i * 30;
   return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 });
+
+function roomsMapForMemory(rooms: { id: string; name: string }[]): Map<string, string> {
+  return new Map(rooms.map((r) => [r.id, r.name]));
+}
 
 function SectionHead({ children }: { children: React.ReactNode }) {
   return (
@@ -173,6 +178,26 @@ export default function NewInquiry() {
       ((ph.length >= 7 && digits(b.phone) === ph) || (!!em && (b.email ?? "").toLowerCase() === em)));
   })();
 
+  const [refChannel, setRefChannel] = useState("");
+  const [refName, setRefName] = useState("");
+  const referralValue = refChannel === "Referral" && refName.trim()
+    ? `Referral: ${refName.trim()}` : (refChannel || null);
+  const [memCharges, setMemCharges] = useState<CustomerChargeRow[]>([]);
+  const household = useMemo(() => {
+    if (dupes.length === 0) return [];
+    const seed = { id: "", phone: f.phone, email: f.email } as Booking;
+    return matchHousehold(all, seed);
+  }, [dupes.length, all, f.phone, f.email]);
+  useEffect(() => {
+    const ids = household.map((x) => x.id).filter(Boolean);
+    if (!ids.length) { setMemCharges([]); return; }
+    supabase.from("charges").select("booking_id,unit_price,quantity,taxable,description").in("booking_id", ids)
+      .then(({ data }) => setMemCharges((data ?? []) as CustomerChargeRow[]));
+  }, [household]);
+  const memory = useMemo(
+    () => computeCustomerStats(household, memCharges, [], roomsMapForMemory(rooms)),
+    [household, memCharges, rooms]);
+
   function set(k: string, v: string) { setF((p) => ({ ...p, [k]: v })); }
 
   async function nextLeadNum(): Promise<string> {
@@ -203,6 +228,7 @@ export default function NewInquiry() {
       room_id: locType === "on_prem" ? (roomId || null) : null,
       location_type: locType,
       ...offFields(),
+      referral_source: referralValue,
       capacity_points: cap?.extra ? cap.mine : null,
       est_guests: estGuests ? Number(estGuests) : null,
       event_type: f.event_type || null,
@@ -283,6 +309,7 @@ export default function NewInquiry() {
         room_id: locType === "on_prem" ? (roomId || null) : null,
         location_type: locType,
         ...offFields(),
+        referral_source: referralValue,
         capacity_points: cap?.extra ? cap.mine : null,
         est_guests: estGuests ? Number(estGuests) : null,
         event_type: f.event_type || null,
@@ -383,6 +410,21 @@ export default function NewInquiry() {
             <input className="field" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="(555) 555-5555" /></div>
           <div><label className="label">Email</label>
             <input className="field" type="email" value={f.email} onChange={(e) => set("email", e.target.value)} /></div>
+          <div><label className="label">How did you hear about us? <span className="text-slate-300">(optional)</span></label>
+            <div className="flex gap-2">
+              <select className="field" value={refChannel} onChange={(e) => setRefChannel(e.target.value)}>
+                <option value="">— Select —</option>
+                <option>Referral</option>
+                <option>Repeat customer</option>
+                <option>Google</option>
+                <option>Instagram / Facebook</option>
+                <option>Drove by / local</option>
+                <option>Other</option>
+              </select>
+              {refChannel === "Referral" && (
+                <input className="field reveal" placeholder="Referred by…" value={refName} onChange={(e) => setRefName(e.target.value)} />
+              )}
+            </div></div>
 
           {/* Optional second contact — hidden until needed (e.g. spouse, event planner) */}
           {!showContact2 ? (
@@ -511,6 +553,24 @@ export default function NewInquiry() {
 
         {dupes.length > 0 && (
           <div id="dupes-panel" className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
+            {memory && (
+              <div className="rounded-lg bg-white ring-1 ring-amber-200 px-3.5 py-2.5 mb-2.5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">📇 Sales memory{memory.tier ? ` · ${memory.tier}` : ""}</span>
+                  {household[0] && (
+                    <Link href={`/customers/${household.find((h) => h.id)?.id ?? ""}`} target="_blank"
+                      className="text-[11px] font-semibold text-navy underline underline-offset-2">Open Customer Profile →</Link>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-1.5 mt-1.5 text-slate-700">
+                  {memory.lastMenu && <div><span className="text-[10px] text-slate-400 block">Last menu</span><b className="text-xs">{memory.lastMenu}</b></div>}
+                  {memory.favAddons.length > 0 && <div className="col-span-2"><span className="text-[10px] text-slate-400 block">Favorite add-ons</span><b className="text-xs">{memory.favAddons.map((a) => `✔ ${a}`).join("  ")}</b></div>}
+                  {memory.avgGuests != null && <div><span className="text-[10px] text-slate-400 block">Typical guests</span><b className="text-xs">{memory.avgGuests}</b></div>}
+                  {memory.favRoom && <div><span className="text-[10px] text-slate-400 block">Preferred room</span><b className="text-xs">{memory.favRoom}</b></div>}
+                  <div><span className="text-[10px] text-slate-400 block">Lifetime</span><b className="text-xs">${Math.round(memory.lifetime).toLocaleString()}</b></div>
+                </div>
+              </div>
+            )}
             <p className="font-bold mb-1">👥 This contact already has {dupes.length === 1 ? "a booking" : `${dupes.length} bookings`}</p>
             {dupes.slice(0, 4).map((d) => (
               <p key={d.id} className="text-xs">

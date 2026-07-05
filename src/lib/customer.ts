@@ -41,6 +41,8 @@ export interface CustomerStats {
   avgGuests: number | null;
   favRoom: string | null;
   favMenu: string | null;
+  lastMenu: string | null;        // menu on the most recent completed event
+  favAddons: string[];            // top add-ons by job count (max 3)
   lastEvent: string | null;
   tier: string | null;
   byYear: { year: string; revenue: number; count: number }[];
@@ -105,6 +107,28 @@ export function computeCustomerStats(
   const favRoom = favRoomId && rooms.size > 1 ? rooms.get(favRoomId) ?? null : null;
   const favMenu = mode(real.map((x) => x.menu_type).filter((m) => m && m !== "Not Sure Yet"));
 
+  // Last menu: most recent completed event's menu.
+  const lastCompleted = completed
+    .filter((x) => x.event_date)
+    .sort((a, z) => (z.event_date ?? "").localeCompare(a.event_date ?? ""))[0] ?? null;
+  const lastMenu = lastCompleted?.menu_type && lastCompleted.menu_type !== "Not Sure Yet"
+    ? lastCompleted.menu_type : null;
+
+  // Favorite add-ons: charge names by number of JOBS they appear on (same
+  // name-dedup as the dashboard: strip trailing ×N quantity suffixes).
+  const addonJobs = new Map<string, Set<string>>();
+  for (const c of charges) {
+    const name = (c.description || "").replace(/\s*[×x]\s*\d+\s*$/, "").trim();
+    if (!name) continue;
+    if (!addonJobs.has(name)) addonJobs.set(name, new Set());
+    addonJobs.get(name)!.add(c.booking_id);
+  }
+  const favAddons = Array.from(addonJobs.entries())
+    .filter(([, jobs]) => jobs.size >= 2)   // "favorite" = ordered more than once
+    .sort((a, z) => z[1].size - a[1].size)
+    .slice(0, 3)
+    .map(([name]) => name);
+
   const firstDate = matched
     .map((x) => (x as { created_at?: string }).created_at ?? x.event_date)
     .filter(Boolean).sort()[0] ?? null;
@@ -119,7 +143,7 @@ export function computeCustomerStats(
   return {
     since: firstDate ? new Date(firstDate).getFullYear() : null,
     events: real.length, lifetime, outstanding,
-    upcoming: upcoming.length, avgGuests, favRoom, favMenu, lastEvent, tier,
+    upcoming: upcoming.length, avgGuests, favRoom, favMenu, lastMenu, favAddons, lastEvent, tier,
     byYear: Array.from(yearMap.entries())
       .map(([year, v]) => ({ year, ...v }))
       .sort((a, z) => z.year.localeCompare(a.year)),

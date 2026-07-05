@@ -99,6 +99,8 @@ export default function CustomerProfilePage() {
           {stats?.lastEvent && stat("Last event", fmtDate(stats.lastEvent))}
           {stats?.favRoom && stat("Favorite room", stats.favRoom)}
           {stats?.favMenu && stat("Favorite menu", stats.favMenu)}
+          {stats?.lastMenu && stat("Last menu", stats.lastMenu)}
+          {stats && stats.favAddons.length > 0 && stat("Favorite add-ons", stats.favAddons.join(" · "))}
         </div>
         {single && (
           <p className="text-xs text-slate-400 mt-4">
