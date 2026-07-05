@@ -331,7 +331,7 @@ function WeekView({ anchor, byDate, days, onCompleteTask, roomsMap }: { anchor: 
                   return (
                     <HoverCard key={item.id} pop={
                       <div className="text-sm">
-                        <div className="font-display font-bold text-slate-700 mb-1">📝 To-Do</div>
+                        <div className="font-display font-bold text-slate-700 mb-1">📝 Task</div>
                         <div className="font-medium">{item.label}</div>
                         <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
                           {tk?.assignee && <div>👤 {tk.assignee}</div>}
@@ -343,7 +343,7 @@ function WeekView({ anchor, byDate, days, onCompleteTask, roomsMap }: { anchor: 
                     }>
                     <div className="block rounded-lg ring-1 ring-[#F9BFAE] bg-[#FFF3EE] p-3">
                       <div className="flex justify-between items-baseline gap-2">
-                        <span className="text-[11px] font-bold text-[#B5492F]">📋 To-Do</span>
+                        <span className="text-[11px] font-bold text-[#B5492F]">📋 Task</span>
                         {item.time && <span className="text-[11px] font-semibold text-[#B5492F] whitespace-nowrap">by {fmtTime(item.time)}</span>}
                       </div>
                       <div className="text-sm font-semibold leading-snug mt-0.5 line-clamp-2">{item.label}</div>
@@ -521,7 +521,7 @@ function MonthView({ anchor, byDate, onDayClick, onCompleteTask }: {
                     return (
                       <HoverCard key={item.id} pop={
                         <div className="text-sm" onClick={(e) => e.stopPropagation()}>
-                          <div className="font-display font-bold text-slate-700 mb-1">{item.icon} {item.kind === "task" ? "To-Do" : item.label}</div>
+                          <div className="font-display font-bold text-slate-700 mb-1">{item.icon} {item.kind === "task" ? "Task" : item.label}</div>
                           <div className="font-medium">{item.kind === "task" ? item.label : b?.contact_name}</div>
                           <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
                             {tk?.assignee && <div>👤 {tk.assignee}</div>}

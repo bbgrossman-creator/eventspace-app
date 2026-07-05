@@ -67,7 +67,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
     let q = supabase.from("tasks").select("*").eq("done", false);
     if (bookingId) q = q.eq("booking_id", bookingId);
     const { data, error } = await q.order("due_date", { ascending: true, nullsFirst: false });
-    if (error) { setErr(`To-dos: ${error.message} — run the to-do SQL if columns are missing.`); setTodos([]); return; }
+    if (error) { setErr(`Tasks: ${error.message} — run the tasks SQL if columns are missing.`); setTodos([]); return; }
     const rows = (data ?? []) as Todo[];
     rows.sort((a, b) => {
       const ra = BAND_ORDER[bandOf(a)], rb = BAND_ORDER[bandOf(b)];
@@ -105,7 +105,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
       title: title.trim(), due_date: due || null, due_time: time || null,
       assignee: assignee || null, ...linked,
     });
-    if (error) { setErr(`Couldn't save: ${error.message} — run the to-do SQL if columns are missing.`); return; }
+    if (error) { setErr(`Couldn't save: ${error.message} — run the tasks SQL if columns are missing.`); return; }
     setTitle(""); setDue(""); setTime(""); setLinkBooking(""); setErr(""); load();
   }
 
@@ -125,7 +125,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   if (todos.length === 0 && collapsed) {
     return (
       <button className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors" onClick={() => setCollapsed(false)}>
-        ＋ To-Do List
+        ＋ Tasks
       </button>
     );
   }
@@ -138,7 +138,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
       {/* ── Zone 1: header + filters (fixed) ── */}
       <div className={rail ? "px-4 pt-4 pb-2 shrink-0" : ""}>
       <div className="flex items-center justify-between mb-1">
-        <h2 className={`font-display font-bold text-sm ${rail ? "text-[#7C2D12]" : ""}`}>📝 To-Do List{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
+        <h2 className={`font-display font-bold text-sm ${rail ? "text-[#7C2D12]" : ""}`}>📝 Tasks{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
         <div className="flex items-center gap-2.5">
           <button className="text-xs text-slate-400 hover:text-navy underline" onClick={load} title="Refresh">↻</button>
           {todos.length === 0 && !bookingId && (
@@ -222,21 +222,21 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
       )}
       </div>
 
-      {/* ── Zone 3: pinned footer — Add To-Do always reachable ── */}
+      {/* ── Zone 3: pinned footer — New Task always reachable ── */}
       <div className={rail ? "px-4 pb-4 pt-2 shrink-0 border-t border-[#fa8072]/10" : ""}>
       {/* Add form: on the rail it's the darkest salmon section, always present.
-          Embedded (booking page) it hides behind an "＋ Add To-Do" chip. */}
+          Embedded (booking page) it hides behind an "＋ New Task" chip. */}
       {!showForm ? (
         <div className="mt-3">
           <button
             className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors"
             onClick={() => setShowForm(true)}>
-            ＋ Add To-Do
+            ＋ New Task
           </button>
         </div>
       ) : (
       <div ref={formRef} className={`mt-3 space-y-1.5 rounded-xl p-2.5 ${rail ? "bg-[#F8C9BA]/60 ring-1 ring-[#fa8072]/20" : "bg-slate-50 ring-1 ring-slate-100"}`}>
-        <input className="field !py-1.5 w-full text-sm !bg-white" placeholder={bookingId ? "Add a to-do for this booking…" : "Add a to-do…"}
+        <input className="field !py-1.5 w-full text-sm !bg-white" placeholder={bookingId ? "Add a task for this booking…" : "Add a task…"}
           value={title} onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
         <div className="grid grid-cols-2 gap-1.5">

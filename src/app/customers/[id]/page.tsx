@@ -24,6 +24,9 @@ export default function CustomerProfilePage() {
   const [charges, setCharges] = useState<CustomerChargeRow[]>([]);
   const [pays, setPays] = useState<CustomerPayRow[]>([]);
   const [rooms, setRooms] = useState<Map<string, string>>(new Map());
+  const [custNotes, setCustNotes] = useState<{ id: string; body: string }[]>([]);
+  const [noteBody, setNoteBody] = useState("");
+  const [noteEditor, setNoteEditor] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -37,11 +40,13 @@ export default function CustomerProfilePage() {
     const mine = matchHousehold((allRows ?? []) as Booking[], bk as Booking);
     setMatched(mine);
     const ids = mine.map((x) => x.id);
-    const [c, p, r] = await Promise.all([
+    const [c, p, r, nb] = await Promise.all([
       supabase.from("charges").select("booking_id,unit_price,quantity,taxable,description").in("booking_id", ids),
       supabase.from("payments").select("booking_id,amount_applied").in("booking_id", ids),
       supabase.from("rooms").select("id,name"),
+      supabase.from("booking_notes").select("id,body,created_at").in("booking_id", ids).order("created_at", { ascending: true }),
     ]);
+    setCustNotes(((nb.data ?? []) as { id: string; body: string }[]));
     setCharges((c.data ?? []) as CustomerChargeRow[]);
     setPays((p.data ?? []) as CustomerPayRow[]);
     setRooms(new Map(((r.data ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name])));
@@ -107,6 +112,45 @@ export default function CustomerProfilePage() {
             First booking on file — the relationship starts here.
           </p>
         )}
+      </section>
+
+      {/* ── Notes: permanent facts about this customer, across bookings ── */}
+      <section className="card p-6 mb-6">
+        <div className="flex items-baseline justify-between gap-3 mb-3">
+          <h2 className="font-display font-bold text-sm">Notes</h2>
+          <button className="text-xs text-slate-400 hover:text-navy transition-colors"
+            onClick={() => setNoteEditor((v) => !v)}>＋ Add Note</button>
+        </div>
+        {noteEditor && (
+          <div className="flex gap-1.5 mb-3 reveal">
+            <input className="field !py-1.5 !text-sm flex-1" autoFocus placeholder="A permanent fact — “only call after 7 PM”, “allergic to walnuts”…"
+              value={noteBody} onChange={(e) => setNoteBody(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter" && noteBody.trim()) {
+                  await supabase.from("booking_notes").insert({ booking_id: seed.id, body: noteBody.trim() });
+                  setNoteBody(""); setNoteEditor(false); load();
+                }
+              }} />
+            <button className="btn-primary !py-1 !px-3 text-xs" onClick={async () => {
+              if (!noteBody.trim()) return;
+              await supabase.from("booking_notes").insert({ booking_id: seed.id, body: noteBody.trim() });
+              setNoteBody(""); setNoteEditor(false); load();
+            }}>Add</button>
+          </div>
+        )}
+        {custNotes.length === 0 && !noteEditor && (
+          <p className="text-sm text-slate-400">Preferences and standing facts that apply across every booking.</p>
+        )}
+        <div className="space-y-1.5">
+          {custNotes.map((n) => (
+            <div key={n.id} className="group flex items-start gap-2 text-sm leading-relaxed">
+              <span className="text-slate-300 mt-[2px]">•</span>
+              <span className="flex-1 whitespace-pre-wrap">{n.body}</span>
+              <button className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-xs mt-[2px]"
+                title="Remove" onClick={async () => { await supabase.from("booking_notes").delete().eq("id", n.id); load(); }}>✕</button>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ── Revenue by year ── */}
