@@ -88,6 +88,11 @@ export default function BookingDetail() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadPolicies().then((p) => setOverdueHrs(p.menu_call_overdue_hours)); }, []);
+  const [roomsMap, setRoomsMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    supabase.from("rooms").select("id,name").then(({ data }) =>
+      setRoomsMap(new Map(((data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name]))));
+  }, []);
 
   // ─── Financials ───
   const fin = useMemo(() => {
@@ -276,6 +281,14 @@ export default function BookingDetail() {
             ? `${heads}${suffix}`
             : `${heads}${suffix}`;
         })()} />
+        {(b.location_type === "off_prem" || (b.room_id && roomsMap.size > 1)) && (
+          b.location_type === "off_prem" ? (
+            <Info label="Location" value={`📍 ${b.offprem_address ?? "Off-premise"}`}
+              link={b.offprem_address ? `https://maps.google.com/?q=${encodeURIComponent(b.offprem_address)}` : undefined} />
+          ) : (
+            <Info label="Location" value={`🏛️ ${roomsMap.get(b.room_id!) ?? "—"}`} />
+          )
+        )}
         {b.contact2_name && (
           <>
             <Info label="2nd Contact" value={b.contact2_name} />
@@ -1818,19 +1831,28 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
   const [override, setOverride] = useState(false);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
+  const [roomId, setRoomId] = useState<string>(b.room_id ?? "");
+  const [locType, setLocType] = useState<string>(b.location_type ?? "on_prem");
+  const [offAddr, setOffAddr] = useState<string>(b.offprem_address ?? "");
 
   useEffect(() => {
     supabase.from("bookings").select("*").neq("status", "cancelled")
       .then(({ data }) => setAll((data ?? []) as Booking[]));
+    supabase.from("rooms").select("id,name").eq("active", true).order("sort_order")
+      .then(({ data }) => setRooms((data ?? []) as { id: string; name: string }[]));
     loadPolicies().then(setPol);
   }, []);
 
-  const dateChanged = f.event_date !== (b.event_date ?? "") || f.event_time !== (b.event_time ?? "");
+  const dateChanged = f.event_date !== (b.event_date ?? "") || f.event_time !== (b.event_time ?? "")
+    || roomId !== (b.room_id ?? "") || locType !== (b.location_type ?? "on_prem");
   const conflicts = dateChanged && f.event_date && f.event_time && pol
     ? findConflicts(all, f.event_date, f.event_time, b.id, {
         newHours: f.expected_hours ? Number(f.expected_hours) : pol.service_hours,
         defaultHours: pol.service_hours,
         bufferMin: changeoverMinutes(pol),
+        roomId: roomId || null,
+        locationType: locType,
       })
     : [];
   const confirmedClash = conflicts.some((c) =>
@@ -1850,6 +1872,9 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
       contact2_email: f.contact2_email.trim() || null,
       event_type: f.event_type || null, event_name: f.event_name.trim() || null,
       event_date: f.event_date, event_time: f.event_time,
+      room_id: locType === "on_prem" ? (roomId || null) : null,
+      location_type: locType,
+      offprem_address: locType === "off_prem" ? (offAddr.trim() || null) : null,
       expected_hours: f.expected_hours ? Number(f.expected_hours) : null,
     }).eq("id", b.id);
     await logActivity(b.id, b.invoice_num, "Details Edited",
@@ -1890,6 +1915,21 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
           <select className="field" value={f.event_time} onChange={(e) => set("event_time", e.target.value)}>
             {EDIT_TIMES.map((t) => <option key={t} value={t}>{fmtTime(t)}</option>)}
           </select></div>
+        {(rooms.length > 1 || locType === "off_prem") && (
+          <div><label className="label">Location</label>
+            <select className="field" value={locType === "off_prem" ? "off_prem" : roomId}
+              onChange={(e) => {
+                if (e.target.value === "off_prem") setLocType("off_prem");
+                else { setLocType("on_prem"); setRoomId(e.target.value); }
+              }}>
+              {rooms.map((r) => <option key={r.id} value={r.id}>🏛️ {r.name}</option>)}
+              <option value="off_prem">📍 Off-premise</option>
+            </select></div>
+        )}
+        {locType === "off_prem" && (
+          <div><label className="label">Job address</label>
+            <input className="field" value={offAddr} onChange={(e) => setOffAddr(e.target.value)} /></div>
+        )}
       </div>
 
       {dateChanged && conflicts.length > 0 && (

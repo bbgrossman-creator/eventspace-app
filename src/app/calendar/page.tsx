@@ -50,6 +50,12 @@ function fmtISO(d: Date) { return d.toISOString().slice(0, 10); }
 function fmtISOLocal(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+function locLabel(b: Booking, roomsMap: Map<string, string>): string | null {
+  if (b.location_type === "off_prem") return `📍 ${b.offprem_address ?? "Off-premise"}`;
+  if (b.room_id && roomsMap.size > 1) return `🏛️ ${roomsMap.get(b.room_id) ?? ""}`;
+  return null;
+}
+
 function shortName(b: Booking) {
   const n = b.contact_name?.split(" ").slice(-1)[0] ?? b.contact_name ?? "";
   return n.length > 10 ? n.slice(0, 9) + "…" : n;
@@ -66,6 +72,11 @@ export default function Calendar() {
   const [fetchErr, setFetchErr] = useState("");
   const [diag, setDiag] = useState({ tpTotal: 0, tpNoTime: 0, taskTotal: 0, taskNoDate: 0 });
   const [calDays, setCalDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  const [roomsMap, setRoomsMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    supabase.from("rooms").select("id,name").then(({ data }) =>
+      setRoomsMap(new Map(((data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name]))));
+  }, []);
   useEffect(() => {
     loadPolicies().then((p) => {
       const d = (p.calendar_days || "0,1,2,3,4,5,6").split(",").map(Number).filter((n) => n >= 0 && n <= 6);
@@ -250,7 +261,7 @@ export default function Calendar() {
         </div>
       </header>
 
-      {view === "week" ? <WeekView anchor={anchor} byDate={byDate} days={calDays} onCompleteTask={completeTask} /> : (
+      {view === "week" ? <WeekView anchor={anchor} byDate={byDate} days={calDays} onCompleteTask={completeTask} roomsMap={roomsMap} /> : (
         <MonthView anchor={anchor} byDate={byDate} onCompleteTask={completeTask}
           onDayClick={(d) => { setView("week"); setAnchor(startOfWeek(d)); }} />
       )}
@@ -291,7 +302,7 @@ function PopActions({ bookingId, taskId, onCompleteTask }: {
 }
 
 // ─── WEEK VIEW (rich cards) ───
-function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDate: Map<string, CalItem[]>; days: number[]; onCompleteTask: (id: string) => void }) {
+function WeekView({ anchor, byDate, days, onCompleteTask, roomsMap }: { anchor: Date; byDate: Map<string, CalItem[]>; days: number[]; onCompleteTask: (id: string) => void; roomsMap: Map<string, string> }) {
   // Responsive density: fewer visible days = wider columns = richer cards.
   // ≤5 days: rich (P1–P4) · 6 days: medium (P1–P3) · 7 days: compact (P1–P2).
   const density: "rich" | "medium" | "compact" =
@@ -416,6 +427,7 @@ function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDa
                       <div className="font-medium">{b.contact_name}</div>
                       <div className="text-xs text-slate-500 mt-1.5 space-y-0.5">
                         <div>{b.event_name || b.event_type || "Event"}</div>
+                        {locLabel(b, roomsMap) && <div>{locLabel(b, roomsMap)}</div>}
                         <div>{menuBadge(b.menu_type)} · {heads}</div>
                         <div style={{ color: st.textColor }} className="font-semibold">{st.icon} {st.action}</div>
                       </div>
@@ -433,6 +445,9 @@ function WeekView({ anchor, byDate, days, onCompleteTask }: { anchor: Date; byDa
                     <div className="font-display font-bold text-[15px] leading-tight truncate mt-0.5">{b.contact_name}</div>
                     {/* P2: event type */}
                     <div className="text-xs text-slate-600 truncate">{b.event_name || b.event_type}</div>
+                    {density !== "compact" && locLabel(b, roomsMap) && (
+                      <div className="text-[10px] text-slate-500 truncate">{locLabel(b, roomsMap)}</div>
+                    )}
                     {/* P3: status / next action */}
                     {density !== "compact" && (
                       <div className="text-[10px] font-semibold truncate mt-1" style={{ color: st.textColor }}>{st.icon} {st.action}</div>

@@ -10,6 +10,11 @@ import TodoPanel from "@/components/TodoPanel";
 
 export default function DailyOps() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
+  const [roomsMap, setRoomsMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    supabase.from("rooms").select("id,name").then(({ data }) =>
+      setRoomsMap(new Map(((data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name]))));
+  }, []);
   const [callsToday, setCallsToday] = useState<Booking[]>([]);
   const [expiredHolds, setExpiredHolds] = useState<Booking[]>([]);
   const [err, setErr] = useState("");
@@ -117,9 +122,9 @@ export default function DailyOps() {
         </section>
       )}
 
-      <TaskSection title="Needs immediate action" tasks={urgent} accent="bg-red-500" empty="Nothing urgent — nice." />
-      <TaskSection title="This week" tasks={week} accent="bg-amber-400" />
-      <TaskSection title="Upcoming" tasks={later} accent="bg-emerald-500" />
+      <TaskSection title="Needs immediate action" tasks={urgent} accent="bg-red-500" empty="Nothing urgent — nice." roomsMap={roomsMap} />
+      <TaskSection title="This week" tasks={week} accent="bg-amber-400" roomsMap={roomsMap} />
+      <TaskSection title="Upcoming" tasks={later} accent="bg-emerald-500" roomsMap={roomsMap} />
 
       {tasks.length === 0 && (
         <div className="card p-12 text-center text-slate-500">
@@ -149,7 +154,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: stri
   );
 }
 
-function TaskSection({ title, tasks, accent, empty }: { title: string; tasks: Task[]; accent: string; empty?: string }) {
+function TaskSection({ title, tasks, accent, empty, roomsMap }: { title: string; tasks: Task[]; accent: string; empty?: string; roomsMap: Map<string, string> }) {
   if (tasks.length === 0 && !empty) return null;
   return (
     <section className="mb-8">
@@ -177,6 +182,10 @@ function TaskSection({ title, tasks, accent, empty }: { title: string; tasks: Ta
                 <div className="font-medium truncate">{t.booking.contact_name}</div>
                 <div className="text-xs text-slate-500 truncate">
                   {t.booking.event_name || t.booking.event_type} · {fmtDate(t.booking.event_date)} {fmtTime(t.booking.event_time)} · {menuBadge(t.booking.menu_type)}
+                  {t.booking.location_type === "off_prem"
+                    ? <span className="text-slate-400"> · 📍 {t.booking.offprem_address ?? "Off-prem"}</span>
+                    : (t.booking.room_id && roomsMap.size > 1
+                      ? <span className="text-slate-400"> · 🏛️ {roomsMap.get(t.booking.room_id)}</span> : null)}
                 </div>
                 {t.reason && <div className="text-[11px] text-red-600 font-medium mt-0.5">{t.reason}</div>}
               </div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { supabase, logActivity } from "@/lib/supabase";
 import { runActionAutomation } from "@/lib/automation";
 import { loadPolicies, Policies, changeoverMinutes } from "@/lib/policies";
-import { Booking, findConflicts, fmtTime, fmtDate, stageFor, HOLD_HOURS } from "@/lib/workflow";
+import { Booking, findConflicts, fmtTime, fmtDate, stageFor, HOLD_HOURS, dayCapacityUsed, capacityPointsFor } from "@/lib/workflow";
 import { PRICING } from "@/lib/pricing";
 import { sendEmail } from "@/lib/sendEmail";
 import { FULL_SERVICE_MENU, BUFFET_MENU, BUSINESS_PHONE } from "@/lib/automation";
@@ -43,6 +43,20 @@ export default function NewInquiry() {
   const [wtAssignee, setWtAssignee] = useState("");
   const [wtNotes, setWtNotes] = useState("");
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
+  const [rooms, setRooms] = useState<{ id: string; name: string; guest_capacity: number | null }[]>([]);
+  const [roomId, setRoomId] = useState<string>("");
+  const [locType, setLocType] = useState<"on_prem" | "off_prem">("on_prem");
+  const [offAddr, setOffAddr] = useState("");
+  const [estGuests, setEstGuests] = useState("");
+  const [capOverride, setCapOverride] = useState(false);
+  useEffect(() => {
+    supabase.from("rooms").select("id,name,guest_capacity").eq("active", true).order("sort_order")
+      .then(({ data }) => {
+        const r = (data ?? []) as typeof rooms;
+        setRooms(r);
+        if (r.length >= 1) setRoomId(r[0].id);
+      });
+  }, []);
   const wtRef = useRef<HTMLDivElement>(null);
   const c2Ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -76,8 +90,19 @@ export default function NewInquiry() {
           newHours: f.expected_hours ? Number(f.expected_hours) : pol.service_hours,
           defaultHours: pol.service_hours,
           bufferMin: changeoverMinutes(pol),
+          roomId: roomId || null,
+          locationType: locType,
         })
       : (f.event_date && f.event_time ? findConflicts(all, f.event_date, f.event_time) : []);
+
+  // Daily production capacity: points used today vs available. Warn (never
+  // silently block) when this job would push past the cap.
+  const cap = (() => {
+    if (!pol || pol.capacity_enabled !== 1 || !f.event_date) return null;
+    const used = dayCapacityUsed(all, f.event_date, pol);
+    const mine = capacityPointsFor(estGuests ? Number(estGuests) : 0, null, pol);
+    return { used, mine, total: pol.daily_capacity_points, over: used + mine > pol.daily_capacity_points };
+  })();
 
   const confirmedClash = conflicts.some((c) =>
     !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status));
@@ -128,6 +153,10 @@ export default function NewInquiry() {
       contact2_name: f.contact2_name.trim() || null,
       contact2_phone: f.contact2_phone.trim() || null,
       contact2_email: f.contact2_email.trim() || null,
+      room_id: locType === "on_prem" ? (roomId || null) : null,
+      location_type: locType,
+      offprem_address: locType === "off_prem" ? (offAddr.trim() || null) : null,
+      est_guests: estGuests ? Number(estGuests) : null,
       event_type: f.event_type || null,
       event_date: f.event_date || null, event_time: f.event_time || null,
       expected_hours: f.expected_hours ? Number(f.expected_hours) : null,
@@ -157,6 +186,8 @@ export default function NewInquiry() {
     if (!f.event_type) { setErr("Event type is required."); return; }
     if (!f.event_date) { setErr("Event date is required."); return; }
     if (!f.event_time) { setErr("Event time is required."); return; }
+    if (locType === "off_prem" && !offAddr.trim()) { setErr("Enter the job address for an off-premise event."); return; }
+    if (cap?.over && !capOverride) { setErr("This day is at production capacity — tick the override to book anyway, or pick another date."); return; }
     setSaving(true);
 
     const { data: invData, error: invErr } = await supabase.rpc("next_invoice_num");
@@ -200,6 +231,10 @@ export default function NewInquiry() {
         contact2_name: f.contact2_name.trim() || null,
         contact2_phone: f.contact2_phone.trim() || null,
         contact2_email: f.contact2_email.trim() || null,
+        room_id: locType === "on_prem" ? (roomId || null) : null,
+        location_type: locType,
+        offprem_address: locType === "off_prem" ? offAddr.trim() : null,
+        est_guests: estGuests ? Number(estGuests) : null,
         event_type: f.event_type || null,
         event_date: f.event_date || null,
         event_time: f.event_time || null,
@@ -347,6 +382,36 @@ export default function NewInquiry() {
               placeholder={pol ? String(pol.default_event_hours) : "4"} />
             <p className="text-[11px] text-slate-400 mt-1">Leave blank for standard. A shorter event may fit alongside another.</p>
           </div>
+          <div><label className="label">Estimated guests</label>
+            <input className="field" type="number" min="0" value={estGuests}
+              onChange={(e) => setEstGuests(e.target.value)} placeholder="rough count" />
+            {(() => {
+              const room = rooms.find((r) => r.id === roomId);
+              if (locType === "on_prem" && room?.guest_capacity && estGuests && Number(estGuests) > room.guest_capacity)
+                return <p className="text-[11px] text-red-600 mt-1 font-semibold">⚠️ {room.name} seats {room.guest_capacity} — estimate is {estGuests}.</p>;
+              return null;
+            })()}
+          </div>
+
+          {/* Location — hidden entirely for a single-room caterer with no off-prem */}
+          {(rooms.length > 1 || pol?.offprem_enabled === 1) && (
+            <>
+              <div><label className="label">Location</label>
+                <select className="field" value={locType === "off_prem" ? "off_prem" : roomId}
+                  onChange={(e) => {
+                    if (e.target.value === "off_prem") setLocType("off_prem");
+                    else { setLocType("on_prem"); setRoomId(e.target.value); }
+                  }}>
+                  {rooms.map((r) => <option key={r.id} value={r.id}>🏛️ {r.name}{r.guest_capacity ? ` (seats ${r.guest_capacity})` : ""}</option>)}
+                  {pol?.offprem_enabled === 1 && <option value="off_prem">📍 Off-premise</option>}
+                </select></div>
+              {locType === "off_prem" && (
+                <div><label className="label">Job address *</label>
+                  <input className="field" value={offAddr} onChange={(e) => setOffAddr(e.target.value)}
+                    placeholder="street, city — where the job happens" /></div>
+              )}
+            </>
+          )}
         </div>
         </div>
 
@@ -488,6 +553,23 @@ export default function NewInquiry() {
         )}
 
         {err && <p className="text-sm text-red-600 font-medium">{err}</p>}
+
+        {cap && (
+          <div className={`rounded-lg px-4 py-3 text-sm ${cap.over ? "bg-red-50 border border-red-200 text-red-800" : "bg-slate-50 ring-1 ring-slate-100 text-slate-600"}`}>
+            <p className="font-semibold">
+              🏭 Production capacity {fmtDate(f.event_date)}: {cap.used} of {cap.total} points used · this job +{cap.mine}
+            </p>
+            {cap.over && (
+              <>
+                <p className="text-xs mt-0.5">Booking this would put the day at {cap.used + cap.mine}/{cap.total} — over your kitchen/crew capacity.</p>
+                <label className="flex items-center gap-2 mt-2 text-xs font-semibold cursor-pointer">
+                  <input type="checkbox" checked={capOverride} onChange={(e) => setCapOverride(e.target.checked)} />
+                  Book anyway (I know we can produce it)
+                </label>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Three intents, three weights: reserving a date (primary), coming to
             see the room (outlined), or just staying in touch (text). The first

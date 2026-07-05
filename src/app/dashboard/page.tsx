@@ -24,6 +24,11 @@ export default function Dashboard() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [charges, setCharges] = useState<ChargeRowDb[]>([]);
   const [showAllAddons, setShowAllAddons] = useState(false);
+  const [roomsMap, setRoomsMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    supabase.from("rooms").select("id,name").then(({ data }) =>
+      setRoomsMap(new Map(((data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name]))));
+  }, []);
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [periodPreset, setPeriodPreset] = useState<"all" | "week" | "month" | "year" | "custom">("all");
@@ -239,6 +244,20 @@ export default function Dashboard() {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 12);
 
+  // Events by location — where the business actually happens this period.
+  const byLocation = (() => {
+    const m = new Map<string, { label: string; count: number; revenue: number }>();
+    for (const r of visibleOrders) {
+      const key = r.b.location_type === "off_prem" ? "__off" : (r.b.room_id ?? "__unassigned");
+      const label = r.b.location_type === "off_prem" ? "📍 Off-premise"
+        : r.b.room_id ? `🏛️ ${roomsMap.get(r.b.room_id) ?? "Room"}` : "🏛️ Unassigned";
+      const e = m.get(key) ?? { label, count: 0, revenue: 0 };
+      e.count++; e.revenue += r.fin.total;
+      m.set(key, e);
+    }
+    return Array.from(m.values()).sort((a, b) => b.count - a.count);
+  })();
+
   // Revenue chart series — bucketed by week / month / year, always from the
   // period-filtered orders (so it respects the dashboard period control).
   function bucketKey(d: Date): { key: string; label: string } {
@@ -381,6 +400,31 @@ export default function Dashboard() {
       </div>
       {addonBreakdown.length > 0 && (
         <div className="card p-5 mb-8">
+          <SectionTitle>Events by Location</SectionTitle>
+          {byLocation.length <= 1 && roomsMap.size <= 1 ? (
+            <p className="text-xs text-slate-400 mt-2 mb-4">One location — add rooms or enable off-premise in Locations & Capacity to see the split.</p>
+          ) : (
+            <div className="mt-2 mb-5 space-y-2">
+              {byLocation.map((l) => {
+                const max = byLocation[0]?.count || 1;
+                return (
+                  <div key={l.label} className="text-sm">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="truncate font-medium">{l.label}</span>
+                      <span className="whitespace-nowrap text-right">
+                        <span className="font-semibold">{l.count} event{l.count === 1 ? "" : "s"}</span>
+                        <span className="text-xs text-slate-400"> · {fmtMoney(l.revenue)}</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-100 mt-1">
+                      <div className="h-1.5 rounded-full bg-navy/70" style={{ width: `${Math.max(4, (l.count / max) * 100)}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <SectionTitle>Top 5 Add-Ons</SectionTitle>
           {(() => {
             const totalRev = addonBreakdown.reduce((t, a) => t + a.revenue, 0) || 1;

@@ -20,6 +20,18 @@ export interface Policies {
   changeover_overlap_hours: number;
   /** Comma-separated weekday indices to show on the calendar (0=Sun..6=Sat). */
   calendar_days: string;
+  /** 1 = caterer takes off-premise jobs (address instead of room). */
+  offprem_enabled: number;
+  /** 1 = enforce (warn) daily production-capacity points. */
+  capacity_enabled: number;
+  /** Guest count above which a job is "big". */
+  big_job_guests: number;
+  /** Points a small job consumes. */
+  points_small: number;
+  /** Points a big job consumes. */
+  points_big: number;
+  /** Total production points available per calendar day. */
+  daily_capacity_points: number;
 }
 
 export const POLICY_DEFAULTS: Policies = {
@@ -38,6 +50,12 @@ export const POLICY_DEFAULTS: Policies = {
   bussing_hours: 1,
   changeover_overlap_hours: 0.5,
   calendar_days: "0,1,2,3,4,5,6",
+  offprem_enabled: 0,
+  capacity_enabled: 0,
+  big_job_guests: 150,
+  points_small: 1,
+  points_big: 2,
+  daily_capacity_points: 4,
 };
 
 const NUMERIC: (keyof Policies)[] = [

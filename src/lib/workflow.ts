@@ -98,6 +98,10 @@ export interface Booking {
   menu_type: string;
   bill_at_minimum?: boolean | null;
   est_guests: number | null;
+  room_id?: string | null;
+  location_type?: string | null;      // on_prem | off_prem
+  offprem_address?: string | null;
+  capacity_points?: number | null;    // manual override
   notes: string | null;
   status: Status;
   hold_expires: string | null;
@@ -127,6 +131,34 @@ export interface Booking {
 }
 
 /** Computed live — no cron needed. */
+/** Production points a job consumes: manual override, else size band. */
+export function capacityPointsFor(
+  guests: number, override: number | null | undefined,
+  pol: { big_job_guests: number; points_small: number; points_big: number },
+): number {
+  if (override != null && override > 0) return override;
+  return guests > pol.big_job_guests ? pol.points_big : pol.points_small;
+}
+
+/** Total points already committed on a calendar day (kitchen/crew bandwidth).
+ *  Counts every job that will actually be produced — holds onward — and skips
+ *  leads, waitlist, expired holds, and cancellations. */
+export function dayCapacityUsed(
+  bookings: Booking[], dateISO: string,
+  pol: { big_job_guests: number; points_small: number; points_big: number },
+  excludeId?: string,
+): number {
+  const SKIP = ["cancelled", "lead", "lead_lost", "hold_expired", "waitlisted"];
+  let used = 0;
+  for (const b of bookings) {
+    if (b.id === excludeId || b.event_date !== dateISO || SKIP.includes(b.status)) continue;
+    const g = deriveGuests(b);
+    const heads = (g.gendered ? g.men + g.women : g.adults) + g.children;
+    used += capacityPointsFor(heads, b.capacity_points, pol);
+  }
+  return used;
+}
+
 export function isHoldExpired(b: Booking): boolean {
   return b.status === "on_hold" && !!b.hold_expires &&
     new Date(b.hold_expires).getTime() < Date.now();
@@ -335,7 +367,7 @@ export function findConflicts(
   eventDate: string,
   eventTime: string,
   excludeId?: string,
-  opts?: { newHours?: number; defaultHours?: number; bufferMin?: number },
+  opts?: { newHours?: number; defaultHours?: number; bufferMin?: number; roomId?: string | null; locationType?: string },
 ): Booking[] {
   const newMins = timeToMinutes(eventTime);
   const defaultHours = opts?.defaultHours ?? MINIMUM_GAP_HOURS;
@@ -346,6 +378,12 @@ export function findConflicts(
     if (excludeId && b.id === excludeId) return false;
     if (b.status === "cancelled" || b.status === "hold_expired") return false;
     if (b.status === "lead" || b.status === "lead_lost") return false; // opportunities don't claim dates
+    // Space is per-room: off-prem jobs occupy no room; different rooms never
+    // clash. Null room (legacy/unassigned) is treated conservatively as
+    // clashing with everything so nothing silently double-books.
+    if (opts?.locationType === "off_prem") return false;
+    if (b.location_type === "off_prem") return false;
+    if (opts?.roomId !== undefined && opts.roomId !== null && b.room_id != null && b.room_id !== opts.roomId) return false;
     if (b.event_date !== eventDate) return false;
     const exMins = timeToMinutes(b.event_time);
     if (newMins === null || exMins === null) return true; // unknown time → flag it
