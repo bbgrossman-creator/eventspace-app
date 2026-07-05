@@ -12,7 +12,6 @@ export default function DailyOps() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [callsToday, setCallsToday] = useState<Booking[]>([]);
   const [expiredHolds, setExpiredHolds] = useState<Booking[]>([]);
-  const [todoOverdue, setTodoOverdue] = useState(0);
   const [err, setErr] = useState("");
 
   async function load() {
@@ -81,7 +80,7 @@ export default function DailyOps() {
       <div className="flex-1 min-w-0">
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Stat label="Urgent (incl. to-dos)" value={urgent.length + todoOverdue} tone="text-red-600" />
+        <Stat label="Bookings Requiring Attention" value={urgent.length} tone="text-red-600" />
         <Stat label="Events this week" value={eventsThisWeek.length} tone="text-amber-600" />
         <Stat label="Events upcoming" value={eventsUpcoming.length} tone="text-emerald-600" />
         <Stat label="Active bookings" value={activeBookings.length} tone="text-navy" />
@@ -132,8 +131,8 @@ export default function DailyOps() {
 
       {/* To-Do rail: floats in view on desktop with its own scroll; stacks below on smaller screens. */}
       <aside className="xl:w-[30%] xl:max-w-md xl:shrink-0 mt-8 xl:mt-0">
-        <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
-          <TodoPanel onOverdueCount={setTodoOverdue} />
+        <div className="xl:sticky xl:top-4">
+          <TodoPanel />
         </div>
       </aside>
     </div>

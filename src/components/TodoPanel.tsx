@@ -109,6 +109,12 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
     setTitle(""); setDue(""); setTime(""); setLinkBooking(""); setErr(""); load();
   }
 
+  const bandCounts = useMemo(() => {
+    const c = { Overdue: 0, Today: 0, Anytime: 0, Upcoming: 0 };
+    for (const t of todos) c[bandOf(t)]++;
+    return c;
+  }, [todos]);
+
   const shown = useMemo(() =>
     who === "All" ? todos
       : who === "Unassigned" ? todos.filter((t) => !t.assignee)
@@ -127,9 +133,11 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   const rail = variant === "rail";
   return (
     <section className={rail
-      ? "rounded-2xl p-4 shadow-lg shadow-[#fa8072]/20 ring-1 ring-[#fa8072]/15 bg-gradient-to-b from-[#FFF6F3] via-[#FFEDE7] to-[#FFE3DA]"
+      ? "rounded-2xl shadow-lg shadow-[#fa8072]/15 ring-1 ring-[#fa8072]/15 bg-gradient-to-b from-[#FFFBFA] via-[#FFF4F0] to-[#FFEDE6] flex flex-col xl:max-h-[calc(100vh-2rem)] overflow-hidden"
       : "card p-4"}>
-      <div className="flex items-center justify-between mb-2">
+      {/* ── Zone 1: header + filters (fixed) ── */}
+      <div className={rail ? "px-4 pt-4 pb-2 shrink-0" : ""}>
+      <div className="flex items-center justify-between mb-1">
         <h2 className={`font-display font-bold text-sm ${rail ? "text-[#7C2D12]" : ""}`}>📝 To-Do List{todos.length > 0 ? ` (${todos.length})` : ""}</h2>
         <div className="flex items-center gap-2.5">
           <button className="text-xs text-slate-400 hover:text-navy underline" onClick={load} title="Refresh">↻</button>
@@ -138,6 +146,14 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
           )}
         </div>
       </div>
+      {rail && todos.length > 0 && (
+        <p className="text-[11px] text-[#B45309]/70 mb-2">
+          {bandCounts.Overdue > 0 && <span className="text-red-600 font-semibold">Overdue {bandCounts.Overdue} • </span>}
+          {bandCounts.Today > 0 && <span>Today {bandCounts.Today} • </span>}
+          {bandCounts.Anytime > 0 && <span>Anytime {bandCounts.Anytime} • </span>}
+          Upcoming {bandCounts.Upcoming}
+        </p>
+      )}
 
       {/* Assignee filter (only where the whole list shows) */}
       {!bookingId && (staff.length > 0 || todos.some((t) => t.assignee)) && (
@@ -150,7 +166,12 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
           ))}
         </div>
       )}
+      </div>
 
+      {/* ── Zone 2: task list — the only part that scrolls. Overflow only
+          engages when content exceeds the cap, so short lists never show a
+          scrollbar and the panel sizes naturally. ── */}
+      <div className={rail ? "flex-1 min-h-0 overflow-y-auto px-4" : ""}>
       {shown.map((t, idx) => {
         const band = bandOf(t);
         const showHeader = idx === 0 || bandOf(shown[idx - 1]) !== band;
@@ -162,10 +183,10 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
             {showHeader && (
               <div className={`text-[10px] font-bold uppercase tracking-wider mt-2 mb-0.5 ${headColor}`}>{band}</div>
             )}
-            <div className={`flex items-start gap-2.5 p-2.5 mb-2 rounded-xl text-sm shadow-sm ${rail
+            <div className={`flex items-start gap-2.5 p-2.5 mb-2.5 rounded-xl text-sm shadow-sm ${rail
               ? (band === "Overdue" ? "bg-[#FFD3C6]/90 ring-1 ring-[#fa8072]/30"
                 : band === "Today" ? "bg-[#FFE7DF]/90 ring-1 ring-[#fa8072]/20"
-                : "bg-white/80 ring-1 ring-[#fa8072]/10")
+                : "bg-white ring-1 ring-[#fa8072]/10")
               : (band === "Overdue" ? "bg-red-50 ring-1 ring-red-100"
                 : "bg-white ring-1 ring-slate-900/[0.05]")}`}>
               <input type="checkbox" className="accent-navy mt-0.5"
@@ -196,6 +217,13 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
         );
       })}
 
+      {rail && shown.length > 3 && (
+        <div className="sticky bottom-0 h-5 -mx-4 bg-gradient-to-t from-[#FFEDE6] to-transparent pointer-events-none" />
+      )}
+      </div>
+
+      {/* ── Zone 3: pinned footer — Add To-Do always reachable ── */}
+      <div className={rail ? "px-4 pb-4 pt-2 shrink-0 border-t border-[#fa8072]/10" : ""}>
       {/* Add form: on the rail it's the darkest salmon section, always present.
           Embedded (booking page) it hides behind an "＋ Add To-Do" chip. */}
       {!showForm ? (
@@ -207,7 +235,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
           </button>
         </div>
       ) : (
-      <div ref={formRef} className={`mt-3 space-y-1.5 rounded-xl p-2.5 ${rail ? "bg-[#F9BFAE]/70 ring-1 ring-[#fa8072]/25" : "bg-slate-50 ring-1 ring-slate-100"}`}>
+      <div ref={formRef} className={`mt-3 space-y-1.5 rounded-xl p-2.5 ${rail ? "bg-[#F8C9BA]/60 ring-1 ring-[#fa8072]/20" : "bg-slate-50 ring-1 ring-slate-100"}`}>
         <input className="field !py-1.5 w-full text-sm !bg-white" placeholder={bookingId ? "Add a to-do for this booking…" : "Add a to-do…"}
           value={title} onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
@@ -233,6 +261,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
       </div>
       )}
       {err && <p className="text-red-600 text-xs mt-2">{err}</p>}
+      </div>
     </section>
   );
 }
