@@ -54,6 +54,11 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   const [assignee, setAssignee] = useState("");
   const [linkBooking, setLinkBooking] = useState("");
   const [collapsed, setCollapsed] = useState(false);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, { body: string; who: string }>>({});
+  const draftOf = (id: string) => drafts[id] ?? { body: "", who: "" };
+  const patchDraft = (id: string, p: Partial<{ body: string; who: string }>) =>
+    setDrafts((d) => ({ ...d, [id]: { ...draftOf(id), ...p } }));
   const [showForm, setShowForm] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
   // Expanding near the bottom must not hide the form below the fold: scroll
@@ -84,6 +89,12 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   }, [bookingId, onOverdueCount]);
 
   useEffect(() => { load(); }, [load]);
+  // Deep link: /?taskAssignee=Sara filters the rail to Sara (chip navigation).
+  useEffect(() => {
+    if (bookingId || typeof window === "undefined") return;
+    const a = new URLSearchParams(window.location.search).get("taskAssignee");
+    if (a) setWho(a);
+  }, [bookingId]);
   useEffect(() => {
     supabase.from("staff").select("*").eq("active", true).order("sort_order")
       .then(({ data }) => setStaff((data ?? []) as StaffRow[]));
@@ -93,6 +104,23 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
         .then(({ data }) => setBookings((data ?? []) as BookingLite[]));
     }
   }, [bookingId]);
+
+  async function completeTask(t: Todo) {
+    const d = draftOf(t.id);
+    if (t.booking_id && d.body.trim()) {
+      const { error } = await supabase.from("progress_updates").insert({
+        booking_id: t.booking_id, invoice_num: t.invoice_num ?? null,
+        task_id: t.id, author: d.who || t.assignee || null, body: d.body.trim(),
+      });
+      if (error) { setErr(`Couldn't save the note: ${error.message}`); return; }
+    }
+    const { error } = await supabase.from("tasks")
+      .update({ done: true, completed_at: new Date().toISOString() }).eq("id", t.id);
+    if (error) { setErr(`Couldn't complete: ${error.message} — run v122_worklog.sql.`); return; }
+    setDrafts((prev) => { const n = { ...prev }; delete n[t.id]; return n; });
+    setCompletingId(null);
+    setTodos((prev) => prev.filter((x) => x.id !== t.id));
+  }
 
   async function add() {
     if (!title.trim()) return;
@@ -189,13 +217,32 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
                 : "bg-white ring-1 ring-[#fa8072]/10")
               : (band === "Overdue" ? "bg-red-50 ring-1 ring-red-100"
                 : "bg-white ring-1 ring-slate-900/[0.05]")}`}>
-              <input type="checkbox" className="accent-navy mt-0.5"
-                onChange={async () => {
-                  await supabase.from("tasks").update({ done: true }).eq("id", t.id);
-                  setTodos((prev) => prev.filter((x) => x.id !== t.id));
+              <input type="checkbox" className="accent-navy mt-0.5" checked={false}
+                onChange={() => {
+                  // Checkbox means complete. Booking-linked tasks document the
+                  // work first ("What happened?") so the Work Log stays true.
+                  if (t.booking_id) setCompletingId(completingId === t.id ? null : t.id);
+                  else completeTask(t);
                 }} />
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="font-medium leading-snug">{t.title}</div>
+                {completingId === t.id && (
+                  <div className="mt-1 pl-2 border-l-2 border-navy/20 space-y-1.5 reveal">
+                    <div className="text-[11px] font-semibold text-slate-500">What happened?</div>
+                    <textarea className="field w-full !py-1.5 !text-xs !bg-white" rows={2} autoFocus
+                      value={draftOf(t.id).body} onChange={(e) => patchDraft(t.id, { body: e.target.value })} />
+                    <div className="flex gap-1.5 items-center flex-wrap">
+                      <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]"
+                        value={draftOf(t.id).who || t.assignee || ""}
+                        onChange={(e) => patchDraft(t.id, { who: e.target.value })}>
+                        <option value="">Completed by…</option>
+                        {staff.map((st) => <option key={st.id} value={st.name}>{st.name}</option>)}
+                      </select>
+                      <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => completeTask(t)}>Complete Task</button>
+                      <button className="text-xs text-slate-400 underline" onClick={() => setCompletingId(null)}>cancel</button>
+                    </div>
+                  </div>
+                )}
                 {(t.assignee || (t.booking_id && !bookingId)) && (
                   <div className="text-[11px] text-slate-500 flex gap-3">
                     {t.booking_id && !bookingId && (

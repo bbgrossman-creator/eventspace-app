@@ -65,6 +65,16 @@ export default function Calendar() {
   const router = useRouter();
   const [view, setView] = useState<"week" | "month">("week");
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
+  // Deep link: /calendar?week=YYYY-MM-DD opens the week containing that date
+  // (chip navigation from task due dates).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const w = new URLSearchParams(window.location.search).get("week");
+    if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) {
+      setView("week");
+      setAnchor(startOfWeek(parseLocalDate(w)));
+    }
+  }, []);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [filter, setFilter] = useState<"both" | "events" | "calls" | "other">("both");
   const [touches, setTouches] = useState<TouchRow[]>([]);

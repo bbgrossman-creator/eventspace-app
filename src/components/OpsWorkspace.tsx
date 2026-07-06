@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Booking, fmtTime, parseLocalDate } from "@/lib/workflow";
@@ -52,11 +53,15 @@ function Chip({ children, tone = "" }: { children: React.ReactNode; tone?: strin
   );
 }
 
-function Card({ title, action, onAction, children }: {
-  title: string; action?: string; onAction?: () => void; children: React.ReactNode;
+function Card({ title, action, onAction, feeder = false, children }: {
+  title: string; action?: string; onAction?: () => void; feeder?: boolean; children: React.ReactNode;
 }) {
+  // Feeder (Tasks) wears a faint salmon: "this is where you work."
+  // Receivers (Work Log, Touchpoints) stay white: "this is where work lands."
   return (
-    <div className="rounded-xl bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-[#E6EAF2]">
+    <div className={feeder
+      ? "rounded-xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] bg-[#FFF7F4] ring-1 ring-[#F4D8CE]"
+      : "rounded-xl bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-[#E6EAF2]"}>
       <div className="flex items-baseline justify-between gap-3 mb-2.5">
         <h3 className="font-display font-semibold text-[15px] leading-none">{title}</h3>
         {action && onAction && (
@@ -86,9 +91,14 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
   const [tDate, setTDate] = useState(""); const [tTime, setTTime] = useState("");
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [updateFor, setUpdateFor] = useState<string | null>(null);
-  const [updateBody, setUpdateBody] = useState("");
-  const [updateWho, setUpdateWho] = useState("");
   const [completing, setCompleting] = useState<string | null>(null);
+  // Each task owns its own draft — no shared textarea state across tasks.
+  const [drafts, setDrafts] = useState<Record<string, { body: string; who: string }>>({});
+  const draftOf = (id: string) => drafts[id] ?? { body: "", who: "" };
+  const patchDraft = (id: string, p: Partial<{ body: string; who: string }>) =>
+    setDrafts((d) => ({ ...d, [id]: { ...draftOf(id), ...p } }));
+  const clearDraft = (id: string) =>
+    setDrafts((prev) => { const n = { ...prev }; delete n[id]; return n; });
 
   const load = useCallback(async () => {
     const [k, u, t, st] = await Promise.all([
@@ -118,26 +128,28 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
     setTTitle(""); setTWho(""); setTDate(""); setTTime(""); setTaskEditor(false); load();
   }
   async function complete(task: TaskRow) {
-    if (updateBody.trim()) {
+    const d = draftOf(task.id);
+    if (d.body.trim()) {
       const { error } = await supabase.from("progress_updates").insert({
         booking_id: b.id, invoice_num: b.invoice_num, task_id: task.id,
-        author: updateWho || task.assignee || null, body: updateBody.trim(),
+        author: d.who || task.assignee || null, body: d.body.trim(),
       });
       if (error) { setErr(`Couldn't save: ${error.message}`); return; }
     }
     const { error } = await supabase.from("tasks")
       .update({ done: true, completed_at: new Date().toISOString() }).eq("id", task.id);
     if (error) { setErr(`Couldn't complete: ${error.message} — run v122_worklog.sql.`); return; }
-    setUpdateBody(""); setUpdateWho(""); setCompleting(null); setOpenThread(null); load();
+    clearDraft(task.id); setCompleting(null); setOpenThread(null); load();
   }
   async function addUpdate(task: TaskRow) {
-    if (!updateBody.trim()) return;
+    const d = draftOf(task.id);
+    if (!d.body.trim()) return;
     const { error } = await supabase.from("progress_updates").insert({
       booking_id: b.id, invoice_num: b.invoice_num, task_id: task.id,
-      author: updateWho || task.assignee || null, body: updateBody.trim(),
+      author: d.who || task.assignee || null, body: d.body.trim(),
     });
     if (error) { setErr(`Couldn't save update: ${error.message}`); return; }
-    setUpdateBody(""); setUpdateWho(""); setUpdateFor(null); load();
+    clearDraft(task.id); setUpdateFor(null); load();
   }
   async function reopen(task: TaskRow) {
     await supabase.from("tasks").update({ done: false, completed_at: null }).eq("id", task.id);
@@ -157,12 +169,12 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
     .sort((a, z) => a.scheduled_at!.localeCompare(z.scheduled_at!))[0] ?? null;
 
   return (
-    <div className="rounded-2xl p-3" style={{ background: "#F5F7FA" }}>
+    <div className="rounded-2xl p-3" style={{ background: "#F5F6F8" }}>
       {err && <p className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 mb-3">⚠️ {err}</p>}
 
       <div className="space-y-3">
         {/* ═══ Tasks — still needs doing ═══ */}
-        <Card title="Tasks" action="New Task" onAction={() => setTaskEditor((v) => !v)}>
+        <Card title="Tasks" action="New Task" feeder onAction={() => setTaskEditor((v) => !v)}>
           {taskEditor && (
             <div className="rounded-lg bg-slate-50 p-2.5 mb-3 space-y-1.5 reveal">
               <input className="field w-full !py-1.5 text-sm" autoFocus placeholder="What needs doing?"
@@ -194,15 +206,29 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                 <div key={t.id}>
                   <div className="flex items-start gap-2.5">
                     <button className="mt-[3px] w-4 h-4 rounded border-2 border-slate-300 hover:border-navy shrink-0 transition-colors"
-                      title="Complete" onClick={() => { setCompleting(completing === t.id ? null : t.id); setUpdateBody(""); setUpdateWho(""); }} />
+                      title="Complete" onClick={() => { setCompleting(completing === t.id ? null : t.id); setUpdateFor(null); }} />
                     <div className="min-w-0 flex-1">
-                      <button className="text-left w-full group" onClick={() => setOpenThread(expanded ? null : t.id)}>
+                      <button className="text-left w-full group"
+                        onClick={() => {
+                          // Click task = update it: expand the thread with the
+                          // composer ready. Checkbox = complete — never this.
+                          if (expanded) { setOpenThread(null); setUpdateFor(null); }
+                          else { setOpenThread(t.id); setUpdateFor(t.id); setCompleting(null); }
+                        }}>
                         <span className="text-[15px] font-medium leading-snug group-hover:text-navy transition-colors">{t.title}</span>
                       </button>
                       {(t.assignee || due || th.length > 0) && (
                         <div className="flex gap-1.5 flex-wrap mt-1">
-                          {t.assignee && <Chip>{t.assignee}</Chip>}
-                          {due && <Chip tone={due.overdue ? "bg-red-50 text-red-600" : ""}>{due.text}</Chip>}
+                          {t.assignee && (
+                            <Link href={`/?taskAssignee=${encodeURIComponent(t.assignee)}`} title={`See ${t.assignee}'s tasks on Daily Ops`}>
+                              <Chip tone="bg-slate-100 text-slate-500 hover:bg-navy hover:text-white transition-colors cursor-pointer">{t.assignee}</Chip>
+                            </Link>
+                          )}
+                          {due && (
+                            <Link href={`/calendar?week=${t.due_date}`} title="See that week on the calendar">
+                              <Chip tone={`${due.overdue ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500"} hover:bg-navy hover:text-white transition-colors cursor-pointer`}>{due.text}</Chip>
+                            </Link>
+                          )}
                           {th.length > 0 && (
                             <button onClick={() => setOpenThread(expanded ? null : t.id)}>
                               <Chip tone="bg-navy/5 text-navy">{expanded ? "▴" : "▾"} updates ({th.length})</Chip>
@@ -215,16 +241,16 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                       {completing === t.id && (
                         <div className="mt-2 ml-1 pl-3 border-l-2 border-navy/20 space-y-1.5 reveal">
                           <div className="text-[11px] font-semibold text-slate-500">What happened?</div>
-                          <textarea className="field w-full !py-1.5 text-[13px]" rows={2} autoFocus
+                          <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
                             placeholder="e.g. Gary said white roses unavailable — switched to ivory, quote Thursday"
-                            value={updateBody} onChange={(e) => setUpdateBody(e.target.value)} />
+                            value={draftOf(t.id).body} onChange={(e) => patchDraft(t.id, { body: e.target.value })} />
                           <div className="flex gap-1.5 items-center flex-wrap">
-                            <select className="field !py-1 !text-xs flex-1 min-w-[90px]" value={updateWho || t.assignee || ""}
-                              onChange={(e) => setUpdateWho(e.target.value)}>
+                            <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]" value={draftOf(t.id).who || t.assignee || ""}
+                              onChange={(e) => patchDraft(t.id, { who: e.target.value })}>
                               <option value="">Completed by…</option>
                               {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
                             </select>
-                            <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => complete(t)}>Complete</button>
+                            <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => complete(t)}>Complete Task</button>
                             <button className="text-xs text-slate-400 underline" onClick={() => setCompleting(null)}>cancel</button>
                           </div>
                         </div>
@@ -243,21 +269,22 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                           ))}
                           {updateFor === t.id ? (
                             <div className="space-y-1.5 reveal">
-                              <textarea className="field w-full !py-1.5 text-[13px]" rows={2} autoFocus
-                                placeholder="What happened?" value={updateBody} onChange={(e) => setUpdateBody(e.target.value)} />
+                              <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
+                                placeholder="Progress while it's still open…" value={draftOf(t.id).body}
+                                onChange={(e) => patchDraft(t.id, { body: e.target.value })} />
                               <div className="flex gap-1.5 items-center">
-                                <select className="field !py-1 !text-xs flex-1" value={updateWho || t.assignee || ""}
-                                  onChange={(e) => setUpdateWho(e.target.value)}>
+                                <select className="field !py-1 !text-xs !bg-white flex-1" value={draftOf(t.id).who || t.assignee || ""}
+                                  onChange={(e) => patchDraft(t.id, { who: e.target.value })}>
                                   <option value="">Who?</option>
                                   {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
                                 </select>
-                                <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => addUpdate(t)}>Save</button>
+                                <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => addUpdate(t)}>Save Update</button>
                                 <button className="text-xs text-slate-400 underline" onClick={() => setUpdateFor(null)}>×</button>
                               </div>
                             </div>
                           ) : (
-                            <button className="text-[11px] text-slate-300 hover:text-navy transition-colors"
-                              onClick={() => { setUpdateFor(t.id); setUpdateBody(""); setUpdateWho(""); }}>＋ add update</button>
+                            <button className="text-[11px] text-slate-400 hover:text-navy transition-colors"
+                              onClick={() => setUpdateFor(t.id)}>＋ add update</button>
                           )}
                         </div>
                       )}
@@ -273,7 +300,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
         <Card title="Work Log">
           {logTasks.length === 0 && (
             <p className="text-[13px] text-slate-400 leading-relaxed">
-              Completed tasks land here with their explanation — read this alone and you know everything that's happened.
+              No completed work yet.
             </p>
           )}
           <div className="space-y-3.5">
