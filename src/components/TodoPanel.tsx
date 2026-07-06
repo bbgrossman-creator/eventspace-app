@@ -17,7 +17,7 @@ interface Todo {
   done: boolean; booking_id?: string | null; invoice_num?: string | null; assignee?: string | null;
 }
 interface StaffRow { id: string; name: string; active: boolean; sort_order: number; }
-interface BookingLite { id: string; invoice_num: string; contact_name: string; event_date: string | null; }
+interface BookingLite { id: string; invoice_num: string; contact_name: string; event_date: string | null; event_name?: string | null; event_type?: string | null; }
 
 function dueDateTime(t: Todo): Date | null {
   if (!t.due_date) return null;
@@ -99,7 +99,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
     supabase.from("staff").select("*").eq("active", true).order("sort_order")
       .then(({ data }) => setStaff((data ?? []) as StaffRow[]));
     if (!bookingId) {
-      supabase.from("bookings").select("id,invoice_num,contact_name,event_date")
+      supabase.from("bookings").select("id,invoice_num,contact_name,event_date,event_name,event_type")
         .not("status", "in", '("completed","cancelled")').order("event_date")
         .then(({ data }) => setBookings((data ?? []) as BookingLite[]));
     }
@@ -226,6 +226,17 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
                 }} />
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="font-medium leading-snug">{t.title}</div>
+                {t.booking_id && !bookingId && (() => {
+                  const bk = bookings.find((b) => b.id === t.booking_id);
+                  if (!bk) return null;
+                  const ev = bk.event_name || bk.event_type;
+                  return (
+                    <Link href={`/bookings/${t.booking_id}`}
+                      className="block text-[12px] font-semibold text-navy hover:underline leading-snug">
+                      {bk.contact_name}{ev ? <span className="text-slate-400 font-normal"> — {ev}</span> : null}
+                    </Link>
+                  );
+                })()}
                 {completingId === t.id && (
                   <div className="mt-1 pl-2 border-l-2 border-navy/20 space-y-1.5 reveal">
                     <div className="text-[11px] font-semibold text-slate-500">What happened?</div>
@@ -243,19 +254,13 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
                     </div>
                   </div>
                 )}
-                {(t.assignee || (t.booking_id && !bookingId)) && (
-                  <div className="text-[11px] text-slate-500 flex gap-3">
-                    {t.booking_id && !bookingId && (
-                      <Link href={`/bookings/${t.booking_id}`} className="text-navy font-semibold hover:underline">
-                        #{t.invoice_num ?? "booking"}
-                      </Link>
-                    )}
-                    {t.assignee && <span>{t.assignee}</span>}
-                  </div>
-                )}
-                {t.due_date && (
-                  <div className={`text-[11px] ${overdue ? "text-red-600 font-semibold" : "text-slate-400"}`}>
-                    {fmtDate(t.due_date)}{t.due_time ? ` • ${fmtTime(t.due_time)}` : ""}{overdue ? " • OVERDUE" : ""}
+                {(t.assignee || t.due_date || (t.booking_id && !bookingId)) && (
+                  <div className={`text-[11px] ${overdue ? "text-red-600" : "text-slate-400"}`}>
+                    {[
+                      t.booking_id && !bookingId && t.invoice_num ? `#${t.invoice_num}` : null,
+                      t.assignee ?? null,
+                      t.due_date ? `${fmtDate(t.due_date)}${t.due_time ? ` ${fmtTime(t.due_time)}` : ""}${overdue ? " • OVERDUE" : ""}` : null,
+                    ].filter(Boolean).join(" • ")}
                   </div>
                 )}
               </div>

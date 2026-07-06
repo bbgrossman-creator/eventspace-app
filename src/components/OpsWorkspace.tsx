@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Booking, fmtTime, parseLocalDate } from "@/lib/workflow";
 
@@ -92,6 +92,12 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [updateFor, setUpdateFor] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+  const pendingRef = useRef<HTMLDivElement>(null);
+  // The Work Log "expands" to receive the task: bring the pending entry into
+  // view so the eye follows the task into history.
+  useEffect(() => {
+    if (completing) setTimeout(() => pendingRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
+  }, [completing]);
   // Each task owns its own draft — no shared textarea state across tasks.
   const [drafts, setDrafts] = useState<Record<string, { body: string; who: string }>>({});
   const draftOf = (id: string) => drafts[id] ?? { body: "", who: "" };
@@ -158,7 +164,8 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
 
   /* ── derived ── */
   const threadFor = (taskId: string) => updates.filter((u) => u.task_id === taskId);
-  const openTasks = tasks.filter((t) => !t.done);
+  const openTasks = tasks.filter((t) => !t.done && t.id !== completing);
+  const completingTask = tasks.find((t) => t.id === completing) ?? null;
   const logTasks = tasks.filter((t) => t.done).slice().sort((a, z) => {
     const at = a.completed_at ?? threadFor(a.id).slice(-1)[0]?.created_at ?? "";
     const zt = z.completed_at ?? threadFor(z.id).slice(-1)[0]?.created_at ?? "";
@@ -237,25 +244,6 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                         </div>
                       )}
 
-                      {/* Completion unfolds beneath the task — like replying to an email */}
-                      {completing === t.id && (
-                        <div className="mt-2 ml-1 pl-3 border-l-2 border-navy/20 space-y-1.5 reveal">
-                          <div className="text-[11px] font-semibold text-slate-500">What happened?</div>
-                          <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
-                            placeholder="e.g. Gary said white roses unavailable — switched to ivory, quote Thursday"
-                            value={draftOf(t.id).body} onChange={(e) => patchDraft(t.id, { body: e.target.value })} />
-                          <div className="flex gap-1.5 items-center flex-wrap">
-                            <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]" value={draftOf(t.id).who || t.assignee || ""}
-                              onChange={(e) => patchDraft(t.id, { who: e.target.value })}>
-                              <option value="">Completed by…</option>
-                              {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
-                            </select>
-                            <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => complete(t)}>Complete Task</button>
-                            <button className="text-xs text-slate-400 underline" onClick={() => setCompleting(null)}>cancel</button>
-                          </div>
-                        </div>
-                      )}
-
                       {/* Thread + mid-flight updates */}
                       {expanded && completing !== t.id && (
                         <div className="mt-1.5 ml-1 pl-3 border-l-2 border-slate-100 space-y-2 reveal">
@@ -298,7 +286,31 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
 
         {/* ═══ Work Log — the execution history, written by finishing work ═══ */}
         <Card title="Work Log">
-          {logTasks.length === 0 && (
+          {completingTask && (
+            <div ref={pendingRef} className="rounded-lg bg-emerald-50/60 ring-1 ring-emerald-200 p-2.5 mb-3 reveal">
+              <div className="text-[14px] font-medium leading-snug">
+                <span className="text-emerald-600 mr-1.5">✓</span>{completingTask.title}
+              </div>
+              <div className="flex gap-1.5 mt-1 mb-2"><Chip tone="bg-emerald-100 text-emerald-700">Completed just now</Chip></div>
+              <div className="text-[11px] font-semibold text-slate-500 mb-1">What happened?</div>
+              <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
+                placeholder="e.g. Gary said white roses unavailable — switched to ivory, quote Thursday"
+                value={draftOf(completingTask.id).body}
+                onChange={(e) => patchDraft(completingTask.id, { body: e.target.value })} />
+              <div className="flex gap-1.5 items-center flex-wrap mt-1.5">
+                <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]"
+                  value={draftOf(completingTask.id).who || completingTask.assignee || ""}
+                  onChange={(e) => patchDraft(completingTask.id, { who: e.target.value })}>
+                  <option value="">Completed by…</option>
+                  {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                </select>
+                <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => complete(completingTask)}>Complete Task</button>
+                <button className="text-xs text-slate-400 underline"
+                  onClick={() => setCompleting(null)} title="Task returns to Tasks">cancel</button>
+              </div>
+            </div>
+          )}
+          {logTasks.length === 0 && !completingTask && (
             <p className="text-[13px] text-slate-400 leading-relaxed">
               No completed work yet.
             </p>
