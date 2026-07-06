@@ -133,19 +133,27 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
     if (error) { setErr(`Couldn't create task: ${error.message}`); return; }
     setTTitle(""); setTWho(""); setTDate(""); setTTime(""); setTaskEditor(false); load();
   }
-  async function complete(task: TaskRow) {
+  // The checkbox resolves completion IMMEDIATELY — done + completed_at written
+  // before anything is asked. The note composer then opens in the Task Log to
+  // document a task that is already finished. Note never gates completion.
+  async function completeNow(task: TaskRow) {
+    const { error } = await supabase.from("tasks")
+      .update({ done: true, completed_at: new Date().toISOString() }).eq("id", task.id);
+    if (error) { setErr(`Couldn't complete: ${error.message} — run v122_worklog.sql.`); return; }
+    setOpenThread(null); setUpdateFor(null);
+    setCompleting(task.id);   // marks it as the freshly-landed Task Log entry, composer open
+    load();
+  }
+  async function saveNote(task: TaskRow) {
     const d = draftOf(task.id);
     if (d.body.trim()) {
       const { error } = await supabase.from("progress_updates").insert({
         booking_id: b.id, invoice_num: b.invoice_num, task_id: task.id,
         author: d.who || task.assignee || null, body: d.body.trim(),
       });
-      if (error) { setErr(`Couldn't save: ${error.message}`); return; }
+      if (error) { setErr(`Couldn't save note: ${error.message}`); return; }
     }
-    const { error } = await supabase.from("tasks")
-      .update({ done: true, completed_at: new Date().toISOString() }).eq("id", task.id);
-    if (error) { setErr(`Couldn't complete: ${error.message} — run v122_worklog.sql.`); return; }
-    clearDraft(task.id); setCompleting(null); setOpenThread(null); load();
+    clearDraft(task.id); setCompleting(null); load();
   }
   async function addUpdate(task: TaskRow) {
     const d = draftOf(task.id);
@@ -164,8 +172,9 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
 
   /* ── derived ── */
   const threadFor = (taskId: string) => updates.filter((u) => u.task_id === taskId);
-  const openTasks = tasks.filter((t) => !t.done && t.id !== completing);
-  const completingTask = tasks.find((t) => t.id === completing) ?? null;
+  const openTasks = tasks.filter((t) => !t.done);
+  // The just-completed task: already done, note composer still open on it.
+  const completingTask = tasks.find((t) => t.id === completing && t.done) ?? null;
   const logTasks = tasks.filter((t) => t.done).slice().sort((a, z) => {
     const at = a.completed_at ?? threadFor(a.id).slice(-1)[0]?.created_at ?? "";
     const zt = z.completed_at ?? threadFor(z.id).slice(-1)[0]?.created_at ?? "";
@@ -212,8 +221,8 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
               return (
                 <div key={t.id}>
                   <div className="flex items-start gap-2.5">
-                    <button className="mt-[3px] w-4 h-4 rounded border-2 border-slate-300 hover:border-navy shrink-0 transition-colors"
-                      title="Complete" onClick={() => { setCompleting(completing === t.id ? null : t.id); setUpdateFor(null); }} />
+                    <button className="mt-[3px] w-4 h-4 rounded border-2 border-slate-300 hover:border-navy hover:bg-emerald-50 shrink-0 transition-colors"
+                      title="Complete" onClick={() => completeNow(t)} />
                     <div className="min-w-0 flex-1">
                       <button className="text-left w-full group"
                         onClick={() => {
@@ -292,9 +301,9 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                 <span className="text-emerald-600 mr-1.5">✓</span>{completingTask.title}
               </div>
               <div className="flex gap-1.5 mt-1 mb-2"><Chip tone="bg-emerald-100 text-emerald-700">Completed just now</Chip></div>
-              <div className="text-[11px] font-semibold text-slate-500 mb-1">What happened?</div>
+              <div className="text-[11px] font-semibold text-slate-500 mb-1">Add a note</div>
               <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
-                placeholder="e.g. Gary said white roses unavailable — switched to ivory, quote Thursday"
+                placeholder="Anything to record? e.g. Gary said white roses unavailable — switched to ivory"
                 value={draftOf(completingTask.id).body}
                 onChange={(e) => patchDraft(completingTask.id, { body: e.target.value })} />
               <div className="flex gap-1.5 items-center flex-wrap mt-1.5">
@@ -304,9 +313,10 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                   <option value="">Completed by…</option>
                   {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
                 </select>
-                <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => complete(completingTask)}>Complete Task</button>
+                <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => saveNote(completingTask)}>Save note</button>
                 <button className="text-xs text-slate-400 underline"
-                  onClick={() => setCompleting(null)} title="Task returns to Tasks">cancel</button>
+                  onClick={() => { clearDraft(completingTask.id); setCompleting(null); }}
+                  title="Task stays completed — no note">Skip</button>
               </div>
             </div>
           )}
