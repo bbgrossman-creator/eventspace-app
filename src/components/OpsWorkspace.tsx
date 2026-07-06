@@ -57,7 +57,7 @@ function Card({ title, action, onAction, feeder = false, children }: {
   title: string; action?: string; onAction?: () => void; feeder?: boolean; children: React.ReactNode;
 }) {
   // Feeder (Tasks) wears a faint salmon: "this is where you work."
-  // Receivers (Work Log, Touchpoints) stay white: "this is where work lands."
+  // Receivers (Task Log, Touchpoints) stay white: "this is where work lands."
   return (
     <div className={feeder
       ? "rounded-xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] bg-[#FFF7F4] ring-1 ring-[#F4D8CE]"
@@ -75,9 +75,9 @@ function Card({ title, action, onAction, feeder = false, children }: {
 }
 
 /** The Workspace: three sections, one mental model.
- *  Still needs doing? → Task. Done? → Work Log. Scheduled? → Touchpoint.
+ *  Still needs doing? → Task. Done? → Task Log. Scheduled? → Touchpoint.
  *  (Permanent customer facts live on the Customer Profile.)
- *  Completing a task moves it — with its explanation — into the Work Log,
+ *  Completing a task moves it — with its explanation — into the Task Log,
  *  so the execution history writes itself. */
 export default function OpsWorkspace({ b }: { b: Booking }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -93,7 +93,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
   const [updateFor, setUpdateFor] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
   const pendingRef = useRef<HTMLDivElement>(null);
-  // The Work Log "expands" to receive the task: bring the pending entry into
+  // The Task Log "expands" to receive the task: bring the pending entry into
   // view so the eye follows the task into history.
   useEffect(() => {
     if (completing) setTimeout(() => pendingRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 60);
@@ -284,8 +284,8 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
           </div>
         </Card>
 
-        {/* ═══ Work Log — the execution history, written by finishing work ═══ */}
-        <Card title="Work Log">
+        {/* ═══ Task Log — the execution history, written by finishing work ═══ */}
+        <Card title="Task Log">
           {completingTask && (
             <div ref={pendingRef} className="rounded-lg bg-emerald-50/60 ring-1 ring-emerald-200 p-2.5 mb-3 reveal">
               <div className="text-[14px] font-medium leading-snug">
@@ -312,7 +312,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
           )}
           {logTasks.length === 0 && !completingTask && (
             <p className="text-[13px] text-slate-400 leading-relaxed">
-              No completed work yet.
+              No completed tasks yet.
             </p>
           )}
           <div className="space-y-3.5">

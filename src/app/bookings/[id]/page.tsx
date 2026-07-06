@@ -823,7 +823,7 @@ export default function BookingDetail() {
 
     {/* ── Operations Workspace: proportional 30%, sticky, never collapsible.
         The left side explains the event; this side explains the work. ── */}
-    <aside className="xl:w-[28%] xl:max-w-[480px] xl:shrink-0 mt-8 xl:mt-0">
+    <aside className="xl:w-[28%] xl:max-w-[480px] xl:shrink-0 mt-8 xl:-mt-3">
       <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
         <OpsWorkspace b={b} />
       </div>

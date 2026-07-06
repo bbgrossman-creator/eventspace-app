@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
@@ -9,6 +10,7 @@ import StatusPipeline from "@/components/StatusPipeline";
 import TodoPanel from "@/components/TodoPanel";
 
 export default function DailyOps() {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [roomsMap, setRoomsMap] = useState<Map<string, string>>(new Map());
   useEffect(() => {
@@ -85,10 +87,18 @@ export default function DailyOps() {
       <div className="flex-1 min-w-0">
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <Stat label="Bookings Requiring Attention" value={urgent.length} tone="text-red-600" />
-        <Stat label="Events this week" value={eventsThisWeek.length} tone="text-amber-600" />
-        <Stat label="Events upcoming" value={eventsUpcoming.length} tone="text-emerald-600" />
-        <Stat label="Active bookings" value={activeBookings.length} tone="text-navy" />
+        <Stat label="Bookings Requiring Attention" value={urgent.length} tone="text-red-600"
+          onClick={() => document.getElementById("needs-action")?.scrollIntoView({ behavior: "smooth", block: "start" })} />
+        <Stat label="Events this week" value={eventsThisWeek.length} tone="text-amber-600"
+          onClick={() => router.push("/calendar")} />
+        <Stat label="Events upcoming" value={eventsUpcoming.length} tone="text-emerald-600"
+          onClick={() => {
+            const d = new Date(); const dow = (d.getDay() + 6) % 7;
+            d.setDate(d.getDate() - dow + 7); // start of NEXT week
+            router.push(`/calendar?week=${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+          }} />
+        <Stat label="Active bookings" value={activeBookings.length} tone="text-navy"
+          onClick={() => router.push("/bookings")} />
       </div>
 
 
@@ -122,7 +132,9 @@ export default function DailyOps() {
         </section>
       )}
 
+      <div id="needs-action">
       <TaskSection title="Needs immediate action" tasks={urgent} accent="bg-red-500" empty="Nothing urgent — nice." roomsMap={roomsMap} />
+      </div>
       <TaskSection title="This week" tasks={week} accent="bg-amber-400" roomsMap={roomsMap} />
       <TaskSection title="Upcoming" tasks={later} accent="bg-emerald-500" roomsMap={roomsMap} />
 
@@ -145,12 +157,13 @@ export default function DailyOps() {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: string }) {
+function Stat({ label, value, tone, onClick }: { label: string; value: number; tone: string; onClick?: () => void }) {
   return (
-    <div className="card px-5 py-4">
+    <button className="card px-5 py-4 text-left cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 hover:bg-slate-50/60"
+      onClick={onClick} title="Open">
       <div className={`font-display text-3xl font-bold ${tone}`}>{value}</div>
       <div className="text-xs text-slate-500 mt-0.5">{label}</div>
-    </div>
+    </button>
   );
 }
 

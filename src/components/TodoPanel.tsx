@@ -55,6 +55,37 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   const [linkBooking, setLinkBooking] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const [openThread, setOpenThread] = useState<string | null>(null);
+  const [threads, setThreads] = useState<Record<string, { id: string; author: string | null; body: string; created_at: string }[]>>({});
+  const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function flashConfirm(msg: string) {
+    setConfirmMsg(msg);
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    confirmTimer.current = setTimeout(() => setConfirmMsg(null), 3500);
+  }
+  async function openTaskThread(t: Todo) {
+    if (!t.booking_id) return; // updates need a booking to live on
+    if (openThread === t.id) { setOpenThread(null); return; }
+    setOpenThread(t.id); setCompletingId(null);
+    const { data } = await supabase.from("progress_updates")
+      .select("id,author,body,created_at").eq("task_id", t.id).order("created_at", { ascending: true });
+    setThreads((prev) => ({ ...prev, [t.id]: (data ?? []) as { id: string; author: string | null; body: string; created_at: string }[] }));
+  }
+  async function saveTaskUpdate(t: Todo) {
+    const d = draftOf(t.id);
+    if (!d.body.trim() || !t.booking_id) return;
+    const { error } = await supabase.from("progress_updates").insert({
+      booking_id: t.booking_id, invoice_num: t.invoice_num ?? null,
+      task_id: t.id, author: d.who || t.assignee || null, body: d.body.trim(),
+    });
+    if (error) { setErr(`Couldn't save update: ${error.message}`); return; }
+    setDrafts((prev) => { const n = { ...prev }; delete n[t.id]; return n; });
+    // refresh the thread in place; stays open
+    const { data } = await supabase.from("progress_updates")
+      .select("id,author,body,created_at").eq("task_id", t.id).order("created_at", { ascending: true });
+    setThreads((prev) => ({ ...prev, [t.id]: (data ?? []) as { id: string; author: string | null; body: string; created_at: string }[] }));
+  }
   const [drafts, setDrafts] = useState<Record<string, { body: string; who: string }>>({});
   const draftOf = (id: string) => drafts[id] ?? { body: "", who: "" };
   const patchDraft = (id: string, p: Partial<{ body: string; who: string }>) =>
@@ -118,8 +149,14 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
       .update({ done: true, completed_at: new Date().toISOString() }).eq("id", t.id);
     if (error) { setErr(`Couldn't complete: ${error.message} — run v122_worklog.sql.`); return; }
     setDrafts((prev) => { const n = { ...prev }; delete n[t.id]; return n; });
-    setCompletingId(null);
+    setCompletingId(null); setOpenThread(null);
     setTodos((prev) => prev.filter((x) => x.id !== t.id));
+    if (t.booking_id) {
+      const bk = bookings.find((b) => b.id === t.booking_id);
+      flashConfirm(`✓ Task completed — saved to ${bk ? bk.contact_name + "’s" : "the booking’s"} Task Log`);
+    } else {
+      flashConfirm("✓ Task completed");
+    }
   }
 
   async function add() {
@@ -174,6 +211,9 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
           )}
         </div>
       </div>
+      {confirmMsg && (
+        <p className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200 rounded-lg px-2.5 py-1.5 mb-2 reveal">{confirmMsg}</p>
+      )}
       {rail && todos.length > 0 && (
         <p className="text-[11px] text-[#B45309]/70 mb-2">
           {bandCounts.Overdue > 0 && <span className="text-red-600 font-semibold">Overdue {bandCounts.Overdue} • </span>}
@@ -220,12 +260,39 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
               <input type="checkbox" className="accent-navy mt-0.5" checked={false}
                 onChange={() => {
                   // Checkbox means complete. Booking-linked tasks document the
-                  // work first ("What happened?") so the Work Log stays true.
+                  // work first ("What happened?") so the Task Log stays true.
                   if (t.booking_id) setCompletingId(completingId === t.id ? null : t.id);
                   else completeTask(t);
                 }} />
               <div className="flex-1 min-w-0 space-y-1">
-                <div className="font-medium leading-snug">{t.title}</div>
+                <button className="font-medium leading-snug text-left w-full hover:text-navy transition-colors"
+                  onClick={() => openTaskThread(t)}
+                  title={t.booking_id ? "Open thread — add an update" : undefined}>{t.title}</button>
+                {openThread === t.id && completingId !== t.id && (
+                  <div className="mt-1 pl-2 border-l-2 border-slate-200 space-y-1.5 reveal">
+                    {(threads[t.id] ?? []).map((u) => (
+                      <div key={u.id}>
+                        <div className="text-[10px] text-slate-400">
+                          {u.author && <b className="font-semibold text-slate-500">{u.author}</b>}{u.author ? " · " : ""}{fmtDate(u.created_at.slice(0, 10))}
+                        </div>
+                        <div className="text-[12px] leading-snug whitespace-pre-wrap">{u.body}</div>
+                      </div>
+                    ))}
+                    <textarea className="field w-full !py-1.5 !text-xs !bg-white" rows={2} autoFocus
+                      placeholder="Progress while it's still open…"
+                      value={draftOf(t.id).body} onChange={(e) => patchDraft(t.id, { body: e.target.value })} />
+                    <div className="flex gap-1.5 items-center flex-wrap">
+                      <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]"
+                        value={draftOf(t.id).who || t.assignee || ""}
+                        onChange={(e) => patchDraft(t.id, { who: e.target.value })}>
+                        <option value="">Who?</option>
+                        {staff.map((st) => <option key={st.id} value={st.name}>{st.name}</option>)}
+                      </select>
+                      <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => saveTaskUpdate(t)}>Save Update</button>
+                      <button className="text-xs text-slate-400 underline" onClick={() => setOpenThread(null)}>×</button>
+                    </div>
+                  </div>
+                )}
                 {t.booking_id && !bookingId && (() => {
                   const bk = bookings.find((b) => b.id === t.booking_id);
                   if (!bk) return null;
