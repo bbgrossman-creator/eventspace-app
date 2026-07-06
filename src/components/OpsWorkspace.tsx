@@ -92,6 +92,10 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [updateFor, setUpdateFor] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);         // open ⋯ menu
+  const [editingTask, setEditingTask] = useState<string | null>(null); // inline edit row
+  const [eTitle, setETitle] = useState(""); const [eWho, setEWho] = useState("");
+  const [eDate, setEDate] = useState(""); const [eTime, setETime] = useState("");
   const pendingRef = useRef<HTMLDivElement>(null);
   // The Task Log "expands" to receive the task: bring the pending entry into
   // view so the eye follows the task into history.
@@ -167,7 +171,33 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
   }
   async function reopen(task: TaskRow) {
     await supabase.from("tasks").update({ done: false, completed_at: null }).eq("id", task.id);
+    await supabase.from("progress_updates").insert({
+      booking_id: b.id, invoice_num: b.invoice_num, task_id: task.id,
+      author: null, body: "↩︎ Task reopened",
+    });
+    if (completing === task.id) setCompleting(null);
     load();
+  }
+  function startEdit(t: TaskRow) {
+    setEditingTask(t.id); setMenuFor(null);
+    setETitle(t.title); setEWho(t.assignee ?? "");
+    setEDate(t.due_date ?? ""); setETime(t.due_time ?? "");
+  }
+  async function saveEdit(t: TaskRow) {
+    if (!eTitle.trim()) return;
+    const { error } = await supabase.from("tasks").update({
+      title: eTitle.trim(), assignee: eWho || null,
+      due_date: eDate || null, due_time: eTime || null,
+    }).eq("id", t.id);
+    if (error) { setErr(`Couldn't save changes: ${error.message}`); return; }
+    setEditingTask(null); load();
+  }
+  async function deleteTask(t: TaskRow) {
+    if (!confirm(`Delete "${t.title}"? This removes the task and its update thread.`)) return;
+    await supabase.from("progress_updates").delete().eq("task_id", t.id);
+    const { error } = await supabase.from("tasks").delete().eq("id", t.id);
+    if (error) { setErr(`Couldn't delete: ${error.message}`); return; }
+    setMenuFor(null); load();
   }
 
   /* ── derived ── */
@@ -220,11 +250,31 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
               const expanded = openThread === t.id;
               return (
                 <div key={t.id}>
+                  {editingTask === t.id ? (
+                    <div className="rounded-lg bg-slate-50 p-2.5 space-y-1.5 reveal">
+                      <input className="field w-full !py-1.5 text-sm" autoFocus value={eTitle}
+                        onChange={(e) => setETitle(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t); }} />
+                      <div className="flex gap-1.5 flex-wrap">
+                        <select className="field !py-1 !text-xs flex-1 min-w-[90px]" value={eWho} onChange={(e) => setEWho(e.target.value)}>
+                          <option value="">Who?</option>
+                          {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        </select>
+                        <input type="date" className="field !py-1 !text-xs w-[7.5rem]" value={eDate} onChange={(e) => setEDate(e.target.value)} />
+                        <input type="time" className="field !py-1 !text-xs w-[5.5rem]" value={eTime} onChange={(e) => setETime(e.target.value)} />
+                      </div>
+                      <div className="flex gap-2">
+                        <button className="btn-primary !py-1 !px-3 text-xs" onClick={() => saveEdit(t)}>Save</button>
+                        <button className="text-xs text-slate-400 underline" onClick={() => setEditingTask(null)}>cancel</button>
+                      </div>
+                    </div>
+                  ) : (
                   <div className="flex items-start gap-2.5">
                     <button className="mt-[3px] w-4 h-4 rounded border-2 border-slate-300 hover:border-navy hover:bg-emerald-50 shrink-0 transition-colors"
                       title="Complete" onClick={() => completeNow(t)} />
                     <div className="min-w-0 flex-1">
-                      <button className="text-left w-full group"
+                      <div className="flex items-start gap-2">
+                      <button className="text-left flex-1 group"
                         onClick={() => {
                           // Click task = update it: expand the thread with the
                           // composer ready. Checkbox = complete — never this.
@@ -233,6 +283,24 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                         }}>
                         <span className="text-[15px] font-medium leading-snug group-hover:text-navy transition-colors">{t.title}</span>
                       </button>
+                      {/* ⋯ menu owns the task-as-object: rename, reassign, reschedule, delete */}
+                      <div className="relative shrink-0">
+                        <button className="text-slate-300 hover:text-navy px-1 leading-none text-lg"
+                          title="Task options" onClick={() => setMenuFor(menuFor === t.id ? null : t.id)}>⋯</button>
+                        {menuFor === t.id && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />
+                            <div className="absolute right-0 top-6 z-20 w-40 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1 text-sm reveal">
+                              <button className="w-full text-left px-3 py-1.5 hover:bg-slate-50" onClick={() => startEdit(t)}>Edit task</button>
+                              <button className="w-full text-left px-3 py-1.5 hover:bg-slate-50" onClick={() => startEdit(t)}>Change assignee</button>
+                              <button className="w-full text-left px-3 py-1.5 hover:bg-slate-50" onClick={() => startEdit(t)}>Change due date</button>
+                              <div className="h-px bg-slate-100 my-1" />
+                              <button className="w-full text-left px-3 py-1.5 text-red-600 hover:bg-red-50" onClick={() => deleteTask(t)}>Delete task</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      </div>
                       {(t.assignee || due || th.length > 0) && (
                         <div className="flex gap-1.5 flex-wrap mt-1">
                           {t.assignee && (
@@ -287,6 +355,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
               );
             })}
@@ -300,7 +369,10 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
               <div className="text-[14px] font-medium leading-snug">
                 <span className="text-emerald-600 mr-1.5">✓</span>{completingTask.title}
               </div>
-              <div className="flex gap-1.5 mt-1 mb-2"><Chip tone="bg-emerald-100 text-emerald-700">Completed just now</Chip></div>
+              <div className="flex gap-1.5 mt-1 mb-2 items-center">
+                <Chip tone="bg-emerald-100 text-emerald-700">Completed just now</Chip>
+                <button className="text-[11px] text-slate-400 hover:text-navy underline" onClick={() => reopen(completingTask)}>Reopen</button>
+              </div>
               <div className="text-[11px] font-semibold text-slate-500 mb-1">Add a note</div>
               <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
                 placeholder="Anything to record? e.g. Gary said white roses unavailable — switched to ivory"
@@ -334,8 +406,8 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                 <div key={t.id} className="group">
                   <div className="text-[14px] font-medium leading-snug">
                     <span className="text-emerald-600 mr-1.5">✓</span>{t.title}
-                    <button className="text-[10px] text-slate-200 group-hover:text-slate-400 hover:!text-navy ml-2 transition-colors"
-                      title="Reopen" onClick={() => reopen(t)}>reopen</button>
+                    <button className="text-[10px] text-slate-300 group-hover:text-slate-500 hover:!text-navy ml-2 transition-colors underline"
+                      title="Return to Tasks" onClick={() => reopen(t)}>Reopen</button>
                   </div>
                   {th.map((u) => (
                     <div key={u.id} className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap mt-0.5">{u.body}</div>

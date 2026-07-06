@@ -58,6 +58,30 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   const [threads, setThreads] = useState<Record<string, { id: string; author: string | null; body: string; created_at: string }[]>>({});
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
   const [noteToast, setNoteToast] = useState<{ task: Todo; bookingName: string | null } | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [eTitle, setETitle] = useState(""); const [eWho, setEWho] = useState("");
+  const [eDate, setEDate] = useState(""); const [eTime, setETime] = useState("");
+  function startEdit(t: Todo) {
+    setEditingId(t.id); setMenuFor(null);
+    setETitle(t.title); setEWho(t.assignee ?? "");
+    setEDate(t.due_date ?? ""); setETime(t.due_time ?? "");
+  }
+  async function saveEdit(t: Todo) {
+    if (!eTitle.trim()) return;
+    const { error } = await supabase.from("tasks").update({
+      title: eTitle.trim(), assignee: eWho || null, due_date: eDate || null, due_time: eTime || null,
+    }).eq("id", t.id);
+    if (error) { setErr(`Couldn't save changes: ${error.message}`); return; }
+    setEditingId(null); load();
+  }
+  async function deleteTask(t: Todo) {
+    if (!confirm(`Delete "${t.title}"?`)) return;
+    await supabase.from("progress_updates").delete().eq("task_id", t.id);
+    const { error } = await supabase.from("tasks").delete().eq("id", t.id);
+    if (error) { setErr(`Couldn't delete: ${error.message}`); return; }
+    setMenuFor(null); setTodos((prev) => prev.filter((x) => x.id !== t.id));
+  }
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function flashConfirm(msg: string) {
     setConfirmMsg(msg);
@@ -153,6 +177,13 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
       flashConfirm("✓ Task completed");
     }
   }
+  async function undoComplete() {
+    const nt = noteToast; if (!nt) return;
+    await supabase.from("tasks").update({ done: false, completed_at: null }).eq("id", nt.task.id);
+    setDrafts((prev) => { const n = { ...prev }; delete n[nt.task.id]; return n; });
+    setNoteToast(null);
+    load(); // task returns to the live queue
+  }
   async function saveToastNote() {
     const nt = noteToast; if (!nt) return;
     const d = draftOf(nt.task.id);
@@ -224,8 +255,11 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
       )}
       {noteToast && (
         <div className="rounded-lg bg-emerald-50 ring-1 ring-emerald-200 p-2.5 mb-2 reveal">
-          <div className="text-[11px] font-semibold text-emerald-700 mb-1">
-            ✓ Completed — saved to {noteToast.bookingName ? `${noteToast.bookingName}’s` : "the booking’s"} Task Log
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="text-[11px] font-semibold text-emerald-700">
+              ✓ Completed — saved to {noteToast.bookingName ? `${noteToast.bookingName}’s` : "the booking’s"} Task Log
+            </span>
+            <button className="text-[11px] font-semibold text-slate-500 hover:text-navy underline" onClick={undoComplete}>Undo</button>
           </div>
           <textarea className="field w-full !py-1.5 !text-xs !bg-white" rows={2} autoFocus
             placeholder="Add a note? (optional)"
@@ -291,9 +325,47 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
               <input type="checkbox" className="accent-emerald-600 mt-0.5 cursor-pointer" checked={false}
                 onChange={() => completeTask(t)} title="Complete" />
               <div className="flex-1 min-w-0 space-y-1">
-                <button className="font-medium leading-snug text-left w-full hover:text-navy transition-colors"
+                {editingId === t.id ? (
+                  <div className="space-y-1.5">
+                    <input className="field w-full !py-1 !text-xs !bg-white" autoFocus value={eTitle}
+                      onChange={(e) => setETitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveEdit(t); }} />
+                    <div className="flex gap-1.5 flex-wrap">
+                      <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[80px]" value={eWho} onChange={(e) => setEWho(e.target.value)}>
+                        <option value="">Who?</option>
+                        {staff.map((st) => <option key={st.id} value={st.name}>{st.name}</option>)}
+                      </select>
+                      <input type="date" className="field !py-1 !text-xs !bg-white w-[7rem]" value={eDate} onChange={(e) => setEDate(e.target.value)} />
+                      <input type="time" className="field !py-1 !text-xs !bg-white w-[5.5rem]" value={eTime} onChange={(e) => setETime(e.target.value)} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="btn-primary !py-0.5 !px-2.5 text-xs" onClick={() => saveEdit(t)}>Save</button>
+                      <button className="text-xs text-slate-400 underline" onClick={() => setEditingId(null)}>cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                <div className="flex items-start gap-2">
+                <button className="font-medium leading-snug text-left flex-1 hover:text-navy transition-colors"
                   onClick={() => openTaskThread(t)}
                   title={t.booking_id ? "Open thread — add an update" : undefined}>{t.title}</button>
+                <div className="relative shrink-0">
+                  <button className="text-slate-300 hover:text-navy px-0.5 leading-none text-base"
+                    title="Task options" onClick={() => setMenuFor(menuFor === t.id ? null : t.id)}>⋯</button>
+                  {menuFor === t.id && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />
+                      <div className="absolute right-0 top-5 z-20 w-36 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1 text-xs reveal">
+                        <button className="w-full text-left px-3 py-1.5 hover:bg-slate-50" onClick={() => startEdit(t)}>Edit task</button>
+                        <button className="w-full text-left px-3 py-1.5 hover:bg-slate-50" onClick={() => startEdit(t)}>Change assignee</button>
+                        <button className="w-full text-left px-3 py-1.5 hover:bg-slate-50" onClick={() => startEdit(t)}>Change due date</button>
+                        <div className="h-px bg-slate-100 my-1" />
+                        <button className="w-full text-left px-3 py-1.5 text-red-600 hover:bg-red-50" onClick={() => deleteTask(t)}>Delete task</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                </div>
+                )}
                 {openThread === t.id && (
                   <div className="mt-1 pl-2 border-l-2 border-slate-200 space-y-1.5 reveal">
                     {(threads[t.id] ?? []).map((u) => (
