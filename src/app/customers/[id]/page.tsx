@@ -85,6 +85,13 @@ export default function CustomerProfilePage() {
               {seed.phone && <a className="hover:text-navy underline" href={`tel:${seed.phone}`}>{seed.phone}</a>}
               {seed.phone && seed.email && " · "}
               {seed.email && <a className="hover:text-navy underline" href={`mailto:${seed.email}`}>{seed.email}</a>}
+              {(() => {
+                const aff = matched
+                  .filter((x) => (x as { affiliation?: string | null }).affiliation)
+                  .sort((a, z) => ((z as { created_at?: string }).created_at ?? "").localeCompare((a as { created_at?: string }).created_at ?? ""))[0];
+                const v = aff ? (aff as { affiliation?: string | null }).affiliation : null;
+                return v ? <span> · 🕍 {v}</span> : null;
+              })()}
             </p>
           </div>
           <button className="btn-ghost text-sm" onClick={() => router.back()}>← Back</button>

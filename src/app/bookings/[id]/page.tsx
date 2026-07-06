@@ -284,6 +284,10 @@ export default function BookingDetail() {
             ? `${heads}${suffix}`
             : `${heads}${suffix}`;
         })()} />
+        {b.celebrant_name && (
+          <Info label="Celebrating" value={`🎉 ${b.celebrant_name}${b.celebrant_relation ? ` (${b.celebrant_relation.toLowerCase()}${b.celebrant_age != null ? `, ${b.celebrant_age}` : ""})` : b.celebrant_age != null ? ` (${b.celebrant_age})` : ""}`} />
+        )}
+        {b.affiliation && <Info label="Community" value={`🕍 ${b.affiliation}`} />}
         {(b.location_type === "off_prem" || (b.room_id && roomsMap.size > 1)) && (
           b.location_type === "off_prem" ? (
             <Info label="Location" value={`📍 ${b.offprem_address ?? "Off-premise"}`}
@@ -1858,6 +1862,10 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
   const [roomId, setRoomId] = useState<string>(b.room_id ?? "");
   const [locType, setLocType] = useState<string>(b.location_type ?? "on_prem");
   const [offAddr, setOffAddr] = useState<string>(b.offprem_address ?? "");
+  const [celName, setCelName] = useState(b.celebrant_name ?? "");
+  const [celRelation, setCelRelation] = useState(b.celebrant_relation ?? "");
+  const [celAge, setCelAge] = useState(b.celebrant_age != null ? String(b.celebrant_age) : "");
+  const [affil, setAffil] = useState(b.affiliation ?? "");
   const [offPlace, setOffPlace] = useState<PlaceValue | null>(null);
 
   useEffect(() => {
@@ -1899,6 +1907,10 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
       room_id: locType === "on_prem" ? (roomId || null) : null,
       location_type: locType,
       offprem_address: locType === "off_prem" ? (offAddr.trim() || null) : null,
+      celebrant_name: celName.trim() || null,
+      celebrant_relation: celRelation || null,
+      celebrant_age: celAge ? Number(celAge) : null,
+      affiliation: affil.trim() || null,
       ...(locType === "off_prem" && offPlace ? {
         offprem_street: offPlace.street, offprem_city: offPlace.city,
         offprem_state: offPlace.state, offprem_zip: offPlace.zip,
@@ -1956,6 +1968,20 @@ function EditDetailsForm({ b, done }: { b: Booking; done: () => void }) {
               {offAllowed && <option value="off_prem">📍 Off-premise</option>}
             </select></div>
         )}
+          <div className="sm:col-span-2"><label className="label">Who&rsquo;s the simcha for? <span className="text-slate-300">(optional)</span></label>
+            <div className="flex gap-2 flex-wrap">
+              <input className="field flex-1 min-w-[140px]" placeholder="Name" value={celName} onChange={(e) => setCelName(e.target.value)} />
+              <select className="field w-36" value={celRelation} onChange={(e) => setCelRelation(e.target.value)}>
+                <option value="">Relation…</option>
+                <option>Son</option><option>Daughter</option>
+                <option>Grandson</option><option>Granddaughter</option>
+                <option>Self</option><option>Sibling</option>
+                <option>Parent</option><option>Other</option>
+              </select>
+              <input className="field w-20" type="number" min="0" max="120" placeholder="Age" value={celAge} onChange={(e) => setCelAge(e.target.value)} />
+            </div></div>
+          <div><label className="label">Shul / school / community <span className="text-slate-300">(optional)</span></label>
+            <input className="field" value={affil} onChange={(e) => setAffil(e.target.value)} /></div>
         {locType === "off_prem" && (
           <div><label className="label">Job address</label>
             <AddressAutocomplete value={offAddr}

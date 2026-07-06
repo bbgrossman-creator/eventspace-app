@@ -62,6 +62,15 @@ export default function NewInquiry() {
   const offAddr = [locName.trim() && `${locName.trim()} —`, addrLine.trim()].filter(Boolean).join(" ");
   // Off-premise address payload — structured components from Places, or a
   // free-typed manual address with null coordinates. Shared by both inserts.
+  // Relationship-graph seed fields (Blueprint §3a) — unbackfillable, so they
+  // ride every insert from birth. Lifecycle prediction + institution nodes
+  // feed on these at Phase 2/3.
+  const relationshipSeeds = () => ({
+    celebrant_name: celName.trim() || null,
+    celebrant_relation: celRelation || null,
+    celebrant_age: celAge ? Number(celAge) : null,
+    affiliation: affiliation.trim() || null,
+  });
   const offFields = () => locType === "off_prem" ? {
     offprem_address: offAddr || null,
     offprem_street: place?.street ?? null,
@@ -178,6 +187,10 @@ export default function NewInquiry() {
       ((ph.length >= 7 && digits(b.phone) === ph) || (!!em && (b.email ?? "").toLowerCase() === em)));
   })();
 
+  const [celName, setCelName] = useState("");
+  const [celRelation, setCelRelation] = useState("");
+  const [celAge, setCelAge] = useState("");
+  const [affiliation, setAffiliation] = useState("");
   const [refChannel, setRefChannel] = useState("");
   const [refName, setRefName] = useState("");
   const referralValue = refChannel === "Referral" && refName.trim()
@@ -228,6 +241,7 @@ export default function NewInquiry() {
       room_id: locType === "on_prem" ? (roomId || null) : null,
       location_type: locType,
       ...offFields(),
+      ...relationshipSeeds(),
       referral_source: referralValue,
       capacity_points: cap?.extra ? cap.mine : null,
       est_guests: estGuests ? Number(estGuests) : null,
@@ -309,6 +323,7 @@ export default function NewInquiry() {
         room_id: locType === "on_prem" ? (roomId || null) : null,
         location_type: locType,
         ...offFields(),
+        ...relationshipSeeds(),
         referral_source: referralValue,
         capacity_points: cap?.extra ? cap.mine : null,
         est_guests: estGuests ? Number(estGuests) : null,
@@ -410,6 +425,9 @@ export default function NewInquiry() {
             <input className="field" value={f.phone} onChange={(e) => set("phone", e.target.value)} placeholder="(555) 555-5555" /></div>
           <div><label className="label">Email</label>
             <input className="field" type="email" value={f.email} onChange={(e) => set("email", e.target.value)} /></div>
+          <div><label className="label">Shul / school / community <span className="text-slate-300">(optional)</span></label>
+            <input className="field" placeholder="e.g. Khal Bnei Torah, Bais Yaakov of Lakewood"
+              value={affiliation} onChange={(e) => setAffiliation(e.target.value)} /></div>
           <div><label className="label">How did you hear about us? <span className="text-slate-300">(optional)</span></label>
             <div className="flex gap-2">
               <select className="field" value={refChannel} onChange={(e) => setRefChannel(e.target.value)}>
@@ -462,6 +480,18 @@ export default function NewInquiry() {
               <option value="">— Select —</option>
               {EVENT_TYPES.map((t) => <option key={t}>{t}</option>)}
             </select></div>
+          <div className="sm:col-span-2"><label className="label">Who&rsquo;s the simcha for? <span className="text-slate-300">(optional)</span></label>
+            <div className="flex gap-2 flex-wrap">
+              <input className="field flex-1 min-w-[140px]" placeholder="Name" value={celName} onChange={(e) => setCelName(e.target.value)} />
+              <select className="field w-36" value={celRelation} onChange={(e) => setCelRelation(e.target.value)}>
+                <option value="">Relation…</option>
+                <option>Son</option><option>Daughter</option>
+                <option>Grandson</option><option>Granddaughter</option>
+                <option>Self</option><option>Sibling</option>
+                <option>Parent</option><option>Other</option>
+              </select>
+              <input className="field w-20" type="number" min="0" max="120" placeholder="Age" value={celAge} onChange={(e) => setCelAge(e.target.value)} />
+            </div></div>
           <div><label className="label">Event date</label>
             <input className="field" type="date" value={f.event_date} onChange={(e) => set("event_date", e.target.value)} /></div>
           <div><label className="label">Start time</label>

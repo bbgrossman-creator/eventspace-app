@@ -110,6 +110,10 @@ export interface Booking {
   offprem_zip?: string | null;
   offprem_place_id?: string | null;
   offprem_source?: string | null;
+  celebrant_name?: string | null;
+  celebrant_relation?: string | null;
+  celebrant_age?: number | null;
+  affiliation?: string | null;
   notes: string | null;
   status: Status;
   hold_expires: string | null;
