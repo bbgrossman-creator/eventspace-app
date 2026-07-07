@@ -69,13 +69,13 @@ export default function Sidebar() {
   return (
     <aside className={`${collapsed ? "w-16" : "w-56"} shrink-0 bg-ink text-white flex flex-col sticky top-0 h-screen overflow-y-auto overflow-x-hidden transition-[width] duration-200`}>
       {/* Brand — the logo is the focal point, centered and given room */}
-      <div className={`relative ${collapsed ? "px-2" : "px-5"}`}
+      <div className={`relative ${collapsed ? "px-2" : "px-3"}`}
         style={{ minHeight: "96px", paddingTop: "24px", paddingBottom: "20px" }}>
         <div className="flex items-center justify-center h-full">
           {!collapsed ? (
             <>
               <img src={BRAND.horizontalDark} alt={BRAND.name}
-                style={{ width: "180px", height: "auto", objectFit: "contain" }}
+                style={{ width: "200px", height: "auto", objectFit: "contain", maxWidth: "100%" }}
                 onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; const sib = el.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
               {/* Wordmark fallback if the asset is missing */}
               <div className="font-display text-lg font-bold tracking-tight" style={{ display: "none" }}>{BRAND.name}</div>
