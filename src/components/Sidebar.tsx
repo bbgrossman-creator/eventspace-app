@@ -68,29 +68,26 @@ export default function Sidebar() {
 
   return (
     <aside className={`${collapsed ? "w-16" : "w-56"} shrink-0 bg-ink text-white flex flex-col sticky top-0 h-screen overflow-y-auto overflow-x-hidden transition-[width] duration-200`}>
-      {/* Brand — the logo is the primary element, given room to breathe */}
-      <div className={`${collapsed ? "px-2" : "px-5"} pt-7 pb-5`}>
-        <div className="flex items-start justify-between gap-1">
+      {/* Brand — the logo is the branding; no text title, no tagline */}
+      <div className={`${collapsed ? "px-2" : "px-5"} pt-7 pb-6`}>
+        <div className="flex items-center justify-between gap-1">
           {!collapsed ? (
-            <div className="min-w-0">
-              <img src={BRAND.logo} alt={BRAND.name}
-                className="h-9 w-auto object-contain"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; const sib = e.currentTarget.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
-              {/* Graceful fallback to the wordmark if the asset is missing */}
-              <div className="font-display text-lg font-bold leading-tight tracking-tight" style={{ display: "none" }}>{BRAND.name}</div>
-              <div className="text-[11px] tracking-[0.14em] font-semibold mt-1.5" style={{ color: BRAND.colors.blue }}>{BRAND.tagline}</div>
-            </div>
+            <img src={BRAND.horizontalDark} alt={BRAND.name}
+              className="h-8 w-auto object-contain"
+              onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; const sib = el.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
           ) : (
-            <img src={BRAND.icon} alt={BRAND.name}
+            <img src={BRAND.iconDark} alt={BRAND.name}
               className="h-7 w-7 object-contain mx-auto"
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
           )}
+          {/* Wordmark fallback (expanded only) if the asset is missing */}
+          {!collapsed && <div className="font-display text-lg font-bold tracking-tight" style={{ display: "none" }}>{BRAND.name}</div>}
           <button onClick={toggleCollapsed} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={`text-slate-500 hover:text-white transition-colors rounded-md px-1.5 py-0.5 hover:bg-white/5 ${collapsed ? "mx-auto text-base mt-1" : "text-xs mt-0.5"}`}>
+            className={`text-slate-500 hover:text-white transition-colors rounded-md px-1.5 py-0.5 hover:bg-white/5 shrink-0 ${collapsed ? "mx-auto text-base mt-1" : "text-xs"}`}>
             {collapsed ? "»" : "«"}
           </button>
         </div>
-        {!collapsed && <div className="mt-5 border-t border-white/10" />}
+        {!collapsed && <div className="mt-6 border-t border-white/10" />}
       </div>
 
       {/* Search — a utility, not navigation */}

@@ -8,6 +8,7 @@ import { bookingFinancials } from "@/lib/finance";
 import { MenuTemplate, isVisible } from "@/lib/menuEngine";
 import { templateSlugFor } from "@/lib/menuCharges";
 import { sendEmail } from "@/lib/sendEmail";
+import { BRAND, brandAsset } from "@/lib/brand";
 
 interface Charge { id: string; description: string; quantity: number; unit_price: number; taxable: boolean; is_adjustment: boolean; is_supplemental?: boolean; source: string | null; }
 interface Payment { id: string; payment_type: string; method: string; amount_received: number; amount_applied: number; created_at: string; }
@@ -103,11 +104,13 @@ export default function InvoicePage() {
 
       {/* ─── The invoice document ─── */}
       <div className="card overflow-hidden print:shadow-none">
-        {/* Brand header */}
+        {/* Brand header (dark band → dark-background logo asset) */}
         <div className="bg-ink text-white px-8 py-6 flex items-start justify-between">
           <div>
-            <div className="font-display text-xl font-bold tracking-tight">EVENT SPACE</div>
-            <div className="text-[11px] tracking-[0.25em] text-gold font-semibold">BY BURGER BAR</div>
+            <img src={BRAND.horizontalDark} alt={BRAND.name}
+              className="h-9 w-auto object-contain"
+              onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; const sib = el.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
+            <div className="font-display text-xl font-bold tracking-tight" style={{ display: "none" }}>{BRAND.name}</div>
             <div className="text-xs text-slate-300 mt-2">Jackson, NJ · (848) 299-9079</div>
           </div>
           <div className="text-right">
@@ -354,8 +357,7 @@ function buildInvoiceHtml(
     <div style="background:${navy};padding:28px 32px;color:#fff;">
       <table style="width:100%;"><tr>
         <td>
-          <div style="font-size:20px;font-weight:bold;letter-spacing:0.5px;">EVENT SPACE</div>
-          <div style="font-size:11px;letter-spacing:3px;color:${gold};font-weight:bold;">BY BURGER BAR</div>
+          <img src="${brandAsset(BRAND.horizontalDark)}" alt="${BRAND.name}" height="34" style="height:34px;width:auto;display:block;" />
           <div style="font-size:12px;color:#cbd5e1;margin-top:8px;">Jackson, NJ · (848) 299-9079</div>
         </td>
         <td style="text-align:right;vertical-align:top;">

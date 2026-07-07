@@ -5,16 +5,15 @@ import AuthGate from "@/components/AuthGate";
 import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: `${BRAND.name} — ${BRAND.tagline}`,
+  title: BRAND.name,
   description: "Booking and event management",
   manifest: "/site.webmanifest",
   icons: {
     icon: [
+      { url: BRAND.iconLight, type: "image/png" },
       { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
-      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
     ],
-    apple: "/apple-touch-icon.png",
+    apple: BRAND.iconLight,
   },
 };
 
