@@ -310,9 +310,9 @@ export default function BookingDetail() {
         )}
       </div>
 
-      {/* Relationship read: who is this customer to us? (renders only when
-          the phone/email matches other bookings — a first-timer shows nothing) */}
-      <CustomerSnapshot b={b} />
+      {/* Customer intelligence now lives pinned at the top of the right rail
+          (see aside below) — persistent context while working, without
+          consuming the main column's vertical space. */}
 
       {/* Pipeline + current status */}
       {stage.stageIndex >= 0 && (
@@ -827,10 +827,17 @@ export default function BookingDetail() {
       <button className="text-xs text-slate-400 hover:text-navy mt-6" onClick={() => router.push("/bookings")}>← Back to bookings</button>
     </div>
 
-    {/* ── Operations Workspace: proportional 30%, sticky, never collapsible.
-        The left side explains the event; this side explains the work. ── */}
+    {/* ── Right rail: two modes of thinking, split into two sections.
+        Customer Snapshot is pinned context — it stays put as you scroll.
+        Communication/Touchpoints/Tasks are the relationship timeline — they
+        scroll under it like any other content. Top of the snapshot aligns
+        with the top of the Contact strip in the main column (both are
+        top-aligned flex children of the same row, no extra offset here). ── */}
     <aside className="xl:w-[28%] xl:max-w-[480px] xl:shrink-0 mt-8 xl:mt-0">
-      <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 space-y-3">
+      <div className="xl:sticky xl:top-4 xl:z-10">
+        <CustomerSnapshot b={b} />
+      </div>
+      <div className="space-y-3 mt-3">
         <CommunicationCard b={b} />
         <TouchpointsCard b={b} />
         <OpsWorkspace b={b} refreshKey={railRefresh} />

@@ -15,8 +15,10 @@ import { fmtDate, fmtTime, parseLocalDate } from "@/lib/workflow";
 interface Todo {
   id: string; title: string; due_date: string | null; due_time: string | null;
   done: boolean; booking_id?: string | null; invoice_num?: string | null; assignee?: string | null;
+  vendor_id?: string | null;
 }
 interface StaffRow { id: string; name: string; active: boolean; sort_order: number; }
+interface VendorRow { id: string; name: string; }
 interface BookingLite { id: string; invoice_num: string; contact_name: string; event_date: string | null; event_name?: string | null; event_type?: string | null; }
 
 function dueDateTime(t: Todo): Date | null {
@@ -45,6 +47,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
 }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [staff, setStaff] = useState<StaffRow[]>([]);
+  const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [bookings, setBookings] = useState<BookingLite[]>([]);
   const [who, setWho] = useState<string>("All");
   const [err, setErr] = useState("");
@@ -52,6 +55,7 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   const [due, setDue] = useState("");
   const [time, setTime] = useState("");
   const [assignee, setAssignee] = useState("");
+  const [vendor, setVendor] = useState("");
   const [linkBooking, setLinkBooking] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -62,15 +66,18 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   const [editingId, setEditingId] = useState<string | null>(null);
   const [eTitle, setETitle] = useState(""); const [eWho, setEWho] = useState("");
   const [eDate, setEDate] = useState(""); const [eTime, setETime] = useState("");
+  const [eVendor, setEVendor] = useState("");
   function startEdit(t: Todo) {
     setEditingId(t.id); setMenuFor(null);
     setETitle(t.title); setEWho(t.assignee ?? "");
     setEDate(t.due_date ?? ""); setETime(t.due_time ?? "");
+    setEVendor(t.vendor_id ?? "");
   }
   async function saveEdit(t: Todo) {
     if (!eTitle.trim()) return;
     const { error } = await supabase.from("tasks").update({
       title: eTitle.trim(), assignee: eWho || null, due_date: eDate || null, due_time: eTime || null,
+      vendor_id: eVendor || null,
     }).eq("id", t.id);
     if (error) { setErr(`Couldn't save changes: ${error.message}`); return; }
     setEditingId(null); load();
@@ -153,6 +160,10 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
   useEffect(() => {
     supabase.from("staff").select("*").eq("active", true).order("sort_order")
       .then(({ data }) => setStaff((data ?? []) as StaffRow[]));
+    // Vendors are optional infrastructure — if the table isn't there yet, the
+    // dropdown just doesn't render (see vendors.length > 0 checks below).
+    supabase.from("vendors").select("id,name").eq("active", true).order("name")
+      .then(({ data, error }) => { if (!error) setVendors((data ?? []) as VendorRow[]); });
     if (!bookingId) {
       supabase.from("bookings").select("id,invoice_num,contact_name,event_date,event_name,event_type")
         .not("status", "in", '("completed","cancelled")').order("event_date")
@@ -207,11 +218,13 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
         : { booking_id: null, invoice_num: null };
     const { error } = await supabase.from("tasks").insert({
       title: title.trim(), due_date: due || null, due_time: time || null,
-      assignee: assignee || null, ...linked,
+      assignee: assignee || null, vendor_id: vendor || null, ...linked,
     });
     if (error) { setErr(`Couldn't save: ${error.message} — run the tasks SQL if columns are missing.`); return; }
-    setTitle(""); setDue(""); setTime(""); setLinkBooking(""); setErr(""); load();
+    setTitle(""); setDue(""); setTime(""); setVendor(""); setLinkBooking(""); setErr(""); load();
   }
+
+  const vendorName = (id: string | null | undefined) => id ? (vendors.find((v) => v.id === id)?.name ?? null) : null;
 
   const bandCounts = useMemo(() => {
     const c = { Overdue: 0, Today: 0, Anytime: 0, Upcoming: 0 };
@@ -335,6 +348,12 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
                         <option value="">Who?</option>
                         {staff.map((st) => <option key={st.id} value={st.name}>{st.name}</option>)}
                       </select>
+                      {vendors.length > 0 && (
+                        <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]" value={eVendor} onChange={(e) => setEVendor(e.target.value)}>
+                          <option value="">No vendor</option>
+                          {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                        </select>
+                      )}
                       <input type="date" className="field !py-1 !text-xs !bg-white w-[7rem]" value={eDate} onChange={(e) => setEDate(e.target.value)} />
                       <input type="time" className="field !py-1 !text-xs !bg-white w-[5.5rem]" value={eTime} onChange={(e) => setETime(e.target.value)} />
                     </div>
@@ -402,11 +421,12 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
                     </Link>
                   );
                 })()}
-                {(t.assignee || t.due_date || (t.booking_id && !bookingId)) && (
+                {(t.assignee || t.vendor_id || t.due_date || (t.booking_id && !bookingId)) && (
                   <div className={`text-[11px] ${overdue ? "text-red-600" : "text-slate-400"}`}>
                     {[
                       t.booking_id && !bookingId && t.invoice_num ? `#${t.invoice_num}` : null,
                       t.assignee ?? null,
+                      t.vendor_id && vendorName(t.vendor_id) ? `🏷️ ${vendorName(t.vendor_id)}` : null,
                       t.due_date ? `${fmtDate(t.due_date)}${t.due_time ? ` ${fmtTime(t.due_time)}` : ""}${overdue ? " • OVERDUE" : ""}` : null,
                     ].filter(Boolean).join(" • ")}
                   </div>
@@ -448,6 +468,14 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
             <option value="">👤 Unassigned</option>
             {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
           </select>
+          {vendors.length > 0 && (
+            <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[110px]" value={vendor} onChange={(e) => setVendor(e.target.value)} title="Vendor">
+              <option value="">No vendor</option>
+              {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
+          )}
+        </div>
+        <div className="flex gap-1.5 flex-wrap items-center">
           {!bookingId && (
             <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[130px] max-w-[170px]" value={linkBooking} onChange={(e) => setLinkBooking(e.target.value)} title="Link to a booking (optional)">
               <option value="">🔗 No booking</option>
