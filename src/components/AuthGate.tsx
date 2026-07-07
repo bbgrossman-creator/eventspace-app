@@ -133,8 +133,11 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Brand() {
   return (
     <>
-      <div className="font-display text-xl font-bold">{BRAND.name}</div>
-      <div className="text-[11px] tracking-[0.18em] text-gold font-semibold mb-6">{BRAND.tagline.toUpperCase()}</div>
+      <img src={BRAND.logo} alt={BRAND.name}
+        className="h-11 w-auto object-contain mb-1"
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; const sib = e.currentTarget.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
+      <div className="font-display text-xl font-bold" style={{ display: "none" }}>{BRAND.name}</div>
+      <div className="text-[11px] tracking-[0.14em] font-semibold mb-6" style={{ color: BRAND.colors.blue }}>{BRAND.tagline}</div>
     </>
   );
 }

@@ -8,7 +8,7 @@
  */
 export const BRAND = {
   name: "EventCore",
-  tagline: "One System. Every Event.",
+  tagline: "The Event Operating System",
   logo: "/brand/eventcore-logo.png",
   icon: "/brand/eventcore-icon.png",
   colors: {
