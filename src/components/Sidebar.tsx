@@ -10,6 +10,7 @@ const NAV = [
   { href: "/bookings", label: "Bookings", icon: "🗂️" },
   { href: "/calendar", label: "Calendar", icon: "📅" },
   { href: "/bookings/new", label: "New Inquiry", icon: "📞" },
+  { href: "/drafts", label: "Inquiry Drafts", icon: "📝" },
 ];
 
 // Back office groups — no section title; the divider tells the story.

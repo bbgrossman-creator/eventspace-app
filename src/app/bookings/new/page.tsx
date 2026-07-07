@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase, logActivity } from "@/lib/supabase";
@@ -16,6 +16,19 @@ interface PackageGuide {
   key: string; name: string; price_label: string | null;
   includes: string | null; best_for: string | null;
   talk_track: string | null; upsells: string | null;
+}
+
+interface DraftRow {
+  id: string; draft_number: string | null; status: string;
+  customer_name: string | null; phone: string | null; email: string | null;
+  contact2_name: string | null; contact2_phone: string | null; contact2_email: string | null;
+  event_type: string | null; celebrant_name: string | null; celebrant_relation: string | null;
+  celebrant_age: number | null; affiliation: string | null;
+  referral_channel: string | null; referral_name: string | null;
+  event_date: string | null; start_time: string | null; duration: string | null;
+  guest_count: string | null; venue_type: string | null; venue_room: string | null;
+  off_premise_location: string | null; notes: string | null;
+  last_autosaved: string | null; updated_at: string;
 }
 
 const EVENT_TYPES = ["Bar Mitzvah", "Bat Mitzvah", "Wedding", "Engagement", "Sheva Brochos", "Birthday Party", "Corporate Event", "Other"];
@@ -264,6 +277,7 @@ export default function NewInquiry() {
           `${new Date(wtWhen).toLocaleString()}${wtAssignee ? ` · with ${wtAssignee}` : ""}`);
       }
     }
+    await markDraftConverted(data.id);
     router.push(`/bookings/${data.id}`);
   }
 
@@ -373,19 +387,235 @@ export default function NewInquiry() {
     }
     await runActionAutomation("internal_new_booking", data);
     // Only a deposit-ready challenger sends the rep to the holder to act.
+    await markDraftConverted(data.id);
     if (useRefusal && holder) { router.push(`/bookings/${holder.id}`); return; }
     router.push(`/bookings/${data.id}`);
   }
 
-  return (
-    <div className="max-w-2xl">
-      <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">New Inquiry</h1>
-        <p className="text-sm text-slate-500 mt-1">Creates a 24-hour hold and assigns the next invoice number.</p>
-        <div className="gold-rule mt-3" />
-      </header>
 
-      <div className="card p-6 space-y-6">
+  /* ══════════ Inquiry Draft engine (v134) ══════════
+   * Server-side autosave: every meaningful edit persists ~2s later.
+   * The rep never thinks about saving; the CRM quietly remembers. */
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftNumber, setDraftNumber] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "offline">("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [chooser, setChooser] = useState<DraftRow[] | null>(null); // multiple drafts → pick
+  const [restoredToast, setRestoredToast] = useState(false);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyRef = useRef(false);
+  const bootRef = useRef(false);
+
+  const estGuestsNum = estGuests ? Number(estGuests) : 0;
+  const estimate = estGuestsNum > 0 ? {
+    full_service: estGuestsNum * PRICING.FULL_SERVICE_PP,
+    single_buffet: estGuestsNum * PRICING.BUFFET_SINGLE_PP,
+    double_buffet: estGuestsNum * PRICING.BUFFET_DOUBLE_PP,
+  } : null;
+
+  // Section completion → progress. Contact needs name + a way to reach them;
+  // Event needs type + date; Venue needs a room or an address; Guests a count.
+  const secDone = {
+    contact: !!(f.contact_name.trim() && (f.phone.trim() || f.email.trim())),
+    event: !!(f.event_type && f.event_date),
+    venue: locType === "on_prem" ? !!roomId : !!(place?.formatted || locName.trim()),
+    guests: !!estGuests,
+    notes: !!f.notes.trim(),
+  };
+  const progress = Math.round(
+    ((secDone.contact ? 1 : 0) + (secDone.event ? 1 : 0) + (secDone.venue ? 1 : 0) +
+     (secDone.guests ? 1 : 0) + (secDone.notes ? 1 : 0)) / 5 * 100);
+
+  const draftPayload = useCallback(() => ({
+    customer_name: f.contact_name.trim() || null, phone: f.phone.trim() || null, email: f.email.trim() || null,
+    contact2_name: f.contact2_name.trim() || null, contact2_phone: f.contact2_phone.trim() || null,
+    contact2_email: f.contact2_email.trim() || null,
+    event_type: f.event_type || null,
+    celebrant_name: celName.trim() || null, celebrant_relation: celRelation || null,
+    celebrant_age: celAge ? Number(celAge) : null,
+    affiliation: affiliation.trim() || null,
+    referral_channel: refChannel || null, referral_name: refName.trim() || null,
+    event_date: f.event_date || null, start_time: f.event_time || null,
+    duration: f.expected_hours || null, guest_count: estGuests || null,
+    venue_type: locType, venue_room: locType === "on_prem" ? (roomId || null) : null,
+    off_premise_location: locType === "off_prem" ? (place?.formatted || locName.trim() || null) : null,
+    notes: f.notes.trim() || null,
+    pricing_snapshot: estimate,
+    last_autosaved: new Date().toISOString(), updated_at: new Date().toISOString(),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [f, celName, celRelation, celAge, affiliation, refChannel, refName, estGuests, locType, roomId, locName, place, estimate]);
+
+  const hasContent = !!(f.contact_name.trim() || f.phone.trim() || f.email.trim() || f.event_type || f.event_date || estGuests || f.notes.trim());
+
+  async function flushDraft() {
+    if (!dirtyRef.current || !hasContent) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) { setSaveState("offline"); return; }
+    setSaveState("saving");
+    const payload = draftPayload();
+    if (draftId) {
+      const { error } = await supabase.from("inquiry_drafts").update(payload).eq("id", draftId);
+      if (error) { setErr(`Autosave failed: ${error.message} — run v134_inquiry_drafts.sql.`); setSaveState("idle"); return; }
+    } else {
+      const dn = "D-" + Date.now().toString(36).toUpperCase().slice(-5);
+      const { data, error } = await supabase.from("inquiry_drafts")
+        .insert({ ...payload, draft_number: dn, status: "draft" }).select("id").single();
+      if (error || !data) { setErr(`Autosave failed: ${error?.message ?? "unknown"} — run v134_inquiry_drafts.sql.`); setSaveState("idle"); return; }
+      setDraftId(data.id); setDraftNumber(dn);
+    }
+    dirtyRef.current = false;
+    setLastSavedAt(new Date()); setSaveState("saved");
+  }
+
+  // Debounced autosave: any watched field marks dirty; flush ~2s after typing stops.
+  useEffect(() => {
+    if (!bootRef.current) return;           // don't save while restoring
+    dirtyRef.current = true;
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(flushDraft, 2000);
+    return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f, celName, celRelation, celAge, affiliation, refChannel, refName, estGuests, locType, roomId, locName, place]);
+
+  // When the connection returns, sync.
+  useEffect(() => {
+    const onUp = () => { if (dirtyRef.current) flushDraft(); };
+    window.addEventListener("online", onUp);
+    return () => window.removeEventListener("online", onUp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId]);
+
+  function applyDraft(d: DraftRow) {
+    setF((p) => ({ ...p,
+      contact_name: d.customer_name ?? "", phone: d.phone ?? "", email: d.email ?? "",
+      contact2_name: d.contact2_name ?? "", contact2_phone: d.contact2_phone ?? "", contact2_email: d.contact2_email ?? "",
+      event_type: d.event_type ?? "", event_date: d.event_date ?? "", event_time: d.start_time ?? p.event_time,
+      notes: d.notes ?? "", expected_hours: d.duration ?? "",
+    }));
+    if (d.contact2_name || d.contact2_phone) setShowContact2(true);
+    setCelName(d.celebrant_name ?? ""); setCelRelation(d.celebrant_relation ?? "");
+    setCelAge(d.celebrant_age != null ? String(d.celebrant_age) : "");
+    setAffiliation(d.affiliation ?? ""); setRefChannel(d.referral_channel ?? ""); setRefName(d.referral_name ?? "");
+    setEstGuests(d.guest_count ?? "");
+    setLocType((d.venue_type as "on_prem" | "off_prem") ?? "on_prem");
+    setRoomId(d.venue_room ?? "");
+    setLocName(d.off_premise_location ?? "");
+    setDraftId(d.id); setDraftNumber(d.draft_number);
+    if (d.last_autosaved) setLastSavedAt(new Date(d.last_autosaved));
+  }
+
+  // Boot: ?draft=<id> opens that draft; one open draft auto-restores; several → chooser.
+  useEffect(() => {
+    (async () => {
+      const want = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("draft") : null;
+      const { data, error } = await supabase.from("inquiry_drafts").select("*")
+        .eq("status", "draft").order("updated_at", { ascending: false });
+      if (error) { bootRef.current = true; return; }   // table missing → behave like v132
+      const drafts = (data ?? []) as DraftRow[];
+      if (want) {
+        const d = drafts.find((x) => x.id === want);
+        if (d) { applyDraft(d); setRestoredToast(true); setTimeout(() => setRestoredToast(false), 3500); }
+      } else if (drafts.length === 1) {
+        applyDraft(drafts[0]); setRestoredToast(true); setTimeout(() => setRestoredToast(false), 3500);
+      } else if (drafts.length > 1) {
+        setChooser(drafts);
+      }
+      setTimeout(() => { bootRef.current = true; }, 300);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function markDraftConverted(bookingId: string) {
+    if (!draftId) return;
+    await supabase.from("inquiry_drafts").update({
+      status: "converted", converted_booking_id: bookingId,
+      converted_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq("id", draftId);
+  }
+
+  function agoLabel(dt: Date | null): string {
+    if (!dt) return "";
+    const m = Math.floor((Date.now() - dt.getTime()) / 60000);
+    if (m < 1) return "just now";
+    if (m === 1) return "1 minute ago";
+    if (m < 60) return `${m} minutes ago`;
+    const h = Math.floor(m / 60);
+    return h === 1 ? "1 hour ago" : `${h} hours ago`;
+  }
+
+  // Relationship Memory — rendered in the sidebar on xl, inline below it.
+  const renderRelationshipMemory = (withId: boolean) => (
+    <>
+        {dupes.length > 0 && (
+          <div id={withId ? "dupes-panel" : undefined} className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
+            {memory && (
+              <div className="rounded-lg bg-white ring-1 ring-amber-200 px-3.5 py-2.5 mb-2.5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">📇 Sales memory{memory.tier ? ` · ${memory.tier}` : ""}</span>
+                  {household[0] && (
+                    <Link href={`/customers/${household.find((h) => h.id)?.id ?? ""}`} target="_blank"
+                      className="text-[11px] font-semibold text-navy underline underline-offset-2">Open Customer Profile →</Link>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-1.5 mt-1.5 text-slate-700">
+                  {memory.lastMenu && <div><span className="text-[10px] text-slate-400 block">Last menu</span><b className="text-xs">{memory.lastMenu}</b></div>}
+                  {memory.favAddons.length > 0 && <div className="col-span-2"><span className="text-[10px] text-slate-400 block">Favorite add-ons</span><b className="text-xs">{memory.favAddons.map((a) => `✔ ${a}`).join("  ")}</b></div>}
+                  {memory.avgGuests != null && <div><span className="text-[10px] text-slate-400 block">Typical guests</span><b className="text-xs">{memory.avgGuests}</b></div>}
+                  {memory.favRoom && <div><span className="text-[10px] text-slate-400 block">Preferred room</span><b className="text-xs">{memory.favRoom}</b></div>}
+                  <div><span className="text-[10px] text-slate-400 block">Lifetime</span><b className="text-xs">${Math.round(memory.lifetime).toLocaleString()}</b></div>
+                </div>
+              </div>
+            )}
+            <p className="font-bold mb-1">👥 This contact already has {dupes.length === 1 ? "a booking" : `${dupes.length} bookings`}</p>
+            {dupes.slice(0, 4).map((d) => (
+              <p key={d.id} className="text-xs">
+                • <Link href={`/bookings/${d.id}`} className="underline" target="_blank">#{d.invoice_num} {d.contact_name}</Link>
+                {" — "}{fmtDate(d.event_date)}{d.event_date === f.event_date ? " (SAME DATE — possible duplicate!)" : ""} · {stageFor(d.status).label}
+              </p>
+            ))}
+            <p className="text-[11px] mt-1 text-amber-700">If this is the same request, open the existing booking instead of creating a double.</p>
+          </div>
+        )}
+    </>
+  );
+
+  return (
+    <div className="max-w-6xl">
+      <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-display text-3xl font-bold tracking-tight">
+            New Inquiry
+            {draftNumber && <span className="ml-3 align-middle text-[11px] font-semibold tracking-wide rounded-full px-2.5 py-1 bg-slate-100 text-slate-500">DRAFT {draftNumber}</span>}
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">Creates a 24-hour hold and assigns the next invoice number.</p>
+          <div className="gold-rule mt-3" />
+        </div>
+        <div className="text-right text-[11px] text-slate-400 min-h-[2rem]">
+          {saveState === "saving" && <span className="reveal">Saving…</span>}
+          {saveState === "saved" && <span className="reveal text-emerald-600 font-semibold">✓ Saved</span>}
+          {saveState === "offline" && <span className="reveal text-amber-600 font-semibold">Offline — will sync automatically</span>}
+          {lastSavedAt && saveState !== "saving" && (
+            <div className="mt-0.5">Last saved: {agoLabel(lastSavedAt)}</div>
+          )}
+        </div>
+      </header>
+      {restoredToast && (
+        <p className="reveal rounded-lg bg-emerald-50 ring-1 ring-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-2 mb-4">
+          ✓ Restored your unfinished inquiry.
+        </p>
+      )}
+      {chooser && !draftId ? (
+        <DraftChooser drafts={chooser}
+          onPick={(d) => { applyDraft(d); setChooser(null); setRestoredToast(true); setTimeout(() => setRestoredToast(false), 3500); }}
+          onNew={() => setChooser(null)}
+          onDiscard={async (d) => {
+            await supabase.from("inquiry_drafts").update({ status: "discarded", discarded_at: new Date().toISOString() }).eq("id", d.id);
+            setChooser((prev) => prev ? prev.filter((x) => x.id !== d.id) : prev);
+          }} />
+      ) : (
+      <div className="flex gap-6 items-start">
+      <div className="flex-1 min-w-0">
+
+      <div className="space-y-4">
         {/* Sticky alert strip: severity-tiered, stays visible while the issue
             exists. Red = clashes a CONFIRMED booking · blue = soft scheduling
             note (unconfirmed hold) · amber = duplicate customer. */}
@@ -416,8 +646,8 @@ export default function NewInquiry() {
           </div>
         )}
         {/* 1 — Customer */}
-        <div>
-        <SectionHead>Customer Information</SectionHead>
+        <IntakeCard icon="👤" title="Contact Information" done={secDone.contact}
+          summary={`${f.contact_name}${f.phone ? ` · ${f.phone}` : f.email ? ` · ${f.email}` : ""}`}>
         <div className="grid sm:grid-cols-2 gap-4">
           <div><label className="label">Customer name *</label>
             <input className="field" value={f.contact_name} onChange={(e) => set("contact_name", e.target.value)} /></div>
@@ -469,11 +699,10 @@ export default function NewInquiry() {
             </>
           )}
         </div>
-        </div>
+        </IntakeCard>
 
-        {/* 2 — Event (type + date lead: the two facts that matter most after the name) */}
-        <div>
-        <SectionHead>Event Details</SectionHead>
+        <IntakeCard icon="📅" title="Event Details" done={secDone.event && secDone.venue && secDone.guests}
+          summary={[f.event_type, f.event_date ? fmtDate(f.event_date) : "", estGuests ? `${estGuests} guests` : ""].filter(Boolean).join(" · ")}>
         <div className="grid sm:grid-cols-2 gap-4">
           <div><label className="label">Event type</label>
             <select className="field" value={f.event_type} onChange={(e) => set("event_type", e.target.value)}>
@@ -573,44 +802,14 @@ export default function NewInquiry() {
             </div>
           )}
         </div>
-        </div>
+        </IntakeCard>
 
-        {/* 3 — Notes */}
-        <div>
-        <SectionHead>Additional Notes</SectionHead>
-          <textarea className="field" rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything worth remembering from the call…" />
-        </div>
+        <IntakeCard icon="📝" title="Additional Notes" done={secDone.notes}
+          summary={f.notes.length > 64 ? f.notes.slice(0, 61) + "…" : f.notes}>
+          <textarea className="field" rows={3} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything worth remembering from the conversation…" />
+        </IntakeCard>
 
-        {dupes.length > 0 && (
-          <div id="dupes-panel" className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
-            {memory && (
-              <div className="rounded-lg bg-white ring-1 ring-amber-200 px-3.5 py-2.5 mb-2.5">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <span className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">📇 Sales memory{memory.tier ? ` · ${memory.tier}` : ""}</span>
-                  {household[0] && (
-                    <Link href={`/customers/${household.find((h) => h.id)?.id ?? ""}`} target="_blank"
-                      className="text-[11px] font-semibold text-navy underline underline-offset-2">Open Customer Profile →</Link>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-1.5 mt-1.5 text-slate-700">
-                  {memory.lastMenu && <div><span className="text-[10px] text-slate-400 block">Last menu</span><b className="text-xs">{memory.lastMenu}</b></div>}
-                  {memory.favAddons.length > 0 && <div className="col-span-2"><span className="text-[10px] text-slate-400 block">Favorite add-ons</span><b className="text-xs">{memory.favAddons.map((a) => `✔ ${a}`).join("  ")}</b></div>}
-                  {memory.avgGuests != null && <div><span className="text-[10px] text-slate-400 block">Typical guests</span><b className="text-xs">{memory.avgGuests}</b></div>}
-                  {memory.favRoom && <div><span className="text-[10px] text-slate-400 block">Preferred room</span><b className="text-xs">{memory.favRoom}</b></div>}
-                  <div><span className="text-[10px] text-slate-400 block">Lifetime</span><b className="text-xs">${Math.round(memory.lifetime).toLocaleString()}</b></div>
-                </div>
-              </div>
-            )}
-            <p className="font-bold mb-1">👥 This contact already has {dupes.length === 1 ? "a booking" : `${dupes.length} bookings`}</p>
-            {dupes.slice(0, 4).map((d) => (
-              <p key={d.id} className="text-xs">
-                • <Link href={`/bookings/${d.id}`} className="underline" target="_blank">#{d.invoice_num} {d.contact_name}</Link>
-                {" — "}{fmtDate(d.event_date)}{d.event_date === f.event_date ? " (SAME DATE — possible duplicate!)" : ""} · {stageFor(d.status).label}
-              </p>
-            ))}
-            <p className="text-[11px] mt-1 text-amber-700">If this is the same request, open the existing booking instead of creating a double.</p>
-          </div>
-        )}
+        <div className="xl:hidden">{dupes.length > 0 && renderRelationshipMemory(true)}</div>
 
         {f.event_date && (
           conflicts.length === 0 ? (
@@ -752,6 +951,7 @@ export default function NewInquiry() {
         {/* Three intents, three weights: reserving a date (primary), coming to
             see the room (outlined), or just staying in touch (text). The first
             claims the date; the other two create an L-series lead. */}
+        <div id="primary-ctas" className="card p-5 space-y-4">
         <div className="flex gap-3 pt-1 flex-wrap items-center">
           <button onClick={createBooking} disabled={saving || locMode === "none"}
             title={locMode === "none" ? "No bookable locations — configure Locations & Capacity first" : undefined}
@@ -789,11 +989,12 @@ export default function NewInquiry() {
             </button>
           </div>
         )}
+        </div>
       </div>
 
       <div className="card p-6 mt-6">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="font-display font-bold text-sm">Quick pricing reference</h2>
+          <h2 className="font-display font-bold text-sm">💰 Quick pricing reference</h2>
           <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => setShowEmailMenus((s) => !s)}>
             📧 Email menus to customer
           </button>
@@ -844,6 +1045,123 @@ export default function NewInquiry() {
 
         <p className="text-[11px] text-slate-400 mt-3">Prices subject to 6.625% NJ sales tax. Credit card payments add a 3% processing fee.</p>
       </div>
+      </div>
+
+      {/* ═══ The concierge sidebar: what do we know · can we book it ·
+          what's it worth · who are they · what happens next ═══ */}
+      <aside className="hidden xl:block w-[320px] shrink-0">
+        <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto pr-1 space-y-3">
+
+          {/* Inquiry Snapshot — assembles live as the rep types */}
+          <div className="rounded-2xl p-4 text-white shadow-[0_4px_18px_rgba(15,23,42,0.15)]" style={{ background: "#102A43" }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-2">Inquiry Snapshot</div>
+            {!hasContent ? (
+              <p className="text-[13px] text-white/50 leading-relaxed">Start the conversation — the summary builds itself as you type.</p>
+            ) : (
+              <div className="space-y-1">
+                <div className="text-[17px] font-display font-bold leading-tight">{f.contact_name || "—"}</div>
+                <div className="text-[13px] text-white/80">
+                  {[f.event_type, celName && `for ${celName}`].filter(Boolean).join(" ")}
+                </div>
+                <div className="text-[13px] text-white/80">
+                  {f.event_date ? fmtDate(f.event_date) : "No date yet"}{f.event_time ? ` · ${fmtTime(f.event_time)}` : ""}
+                </div>
+                <div className="text-[13px] text-white/80">
+                  {[estGuests && `${estGuests} guests`,
+                    locType === "on_prem"
+                      ? (rooms.find((r) => r.id === roomId)?.name ?? null)
+                      : (place?.formatted || locName || "Off-premise")].filter(Boolean).join(" · ") || " "}
+                </div>
+                <div className="pt-2">
+                  <div className="h-1.5 rounded-full bg-white/15 overflow-hidden">
+                    <div className="h-full rounded-full bg-gold transition-all duration-500" style={{ width: `${progress}%` }} />
+                  </div>
+                  <div className="text-[10px] text-white/40 mt-1">{progress}% complete</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Availability — runs continuously, never waits for Reserve */}
+          <div className={`rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 ${!f.event_date ? "bg-white ring-[#E6EAF2]" : conflicts.length === 0 ? "bg-[#F0FAF4] ring-emerald-200" : confirmedClash ? "bg-red-50 ring-red-200" : "bg-amber-50 ring-amber-200"}`}>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Availability</div>
+              <Link href="/calendar" className="text-[11px] text-navy hover:underline font-medium">View Calendar</Link>
+            </div>
+            {!f.event_date ? (
+              <p className="text-[13px] text-slate-400">Pick a date and the calendar answers instantly.</p>
+            ) : conflicts.length === 0 ? (
+              <p className="text-[14px] font-semibold text-emerald-700">✅ Available</p>
+            ) : confirmedClash ? (
+              <button className="text-left" onClick={() => jumpTo("conflict-panel")}>
+                <p className="text-[14px] font-semibold text-red-700">⛔ Unavailable — confirmed booking</p>
+                <p className="text-[11px] text-red-500 underline">Review the conflict</p>
+              </button>
+            ) : (
+              <button className="text-left" onClick={() => jumpTo("conflict-panel")}>
+                <p className="text-[14px] font-semibold text-amber-700">⚠️ Possible conflict — unconfirmed hold</p>
+                <p className="text-[11px] text-amber-600 underline">Review options</p>
+              </button>
+            )}
+          </div>
+
+          {/* Estimated value — guest count × package rates. Never a quote. */}
+          <div className="rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 bg-[#FFFBF2] ring-[#F3E3BE]">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#9C7A2E] mb-1.5">Estimated Value</div>
+            {!estimate ? (
+              <p className="text-[13px] text-slate-400">Enter a guest count for a ballpark by package.</p>
+            ) : (
+              <div className="space-y-1 text-[13px]">
+                <div className="flex justify-between"><span className="text-slate-600">Full Service</span><b className="font-display">~${estimate.full_service.toLocaleString()}</b></div>
+                <div className="flex justify-between"><span className="text-slate-600">Single Buffet</span><b className="font-display">~${estimate.single_buffet.toLocaleString()}</b></div>
+                <div className="flex justify-between"><span className="text-slate-600">Double Buffet</span><b className="font-display">~${estimate.double_buffet.toLocaleString()}</b></div>
+                <p className="text-[10px] text-[#9C7A2E]/70 pt-1">Estimate only — before add-ons, tax, and minimums.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Relationship Memory — the concierge whisper */}
+          {dupes.length > 0 ? (
+            <div>{renderRelationshipMemory(false)}</div>
+          ) : (
+            <div className="rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 bg-white ring-[#E6EAF2]">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Relationship Memory</div>
+              <p className="text-[13px] text-slate-400 leading-relaxed">
+                {f.phone.trim() || f.email.trim()
+                  ? "New contact — no history on file yet."
+                  : "Enter a phone or email and any household history appears here."}
+              </p>
+            </div>
+          )}
+
+          {/* Next Steps — functional where flows exist, honest guidance where not */}
+          <div className="rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 bg-white ring-[#E6EAF2]">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Next Steps</div>
+            <div className="space-y-1.5 text-[13px]">
+              <button className="flex items-center gap-2 w-full text-left group" onClick={() => jumpTo("primary-ctas")}>
+                <span className="text-slate-300">☐</span>
+                <span className="group-hover:text-navy font-medium">Create 24-hour hold</span>
+              </button>
+              <button className="flex items-center gap-2 w-full text-left group"
+                onClick={() => { setShowWalkthrough(true); jumpTo("primary-ctas"); }}>
+                <span className="text-slate-300">☐</span>
+                <span className="group-hover:text-navy font-medium">Schedule walkthrough</span>
+              </button>
+              <button className="flex items-center gap-2 w-full text-left group"
+                onClick={() => { setShowEmailMenus(true); setTimeout(() => jumpTo("primary-ctas"), 50); }}>
+                <span className="text-slate-300">☐</span>
+                <span className="group-hover:text-navy font-medium">Email menus</span>
+              </button>
+              <div className="flex items-center gap-2 text-slate-400">
+                <span className="text-slate-300">☐</span><span>Follow up tomorrow</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </aside>
+      </div>
+      )}
     </div>
   );
 
@@ -904,6 +1222,103 @@ function EmailMenusPanel({ defaultEmail, contactName }: { defaultEmail: string; 
       </div>
       {result && <p className={`text-sm mt-2 font-medium ${result.ok ? "text-emerald-600" : "text-red-600"}`}>{result.text}</p>}
       <button onClick={send} disabled={busy} className="btn-primary mt-3 w-full">{busy ? "Sending…" : "Send Menus"}</button>
+    </div>
+  );
+}
+
+/** Concierge intake card: expands while working, collapses to a one-line
+ *  ✓ summary once complete. Top-level (never nested) so children keep focus. */
+function IntakeCard({ icon, title, done, summary, children }: {
+  icon: string; title: string; done: boolean; summary: string; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const wasDone = useRef(false);
+  useEffect(() => {
+    // Auto-collapse the moment a section becomes complete — but never while
+    // the rep is still typing inside it.
+    if (done && !wasDone.current) {
+      const el = boxRef.current;
+      if (!el || !el.contains(document.activeElement)) setOpen(false);
+    }
+    if (!done) setOpen(true);
+    wasDone.current = done;
+  }, [done]);
+  return (
+    <div ref={boxRef}
+      className="rounded-2xl bg-white shadow-[0_4px_18px_rgba(15,23,42,0.06)] ring-1 ring-[#E6ECF3] transition-all"
+      onBlurCapture={(e) => {
+        if (done && !e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}>
+      {open ? (
+        <div className="p-5 reveal">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="grid place-items-center w-7 h-7 rounded-lg bg-slate-100 text-[15px]">{icon}</span>
+            <h2 className="font-display font-semibold text-[17px]">{title}</h2>
+            {done && <span className="text-emerald-500 text-sm">✓</span>}
+          </div>
+          {children}
+        </div>
+      ) : (
+        <button className="w-full flex items-center gap-2.5 p-4 text-left group" onClick={() => setOpen(true)}>
+          <span className="text-emerald-500 font-bold">✓</span>
+          <span className="font-display font-semibold text-[14px]">{title}</span>
+          <span className="text-[13px] text-slate-500 truncate flex-1 min-w-0">{summary}</span>
+          <span className="text-[12px] text-navy opacity-0 group-hover:opacity-100 transition-opacity font-medium shrink-0">Edit</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Several unfinished conversations → choose one, or start fresh. */
+function DraftChooser({ drafts, onPick, onNew, onDiscard }: {
+  drafts: DraftRow[]; onPick: (d: DraftRow) => void; onNew: () => void; onDiscard: (d: DraftRow) => void;
+}) {
+  function ago(iso: string) {
+    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (m < 60) return `${Math.max(1, m)}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  }
+  function pct(d: DraftRow) {
+    const done = [
+      !!(d.customer_name && (d.phone || d.email)),
+      !!(d.event_type && d.event_date),
+      d.venue_type === "off_prem" ? !!d.off_premise_location : !!d.venue_room,
+      !!d.guest_count, !!d.notes,
+    ].filter(Boolean).length;
+    return Math.round((done / 5) * 100);
+  }
+  return (
+    <div className="max-w-2xl">
+      <div className="card p-6">
+        <h2 className="font-display font-bold text-lg mb-1">Continue a conversation?</h2>
+        <p className="text-sm text-slate-500 mb-4">You have {drafts.length} unfinished inquiries.</p>
+        <div className="space-y-2.5">
+          {drafts.map((d) => (
+            <div key={d.id} className="rounded-xl ring-1 ring-[#E6ECF3] p-3.5 flex items-center gap-3 hover:ring-navy/30 transition-all">
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-[15px]">{d.customer_name || "Unnamed inquiry"}</div>
+                <div className="text-[12px] text-slate-500">
+                  {[d.event_type, d.event_date ? fmtDate(d.event_date) : null, d.guest_count ? `${d.guest_count} guests` : null].filter(Boolean).join(" · ") || "Just started"}
+                </div>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <div className="h-1 w-24 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-gold rounded-full" style={{ width: `${pct(d)}%` }} />
+                  </div>
+                  <span className="text-[10px] text-slate-400">{pct(d)}% · {ago(d.updated_at)}</span>
+                </div>
+              </div>
+              <button className="btn-primary !py-1.5 !px-3.5 text-xs shrink-0" onClick={() => onPick(d)}>Continue</button>
+              <button className="text-[11px] text-slate-300 hover:text-red-500 underline shrink-0"
+                onClick={() => { if (confirm(`Discard "${d.customer_name || "this inquiry"}"?`)) onDiscard(d); }}>Discard</button>
+            </div>
+          ))}
+        </div>
+        <button className="btn-ghost mt-4 text-sm" onClick={onNew}>＋ Start a new inquiry instead</button>
+      </div>
     </div>
   );
 }
