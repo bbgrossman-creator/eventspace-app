@@ -127,6 +127,7 @@ export default function NewInquiry() {
       .then(({ data }) => setStaff((data ?? []) as { id: string; name: string }[]));
   }, []);
   const [saving, setSaving] = useState(false);
+  const [conflictAck, setConflictAck] = useState(false);
   const [err, setErr] = useState("");
   const [guides, setGuides] = useState<PackageGuide[]>([]);
   const [openGuide, setOpenGuide] = useState<string | null>(null);
@@ -193,6 +194,33 @@ export default function NewInquiry() {
   const chosenRoom = rooms.find((r) => r.id === roomId);
   const roomFits = chosenRoom?.guest_capacity && estGuests
     ? Number(estGuests) <= chosenRoom.guest_capacity : null;
+
+  // The confirmed booking we clash with (for the alert + summary).
+  const clashBooking = conflicts.find((c) =>
+    !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status)) ?? conflicts[0] ?? null;
+
+  // Best alternative start — the latest a shorter service can begin and still
+  // clear the earliest conflicting event. Reuses the panel's fit-before math.
+  const bestAlt = (() => {
+    if (!pol || conflicts.length === 0) return null;
+    const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const earliest = conflicts
+      .map((c) => (c.event_time ? toMin(c.event_time) : null))
+      .filter((x): x is number => x !== null)
+      .sort((a, b) => a - b)[0];
+    if (earliest == null) return null;
+    const changeMin = changeoverMinutes(pol);
+    const candidates = [1, 1.5, 2, pol.service_hours].filter((v, i, a) => a.indexOf(v) === i && v <= pol.service_hours);
+    for (const svc of candidates) {
+      const latest = Math.floor((earliest - changeMin - svc * 60) / 30) * 30;
+      if (latest > 0) {
+        let h = Math.floor(latest / 60), m = latest % 60;
+        const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12;
+        return { label: `${h}:${String(m).padStart(2, "0")} ${ap}`, svc, minutes: latest };
+      }
+    }
+    return null;
+  })();
   // Smooth-scroll to a panel and pulse it so the eye lands there.
   function jumpTo(id: string) {
     const el = document.getElementById(id);
@@ -639,8 +667,8 @@ export default function NewInquiry() {
             setChooser((prev) => prev ? prev.filter((x) => x.id !== d.id) : prev);
           }} />
       ) : (
-      <div className="flex gap-6 items-start">
-      <div className="flex-1 min-w-0">
+      <div className="flex gap-6 items-start justify-center xl:justify-start">
+      <div className="flex-1 min-w-0 max-w-[760px]">
 
       <div className="space-y-4">
         {/* Sticky alert strip: severity-tiered, stays visible while the issue
@@ -654,7 +682,9 @@ export default function NewInquiry() {
                   ? "bg-red-600 text-white"
                   : "bg-sky-50 text-sky-900 ring-1 ring-sky-200"
               }`}>
-                <span>{confirmedClash ? "⚠️ Booking conflict detected — clashes a confirmed booking" : "ℹ️ Scheduling note — this time overlaps an unconfirmed hold"}</span>
+                <span>{confirmedClash
+                  ? `⚠️ Confirmed booking exists${clashBooking?.event_time ? ` at ${fmtTime(clashBooking.event_time)}` : ""}`
+                  : "ℹ️ Overlaps an unconfirmed hold"}</span>
                 <button type="button" onClick={() => jumpTo("conflict-panel")}
                   className={`text-xs underline underline-offset-2 whitespace-nowrap ${confirmedClash ? "text-white/90 hover:text-white" : "text-sky-700 hover:text-sky-900"}`}>
                   Review details ↓
@@ -851,6 +881,18 @@ export default function NewInquiry() {
           ) : (
             <div id="conflict-panel" className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
               <p className="font-bold mb-1">⚠️ Time conflict on this date</p>
+              {clashBooking && (
+                <div className="rounded-lg bg-white ring-1 ring-red-200 p-3 mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] text-slate-700">
+                  <div className="col-span-2 text-[10px] font-bold uppercase tracking-wider text-red-500 mb-0.5">Conflict Summary</div>
+                  {chosenRoom && <><span className="text-slate-400">Room</span><span className="font-medium text-right">{chosenRoom.name}</span></>}
+                  <span className="text-slate-400">Existing booking</span><span className="font-medium text-right truncate">{clashBooking.contact_name ?? "—"}</span>
+                  {clashBooking.event_time && <><span className="text-slate-400">Their time</span><span className="font-medium text-right">{fmtTime(clashBooking.event_time)}</span></>}
+                  {f.event_time && <><span className="text-slate-400">You requested</span><span className="font-medium text-right">{fmtTime(f.event_time)}</span></>}
+                  <span className="text-slate-400">Status</span>
+                  <span className={`font-medium text-right ${confirmedClash ? "text-red-600" : "text-amber-600"}`}>{confirmedClash ? "Confirmed" : "Unconfirmed hold"}</span>
+                  {bestAlt && <><span className="text-slate-400">Resolution</span><span className="font-medium text-right text-emerald-700">Start by {bestAlt.label}</span></>}
+                </div>
+              )}
               {conflicts.map((c) => {
                 const isBooked = !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status);
                 return (
@@ -979,11 +1021,17 @@ export default function NewInquiry() {
             see the room (outlined), or just staying in touch (text). The first
             claims the date; the other two create an L-series lead. */}
         <div id="primary-ctas" className="card p-5 space-y-4">
+        {confirmedClash && (
+          <label className="flex items-start gap-2 rounded-xl bg-red-50 ring-1 ring-red-200 px-3.5 py-2.5 text-[13px] font-medium text-red-800 cursor-pointer reveal">
+            <input type="checkbox" className="mt-0.5 accent-red-600" checked={conflictAck} onChange={(e) => setConflictAck(e.target.checked)} />
+            I reviewed the conflict and still want to reserve this date.
+          </label>
+        )}
         <div className="flex gap-3 pt-1 flex-wrap items-center">
-          <button onClick={createBooking} disabled={saving || locMode === "none"}
-            title={locMode === "none" ? "No bookable locations — configure Locations & Capacity first" : undefined}
+          <button onClick={createBooking} disabled={saving || locMode === "none" || (confirmedClash && !conflictAck)}
+            title={confirmedClash && !conflictAck ? "Acknowledge the conflict above to reserve" : locMode === "none" ? "No bookable locations — configure Locations & Capacity first" : undefined}
             className="btn-primary flex-1 min-w-[180px] disabled:opacity-50">
-            {saving ? "Working…" : conflicts.length > 0 ? "Reserve Date — Conflict (review)" : "Reserve Date (24-Hour Hold)"}
+            {saving ? "Working…" : confirmedClash ? "Reserve Over Conflict" : conflicts.length > 0 ? "Reserve Date (review options)" : "Reserve Date (24-Hour Hold)"}
           </button>
           <button onClick={() => setShowWalkthrough((v) => !v)} disabled={saving}
             className="flex-1 min-w-[180px] rounded-xl border-2 border-navy text-navy font-semibold py-2.5 px-4 hover:bg-navy/5 transition-colors">
@@ -1109,11 +1157,20 @@ export default function NewInquiry() {
                     <span className="text-white/50">Est. revenue</span> <b className="font-display">~${estimate.full_service.toLocaleString()}</b>
                   </div>
                 )}
-                <div className="pt-2">
-                  <div className="h-1.5 rounded-full bg-white/15 overflow-hidden">
-                    <div className="h-full rounded-full bg-gold transition-all duration-500" style={{ width: `${progress}%` }} />
+                <div className="pt-2.5 border-t border-white/10 mt-1">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                    {([["Contact", secDone.contact], ["Date", secDone.event],
+                       ["Venue", secDone.venue], ["Guests", secDone.guests],
+                       ["Notes", secDone.notes]] as [string, boolean][]).map(([label, ok]) => (
+                      <div key={label} className="flex items-center gap-1.5">
+                        <span className={ok ? "text-emerald-400" : "text-white/25"}>{ok ? "✓" : "○"}</span>
+                        <span className={ok ? "text-white/80" : "text-white/40"}>{label}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-[10px] text-white/40 mt-1">{progress}% complete</div>
+                  <div className="text-[10px] text-white/40 mt-1.5">
+                    {[secDone.contact, secDone.event, secDone.venue, secDone.guests, secDone.notes].filter(Boolean).length} of 5 complete
+                  </div>
                 </div>
               </div>
             )}
@@ -1123,7 +1180,8 @@ export default function NewInquiry() {
           <div className={`rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 ${!f.event_date ? "bg-white ring-[#E6EAF2]" : conflicts.length === 0 ? "bg-[#F0FAF4] ring-emerald-200" : confirmedClash ? "bg-red-50 ring-red-200" : "bg-amber-50 ring-amber-200"}`}>
             <div className="flex items-center justify-between mb-1.5">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Availability</div>
-              <Link href="/calendar" className="text-[11px] text-navy hover:underline font-medium">View Calendar</Link>
+              <Link href={`/calendar?ret=inquiry${draftId ? `&draft=${draftId}` : ""}${f.event_date ? `&date=${f.event_date}` : ""}`}
+                className="text-[11px] text-navy hover:underline font-medium">View Calendar →</Link>
             </div>
             {!f.event_date ? (
               <p className="text-[13px] text-slate-400">Pick a date and the calendar answers instantly.</p>
@@ -1132,14 +1190,24 @@ export default function NewInquiry() {
                 {conflicts.length === 0 ? (
                   <p className="text-[15px] font-semibold text-emerald-700">✓ Available</p>
                 ) : confirmedClash ? (
-                  <button className="text-left" onClick={() => jumpTo("conflict-panel")}>
-                    <p className="text-[15px] font-semibold text-red-700">⛔ Unavailable</p>
-                    <p className="text-[11px] text-red-500 underline">Clashes a confirmed booking — review</p>
+                  <button className="text-left w-full" onClick={() => jumpTo("conflict-panel")}>
+                    <p className="text-[15px] font-semibold text-red-700">❌ Room occupied</p>
+                    {clashBooking?.event_time && (
+                      <p className="text-[12px] text-red-600 mt-0.5">Confirmed booking · {fmtTime(clashBooking.event_time)}</p>
+                    )}
+                    <p className="text-[11px] text-red-500 underline mt-0.5">Review the conflict</p>
                   </button>
                 ) : (
-                  <button className="text-left" onClick={() => jumpTo("conflict-panel")}>
+                  <button className="text-left w-full" onClick={() => jumpTo("conflict-panel")}>
                     <p className="text-[15px] font-semibold text-amber-700">⚠️ Possible conflict</p>
                     <p className="text-[11px] text-amber-600 underline">Unconfirmed hold — review options</p>
+                  </button>
+                )}
+                {bestAlt && (
+                  <button className="w-full text-left rounded-lg bg-white/70 ring-1 ring-black/5 px-2.5 py-1.5 hover:ring-navy/30 transition-all"
+                    onClick={() => { set("expected_hours", String(bestAlt.svc)); set("event_time", `${String(Math.floor(bestAlt.minutes / 60)).padStart(2, "0")}:${String(bestAlt.minutes % 60).padStart(2, "0")}`); }}>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wide">Best alternative</div>
+                    <div className="text-[13px] font-semibold text-navy">{bestAlt.label} <span className="font-normal text-slate-400">· {bestAlt.svc}-hr service — use it</span></div>
                   </button>
                 )}
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] pt-1 border-t border-black/5">

@@ -65,15 +65,26 @@ export default function Calendar() {
   const router = useRouter();
   const [view, setView] = useState<"week" | "month">("week");
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
-  // Deep link: /calendar?week=YYYY-MM-DD opens the week containing that date
-  // (chip navigation from task due dates).
+  const [highlightDate, setHighlightDate] = useState<string | null>(null);
+  const [returnDraft, setReturnDraft] = useState<string | null>(null);
+  // Deep links:
+  //   ?week=YYYY-MM-DD  → week view on that week (task-chip navigation)
+  //   ?date=YYYY-MM-DD  → MONTH view on that month, day highlighted (inquiry)
+  //   ?ret=inquiry[&draft=ID] → show "← Back to Inquiry" contextual button
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const w = new URLSearchParams(window.location.search).get("week");
-    if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) {
+    const p = new URLSearchParams(window.location.search);
+    const w = p.get("week");
+    const d = p.get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      setView("month");
+      setAnchor(startOfMonth(parseLocalDate(d)));
+      setHighlightDate(d);
+    } else if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) {
       setView("week");
       setAnchor(startOfWeek(parseLocalDate(w)));
     }
+    if (p.get("ret") === "inquiry") setReturnDraft(p.get("draft") || "");
   }, []);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [filter, setFilter] = useState<"both" | "events" | "calls" | "other">("both");
@@ -228,6 +239,17 @@ export default function Calendar() {
 
   return (
     <div>
+      {returnDraft !== null && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-navy text-white px-4 py-2.5 reveal">
+          <span className="text-sm font-medium">
+            {highlightDate ? <>Checking availability for {fmtDate(highlightDate)}</> : "Checking availability"}
+          </span>
+          <a href={returnDraft ? `/bookings/new?draft=${returnDraft}` : "/bookings/new"}
+            className="text-sm font-semibold rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 transition-colors whitespace-nowrap">
+            ← Back to Inquiry
+          </a>
+        </div>
+      )}
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight">Calendar</h1>
@@ -272,7 +294,7 @@ export default function Calendar() {
       </header>
 
       {view === "week" ? <WeekView anchor={anchor} byDate={byDate} days={calDays} onCompleteTask={completeTask} roomsMap={roomsMap} /> : (
-        <MonthView anchor={anchor} byDate={byDate} onCompleteTask={completeTask}
+        <MonthView anchor={anchor} byDate={byDate} onCompleteTask={completeTask} highlightDate={highlightDate}
           onDayClick={(d) => { setView("week"); setAnchor(startOfWeek(d)); }} />
       )}
     </div>
@@ -482,9 +504,10 @@ function WeekView({ anchor, byDate, days, onCompleteTask, roomsMap }: { anchor: 
 }
 
 // ─── MONTH VIEW (compact grid, all 7 days, Fri/Sat dimmed) ───
-function MonthView({ anchor, byDate, onDayClick, onCompleteTask }: {
+function MonthView({ anchor, byDate, onDayClick, onCompleteTask, highlightDate }: {
   onCompleteTask: (id: string) => void;
   anchor: Date; byDate: Map<string, CalItem[]>; onDayClick: (d: Date) => void;
+  highlightDate: string | null;
 }) {
   const router = useRouter();
   const first = startOfMonth(anchor);
@@ -510,6 +533,7 @@ function MonthView({ anchor, byDate, onDayClick, onCompleteTask }: {
           const inMonth = d.getMonth() === monthIdx;
           const weekend = d.getDay() >= 5;
           const isToday = d.toDateString() === todayStr;
+          const isTarget = highlightDate === fmtISO(d);
           const list = byDate.get(fmtISO(d)) ?? [];
           const shown = list.slice(0, 3);
           const extra = list.length - shown.length;
@@ -519,7 +543,7 @@ function MonthView({ anchor, byDate, onDayClick, onCompleteTask }: {
               className={`min-h-[104px] rounded-lg border p-1.5 cursor-pointer transition-colors
                 ${inMonth ? "bg-white" : "bg-slate-50"} 
                 
-                ${isToday ? "border-gold border-2" : "border-slate-200 hover:border-navy"}`}>
+                ${isTarget ? "border-navy border-2 ring-2 ring-navy/20" : isToday ? "border-gold border-2" : "border-slate-200 hover:border-navy"}`}>
               <div className={`text-xs font-semibold mb-1 ${inMonth ? (isToday ? "text-gold" : "text-slate-600") : "text-slate-300"}`}>
                 {d.getDate()}
               </div>
