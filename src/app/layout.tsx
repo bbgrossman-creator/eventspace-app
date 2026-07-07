@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthGate>
           <div className="flex min-h-screen">
             <Sidebar />
-            <main className="flex-1 min-w-0 px-6 py-8 lg:px-10 max-w-[1200px]">{children}</main>
+            <main className="flex-1 min-w-0 px-6 py-8 lg:px-10 transition-[padding] duration-200">{children}</main>
           </div>
         </AuthGate>
       </body>

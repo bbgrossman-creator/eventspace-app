@@ -606,7 +606,7 @@ export default function NewInquiry() {
   );
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight transition-all">

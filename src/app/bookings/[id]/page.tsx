@@ -268,7 +268,7 @@ export default function BookingDetail() {
       </header>
 
     <div className="xl:flex xl:gap-6 xl:items-start">
-    <div className="flex-1 min-w-0 max-w-3xl">
+    <div className="flex-1 min-w-0 max-w-[1100px]">
 
 
       {/* Contact strip */}
