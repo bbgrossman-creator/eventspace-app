@@ -68,26 +68,29 @@ export default function Sidebar() {
 
   return (
     <aside className={`${collapsed ? "w-16" : "w-56"} shrink-0 bg-ink text-white flex flex-col sticky top-0 h-screen overflow-y-auto overflow-x-hidden transition-[width] duration-200`}>
-      {/* Brand — the logo is the branding; no text title, no tagline */}
-      <div className={`${collapsed ? "px-2" : "px-5"} pt-7 pb-6`}>
-        <div className="flex items-center justify-between gap-1">
+      {/* Brand — the logo is the focal point, centered and given room */}
+      <div className={`relative ${collapsed ? "px-2" : "px-5"}`}
+        style={{ minHeight: "96px", paddingTop: "24px", paddingBottom: "20px" }}>
+        <div className="flex items-center justify-center h-full">
           {!collapsed ? (
-            <img src={BRAND.horizontalDark} alt={BRAND.name}
-              className="h-8 w-auto object-contain"
-              onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; const sib = el.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
+            <>
+              <img src={BRAND.horizontalDark} alt={BRAND.name}
+                style={{ width: "180px", height: "auto", objectFit: "contain" }}
+                onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; const sib = el.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
+              {/* Wordmark fallback if the asset is missing */}
+              <div className="font-display text-lg font-bold tracking-tight" style={{ display: "none" }}>{BRAND.name}</div>
+            </>
           ) : (
             <img src={BRAND.iconDark} alt={BRAND.name}
-              className="h-7 w-7 object-contain mx-auto"
+              className="h-7 w-7 object-contain"
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
           )}
-          {/* Wordmark fallback (expanded only) if the asset is missing */}
-          {!collapsed && <div className="font-display text-lg font-bold tracking-tight" style={{ display: "none" }}>{BRAND.name}</div>}
-          <button onClick={toggleCollapsed} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={`text-slate-500 hover:text-white transition-colors rounded-md px-1.5 py-0.5 hover:bg-white/5 shrink-0 ${collapsed ? "mx-auto text-base mt-1" : "text-xs"}`}>
-            {collapsed ? "»" : "«"}
-          </button>
         </div>
-        {!collapsed && <div className="mt-6 border-t border-white/10" />}
+        {/* Collapse toggle — de-emphasized so it doesn't compete with the logo */}
+        <button onClick={toggleCollapsed} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className={`absolute top-2 ${collapsed ? "left-1/2 -translate-x-1/2" : "right-2"} text-slate-600 hover:text-slate-300 transition-colors rounded-md w-6 h-6 flex items-center justify-center text-[11px] hover:bg-white/5`}>
+          {collapsed ? "»" : "«"}
+        </button>
       </div>
 
       {/* Search — a utility, not navigation */}
