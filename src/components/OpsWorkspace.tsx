@@ -8,8 +8,9 @@ import { Booking, fmtTime, parseLocalDate } from "@/lib/workflow";
 interface TaskRow {
   id: string; title: string; due_date: string | null; due_time: string | null;
   done: boolean; booking_id?: string | null; invoice_num?: string | null;
-  assignee?: string | null; completed_at?: string | null;
+  assignee?: string | null; completed_at?: string | null; vendor_id?: string | null;
 }
+interface VendorRow { id: string; name: string; }
 interface UpdateRow { id: string; author: string | null; body: string; task_id: string | null; created_at: string; }
 interface StaffRow { id: string; name: string; }
 
@@ -115,6 +116,8 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
   const [taskEditor, setTaskEditor] = useState(false);
   const [tTitle, setTTitle] = useState(""); const [tWho, setTWho] = useState("");
   const [tDate, setTDate] = useState(""); const [tTime, setTTime] = useState("");
+  const [tVendor, setTVendor] = useState("");
+  const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [updateFor, setUpdateFor] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
@@ -124,6 +127,7 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
   const [editingTask, setEditingTask] = useState<string | null>(null); // inline edit row
   const [eTitle, setETitle] = useState(""); const [eWho, setEWho] = useState("");
   const [eDate, setEDate] = useState(""); const [eTime, setETime] = useState("");
+  const [eVendor, setEVendor] = useState("");
   const pendingRef = useRef<HTMLDivElement>(null);
   // The Task Log "expands" to receive the task: bring the pending entry into
   // view so the eye follows the task into history.
@@ -139,10 +143,11 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
     setDrafts((prev) => { const n = { ...prev }; delete n[id]; return n; });
 
   const load = useCallback(async () => {
-    const [k, u, st] = await Promise.all([
+    const [k, u, st, vn] = await Promise.all([
       supabase.from("tasks").select("*").eq("booking_id", b.id).order("due_date", { ascending: true, nullsFirst: false }),
       supabase.from("progress_updates").select("*").eq("booking_id", b.id).order("created_at", { ascending: true }),
       supabase.from("staff").select("id,name").eq("active", true).order("sort_order"),
+      supabase.from("vendors").select("id,name").eq("active", true).order("name"),
     ]);
     const e = k.error ?? u.error;
     if (e) { setErr(`Workspace couldn't load: ${e.message}${u.error ? " — run v119_ops.sql" : ""}${k.error?.message.includes("completed_at") ? " — run v122_worklog.sql" : ""}.`); return; }
@@ -150,6 +155,9 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
     setTasks((k.data ?? []) as TaskRow[]);
     setUpdates((u.data ?? []) as UpdateRow[]);
     setStaff((st.data ?? []) as StaffRow[]);
+    // Vendors are optional infrastructure — if the table isn't there yet, the
+    // feature simply stays hidden rather than breaking the whole workspace.
+    if (!vn.error) setVendors((vn.data ?? []) as VendorRow[]);
   }, [b.id]);
   useEffect(() => { load(); }, [load, refreshKey]);
 
@@ -159,9 +167,10 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
     const { error } = await supabase.from("tasks").insert({
       booking_id: b.id, invoice_num: b.invoice_num, title: tTitle.trim(),
       assignee: tWho || null, due_date: tDate || null, due_time: tTime || null, done: false,
+      vendor_id: tVendor || null,
     });
     if (error) { setErr(`Couldn't create task: ${error.message}`); return; }
-    setTTitle(""); setTWho(""); setTDate(""); setTTime(""); setTaskEditor(false); load();
+    setTTitle(""); setTWho(""); setTDate(""); setTTime(""); setTVendor(""); setTaskEditor(false); load();
   }
   // The checkbox resolves completion IMMEDIATELY — done + completed_at written
   // before anything is asked. The note composer then opens in the Task Log to
@@ -218,13 +227,13 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
   function startEdit(t: TaskRow) {
     setEditingTask(t.id); setMenuFor(null);
     setETitle(t.title); setEWho(t.assignee ?? "");
-    setEDate(t.due_date ?? ""); setETime(t.due_time ?? "");
+    setEDate(t.due_date ?? ""); setETime(t.due_time ?? ""); setEVendor(t.vendor_id ?? "");
   }
   async function saveEdit(t: TaskRow) {
     if (!eTitle.trim()) return;
     const { error } = await supabase.from("tasks").update({
       title: eTitle.trim(), assignee: eWho || null,
-      due_date: eDate || null, due_time: eTime || null,
+      due_date: eDate || null, due_time: eTime || null, vendor_id: eVendor || null,
     }).eq("id", t.id);
     if (error) { setErr(`Couldn't save changes: ${error.message}`); return; }
     setEditingTask(null); load();
@@ -240,6 +249,7 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
   /* ── derived ── */
   const threadFor = (taskId: string) => updates.filter((u) => u.task_id === taskId);
   const openTasks = tasks.filter((t) => !t.done);
+  const vendorName = (id: string | null | undefined) => id ? (vendors.find((v) => v.id === id)?.name ?? null) : null;
   // The just-completed task: already done, note composer still open on it.
   const completingTask = tasks.find((t) => t.id === completing && t.done) ?? null;
   const logTasks = tasks.filter((t) => t.done).slice().sort((a, z) => {
@@ -267,6 +277,12 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
                 <input type="date" className="field !py-1 !text-xs w-[7.5rem]" value={tDate} onChange={(e) => setTDate(e.target.value)} />
                 <input type="time" className="field !py-1 !text-xs w-[5.5rem]" value={tTime} onChange={(e) => setTTime(e.target.value)} />
               </div>
+              {vendors.length > 0 && (
+                <select className="field !py-1 !text-xs w-full" value={tVendor} onChange={(e) => setTVendor(e.target.value)}>
+                  <option value="">Vendor (optional)…</option>
+                  {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </select>
+              )}
               <div className="flex gap-2">
                 <button className="btn-primary !py-1 !px-3 text-xs" onClick={addTask}>Add</button>
                 <button className="text-xs text-slate-400 underline" onClick={() => setTaskEditor(false)}>cancel</button>
@@ -296,6 +312,12 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
                         <input type="date" className="field !py-1 !text-xs w-[7.5rem]" value={eDate} onChange={(e) => setEDate(e.target.value)} />
                         <input type="time" className="field !py-1 !text-xs w-[5.5rem]" value={eTime} onChange={(e) => setETime(e.target.value)} />
                       </div>
+                      {vendors.length > 0 && (
+                        <select className="field !py-1 !text-xs w-full" value={eVendor} onChange={(e) => setEVendor(e.target.value)}>
+                          <option value="">Vendor (optional)…</option>
+                          {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                        </select>
+                      )}
                       <div className="flex gap-2">
                         <button className="btn-primary !py-1 !px-3 text-xs" onClick={() => saveEdit(t)}>Save</button>
                         <button className="text-xs text-slate-400 underline" onClick={() => setEditingTask(null)}>cancel</button>
@@ -334,12 +356,15 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
                         )}
                       </div>
                       </div>
-                      {(t.assignee || due || th.length > 0) && (
+                      {(t.assignee || t.vendor_id || due || th.length > 0) && (
                         <div className="flex gap-1.5 flex-wrap mt-1">
                           {t.assignee && (
                             <Link href={`/?taskAssignee=${encodeURIComponent(t.assignee)}`} title={`See ${t.assignee}'s tasks on Daily Ops`}>
                               <Chip tone="bg-slate-100 text-slate-500 hover:bg-navy hover:text-white transition-colors cursor-pointer">{t.assignee}</Chip>
                             </Link>
+                          )}
+                          {t.vendor_id && vendorName(t.vendor_id) && (
+                            <Chip tone="bg-amber-50 text-amber-700" >🏷️ {vendorName(t.vendor_id)}</Chip>
                           )}
                           {due && (
                             <Link href={`/calendar?week=${t.due_date}`} title="See that week on the calendar">
@@ -456,9 +481,10 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
                   {th.map((u) => (
                     <div key={u.id} className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-wrap mt-0.5">{u.body}</div>
                   ))}
-                  {(who || when) && (
-                    <div className="flex gap-1.5 mt-1">
+                  {(who || when || t.vendor_id) && (
+                    <div className="flex gap-1.5 mt-1 flex-wrap">
                       {who && <Chip>{who}</Chip>}
+                      {t.vendor_id && vendorName(t.vendor_id) && <Chip tone="bg-amber-50 text-amber-700">🏷️ {vendorName(t.vendor_id)}</Chip>}
                       {when && <Chip>{stamp(when)}</Chip>}
                     </div>
                   )}

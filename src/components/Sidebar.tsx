@@ -34,6 +34,7 @@ const BACKOFFICE_GROUPS: { title: string; icon: string; items: { href: string; l
     items: [
       { href: "/policies", label: "Policies", icon: "⚙️" },
       { href: "/locations", label: "Locations & Capacity", icon: "🏛️" },
+      { href: "/vendors", label: "Vendors", icon: "🏷️" },
       { href: "/sop", label: "SOP / Playbook", icon: "📋" },
       { href: "/staff", label: "Staff & Approvals", icon: "🔑" },
     ],
