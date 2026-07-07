@@ -598,12 +598,13 @@ export default function NewInquiry() {
   }
 
   // Relationship Memory — rendered in the sidebar on xl, inline below it.
+  // Existing-customer history is context, not a warning: neutral styling.
   const renderRelationshipMemory = (withId: boolean) => (
     <>
         {dupes.length > 0 && (
-          <div id={withId ? "dupes-panel" : undefined} className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 text-sm text-amber-900">
+          <div id={withId ? "dupes-panel" : undefined} className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-700">
             {memory && (
-              <div className="rounded-lg bg-white ring-1 ring-amber-200 px-3.5 py-2.5 mb-2.5">
+              <div className="rounded-lg bg-white ring-1 ring-slate-200 px-3.5 py-2.5 mb-2.5">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <span className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">📇 Sales memory{memory.tier ? ` · ${memory.tier}` : ""}</span>
                   {household[0] && (
@@ -620,14 +621,14 @@ export default function NewInquiry() {
                 </div>
               </div>
             )}
-            <p className="font-bold mb-1">👥 This contact already has {dupes.length === 1 ? "a booking" : `${dupes.length} bookings`}</p>
+            <p className="font-semibold mb-1 text-slate-600">📋 {dupes.length === 1 ? "1 previous booking" : `${dupes.length} previous bookings`} on file</p>
             {dupes.slice(0, 4).map((d) => (
               <p key={d.id} className="text-xs">
                 • <Link href={`/bookings/${d.id}`} className="underline" target="_blank">#{d.invoice_num} {d.contact_name}</Link>
-                {" — "}{fmtDate(d.event_date)}{d.event_date === f.event_date ? " (SAME DATE — possible duplicate!)" : ""} · {stageFor(d.status).label}
+                {" — "}{fmtDate(d.event_date)}{d.event_date === f.event_date ? " (same date as this inquiry)" : ""} · {stageFor(d.status).label}
               </p>
             ))}
-            <p className="text-[11px] mt-1 text-amber-700">If this is the same request, open the existing booking instead of creating a double.</p>
+            <p className="text-[11px] mt-1 text-slate-400">If this is the same request, open the existing booking instead of creating a duplicate.</p>
           </div>
         )}
     </>
@@ -673,33 +674,23 @@ export default function NewInquiry() {
       <div className="space-y-4">
         {/* Sticky alert strip: severity-tiered, stays visible while the issue
             exists. Red = clashes a CONFIRMED booking · blue = soft scheduling
-            note (unconfirmed hold) · amber = duplicate customer. */}
-        {(conflicts.length > 0 || dupes.length > 0) && (
+            note (unconfirmed hold). Existing-customer context is NOT a warning —
+            it lives in the Relationship Memory panel on the right, not here. */}
+        {conflicts.length > 0 && (
           <div className="sticky top-2 z-30 space-y-1.5 -mx-2">
-            {conflicts.length > 0 && (
-              <div className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-lg ${
-                confirmedClash
-                  ? "bg-red-600 text-white"
-                  : "bg-sky-50 text-sky-900 ring-1 ring-sky-200"
-              }`}>
-                <span>{confirmedClash
-                  ? `⚠️ Confirmed booking exists${clashBooking?.event_time ? ` at ${fmtTime(clashBooking.event_time)}` : ""}`
-                  : "ℹ️ Overlaps an unconfirmed hold"}</span>
-                <button type="button" onClick={() => jumpTo("conflict-panel")}
-                  className={`text-xs underline underline-offset-2 whitespace-nowrap ${confirmedClash ? "text-white/90 hover:text-white" : "text-sky-700 hover:text-sky-900"}`}>
-                  Review details ↓
-                </button>
-              </div>
-            )}
-            {dupes.length > 0 && (
-              <div className="flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm font-semibold bg-amber-100 text-amber-900 ring-1 ring-amber-300 shadow-lg">
-                <span>👥 This contact already has {dupes.length === 1 ? "a booking" : "bookings"} on file</span>
-                <button type="button" onClick={() => jumpTo("dupes-panel")}
-                  className="text-xs underline underline-offset-2 text-amber-800 hover:text-amber-950 whitespace-nowrap">
-                  Review details ↓
-                </button>
-              </div>
-            )}
+            <div className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-lg ${
+              confirmedClash
+                ? "bg-red-600 text-white"
+                : "bg-sky-50 text-sky-900 ring-1 ring-sky-200"
+            }`}>
+              <span>{confirmedClash
+                ? `⚠️ Confirmed booking exists${clashBooking?.event_time ? ` at ${fmtTime(clashBooking.event_time)}` : ""}`
+                : "ℹ️ Overlaps an unconfirmed hold"}</span>
+              <button type="button" onClick={() => jumpTo("conflict-panel")}
+                className={`text-xs underline underline-offset-2 whitespace-nowrap ${confirmedClash ? "text-white/90 hover:text-white" : "text-sky-700 hover:text-sky-900"}`}>
+                Review details ↓
+              </button>
+            </div>
           </div>
         )}
         {/* 1 — Customer */}
@@ -1132,7 +1123,7 @@ export default function NewInquiry() {
         <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto pr-1 space-y-3">
 
           {/* Inquiry Snapshot — assembles live as the rep types */}
-          <div className="rounded-2xl p-4 text-white shadow-[0_8px_24px_rgba(16,42,67,0.28)]" style={{ background: "#102A43" }}>
+          <div className="rounded-2xl p-4 text-white shadow-[0_8px_24px_rgba(16,42,67,0.22)]" style={{ background: "var(--surface-navy)" }}>
             <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-2">Inquiry Snapshot</div>
             {!hasContent ? (
               <p className="text-[13px] text-white/50 leading-relaxed">Start the conversation — the summary builds itself as you type.</p>
@@ -1251,7 +1242,14 @@ export default function NewInquiry() {
           {memory ? (
             <div className="rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 bg-[#F4F7FC] ring-[#D6E2F2]">
               <div className="text-[10px] font-bold uppercase tracking-wider text-[#3D6488] mb-1.5">Relationship Memory</div>
-              {memory.tier && <div className="text-[15px] font-display font-bold text-navy leading-tight">★ {memory.tier}</div>}
+              {memory.tier ? (
+                <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 mb-1.5 bg-gold/15 ring-1 ring-gold/40">
+                  <span className="text-[13px] leading-none">★</span>
+                  <span className="text-[12px] font-bold text-[#8A6712] tracking-wide">{memory.tier}</span>
+                </div>
+              ) : (
+                <div className="text-[13px] font-display font-bold text-navy leading-tight mb-1">Existing customer</div>
+              )}
               <div className="text-[12px] text-slate-500 mb-2">
                 {memory.since ? `Customer since ${memory.since}` : "Returning customer"}
               </div>
@@ -1268,8 +1266,8 @@ export default function NewInquiry() {
                   className="inline-block text-[11px] text-navy hover:underline font-medium mt-2">View customer →</a>
               )}
               {dupes.length > 0 && (
-                <button className="block text-[11px] text-amber-600 hover:underline mt-1" onClick={() => jumpTo("dupes-panel")}>
-                  ⚠️ Possible duplicate — review
+                <button className="block text-[11px] text-slate-500 hover:text-navy hover:underline mt-1" onClick={() => jumpTo("dupes-panel")}>
+                  {dupes.length === 1 ? "1 previous booking" : `${dupes.length} previous bookings`} on file →
                 </button>
               )}
             </div>

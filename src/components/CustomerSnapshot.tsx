@@ -54,7 +54,7 @@ export default function CustomerSnapshot({ b }: { b: Booking }) {
   );
 
   return (
-    <section className="rounded-2xl bg-ink text-white px-5 py-4 mb-5 shadow-lg">
+    <section className="rounded-2xl bg-surface-navy text-white px-5 py-4 mb-5 shadow-lg">
       <div className="text-[9px] font-bold tracking-[0.18em] text-white/30 uppercase mb-1">Customer Snapshot</div>
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <div className="font-display font-bold text-base">{b.contact_name}</div>
