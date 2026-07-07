@@ -1180,7 +1180,7 @@ export default function NewInquiry() {
           <div className={`rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 ${!f.event_date ? "bg-white ring-[#E6EAF2]" : conflicts.length === 0 ? "bg-[#F0FAF4] ring-emerald-200" : confirmedClash ? "bg-red-50 ring-red-200" : "bg-amber-50 ring-amber-200"}`}>
             <div className="flex items-center justify-between mb-1.5">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Availability</div>
-              <Link href={`/calendar?ret=inquiry${draftId ? `&draft=${draftId}` : ""}${f.event_date ? `&date=${f.event_date}` : ""}`}
+              <Link href={`/calendar?ret=inquiry${draftId ? `&draft=${draftId}` : ""}${f.event_date ? `&date=${f.event_date}` : ""}${f.event_type ? `&etype=${encodeURIComponent(f.event_type)}` : ""}${f.event_time ? `&etime=${encodeURIComponent(f.event_time)}` : ""}${estGuests ? `&eguests=${encodeURIComponent(estGuests)}` : ""}${locType === "on_prem" && chosenRoom ? `&eroom=${encodeURIComponent(chosenRoom.name)}` : ""}`}
                 className="text-[11px] text-navy hover:underline font-medium">View Calendar →</Link>
             </div>
             {!f.event_date ? (

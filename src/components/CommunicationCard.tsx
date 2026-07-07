@@ -34,20 +34,21 @@ interface Entry {
 }
 interface StaffLite { id: string; name: string; }
 
-const CHANNELS: { value: string; label: string; icon: string }[] = [
-  { value: "call",      label: "Call",      icon: "☎" },
-  { value: "email",     label: "Email",     icon: "📧" },
-  { value: "text",      label: "Text",      icon: "💬" },
-  { value: "whatsapp",  label: "WhatsApp",  icon: "🟢" },
-  { value: "in_person", label: "In person", icon: "🤝" },
+const CHANNELS: { value: string; label: string; icon: string; tpKind?: string }[] = [
+  { value: "call",       label: "Call",       icon: "☎" },
+  { value: "email",      label: "Email",      icon: "✉" },
+  { value: "text",       label: "Text",       icon: "💬" },
+  { value: "whatsapp",   label: "WhatsApp",   icon: "💬" },
+  { value: "in_person",  label: "In person",  icon: "🤝" },
+  { value: "walkthrough", label: "Walkthrough", icon: "🚶", tpKind: "walkthrough" },
+  { value: "contract",   label: "Contract",   icon: "📄", tpKind: "contract" },
+  { value: "site_visit", label: "Site visit", icon: "📷", tpKind: "walkthrough" },
 ];
+const tpKindFor = (channel: string) => CHANNELS.find((c) => c.value === channel)?.tpKind ?? null;
 const chIcon = (c: string) => CHANNELS.find((x) => x.value === c)?.icon ?? "•";
-const CH_TILE: Record<string, string> = {
-  call: "bg-[#E4EEF6] text-[#3D6488]", email: "bg-[#EEE8F7] text-[#6B4E9E]",
-  text: "bg-[#E4F0E9] text-[#3F7355]", whatsapp: "bg-[#E1F1E4] text-[#2F7D45]",
-  in_person: "bg-[#F5EBDD] text-[#8A6534]", portal: "bg-[#E7EBF3] text-[#4A5578]",
-};
-const chTile = (c: string) => CH_TILE[c] ?? "bg-slate-100 text-slate-500";
+// Communication is one soft-purple family — it reads as "conversation" at a
+// glance without competing with the status colors elsewhere on the page.
+const chTile = (_c: string) => "bg-[#F1EBFB] text-[#7A5BC2]";
 // "did the customer hear it or say it?" → a plain-language label per row.
 function dirLabel(channel: string, direction: string): string {
   const inbound = direction === "inbound" || direction === "inbound_customer";
@@ -131,17 +132,32 @@ export default function CommunicationCard({ b }: { b: Booking }) {
   }, []);
 
   async function log() {
-    if (!cBody.trim()) return;
-    const { error } = await supabase.from("communications").insert({
-      booking_id: b.id, invoice_num: b.invoice_num,
-      channel: cChannel, direction: cDir,
-      author: cWho || null, body: cBody.trim(),
-      customer_contact_value: cDir === "inbound" ? (b.phone || b.email || null) : null,
-      occurred_at: cWhen ? new Date(cWhen).toISOString() : new Date().toISOString(),
-      requires_follow_up: cDir === "inbound" && cFollow,
-      source: "manual",
-    });
-    if (error) { setErr(`Couldn't log it: ${error.message} — run v131_communication_followup.sql.`); return; }
+    if (!cBody.trim() && !tpKindFor(cChannel)) return;
+    const when = cWhen ? new Date(cWhen) : new Date();
+    const isFuture = when.getTime() > Date.now() + 60000; // >1min ahead = scheduled
+    const tpKind = tpKindFor(cChannel);
+
+    if (isFuture && tpKind) {
+      // Future scheduling → Touchpoint, so it surfaces in Upcoming Touchpoints.
+      const { error } = await supabase.from("touchpoints").insert({
+        booking_id: b.id, invoice_num: b.invoice_num, kind: tpKind,
+        scheduled_at: when.toISOString(), notes: cBody.trim() || null,
+        assignee: cWho || null,
+      });
+      if (error) { setErr(`Couldn't schedule it: ${error.message} — run the touchpoints SQL if the table is missing.`); return; }
+    } else {
+      // Now or past → Communication history.
+      const { error } = await supabase.from("communications").insert({
+        booking_id: b.id, invoice_num: b.invoice_num,
+        channel: cChannel, direction: cDir,
+        author: cWho || null, body: cBody.trim(),
+        customer_contact_value: cDir === "inbound" ? (b.phone || b.email || null) : null,
+        occurred_at: when.toISOString(),
+        requires_follow_up: cDir === "inbound" && cFollow,
+        source: "manual",
+      });
+      if (error) { setErr(`Couldn't log it: ${error.message} — run v131_communication_followup.sql.`); return; }
+    }
     setCBody(""); setCWhen(""); setCFollow(false); setComposer(false); load();
   }
 
@@ -180,34 +196,43 @@ export default function CommunicationCard({ b }: { b: Booking }) {
     <div className="rounded-2xl bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 ring-[#E6EAF2]">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="grid place-items-center w-6 h-6 rounded-lg text-[13px] shrink-0 bg-[#EAECF3] text-[#465069]">💬</span>
+          <span className="grid place-items-center w-6 h-6 rounded-lg text-[13px] shrink-0 bg-[#F1EBFB] text-[#7A5BC2]">💬</span>
           <h3 className="font-display font-semibold text-[15px] leading-none truncate">Communication</h3>
         </div>
-        <button className="text-xs font-medium text-slate-400 hover:text-navy transition-colors whitespace-nowrap shrink-0"
-          onClick={() => setComposer((v) => !v)}>＋ Log</button>
+        <button className="text-xs font-medium text-[#7A5BC2] hover:text-[#5B3F9E] transition-colors whitespace-nowrap shrink-0"
+          onClick={() => setComposer((v) => !v)}>＋ Log Communication</button>
       </div>
       {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-2.5 py-1.5 mb-2">{err}</p>}
 
-      {composer && (
-        <div className="rounded-lg bg-slate-50 p-2.5 mb-3 space-y-1.5 reveal">
+      {composer && (() => {
+        // Automatic routing preview: a future date on a schedulable channel
+        // becomes an Upcoming Touchpoint; anything else is logged history.
+        const willSchedule = !!tpKindFor(cChannel) && !!cWhen &&
+          new Date(cWhen).getTime() > Date.now() + 60000;
+        const isScheduleChannel = !!tpKindFor(cChannel);
+        return (
+        <div className="rounded-lg bg-[#F7F3FF] ring-1 ring-[#D8C7F5] p-2.5 mb-3 space-y-1.5 reveal">
           <div className="flex gap-1.5 flex-wrap">
             {CHANNELS.map((c) => (
               <button key={c.value}
                 className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${cChannel === c.value
-                  ? "bg-navy text-white border-navy" : "border-slate-200 text-slate-500 hover:bg-white"}`}
+                  ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
                 onClick={() => setCChannel(c.value)}>{c.icon} {c.label}</button>
             ))}
           </div>
-          <div className="flex gap-1.5">
-            <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "outbound"
-              ? "bg-navy text-white border-navy" : "border-slate-200 text-slate-500 hover:bg-white"}`}
-              onClick={() => setCDir("outbound")}>→ We reached out</button>
-            <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "inbound"
-              ? "bg-navy text-white border-navy" : "border-slate-200 text-slate-500 hover:bg-white"}`}
-              onClick={() => setCDir("inbound")}>← They contacted us</button>
-          </div>
+          {!isScheduleChannel && (
+            <div className="flex gap-1.5">
+              <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "outbound"
+                ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
+                onClick={() => setCDir("outbound")}>→ We reached out</button>
+              <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "inbound"
+                ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
+                onClick={() => setCDir("inbound")}>← They contacted us</button>
+            </div>
+          )}
           <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
-            placeholder="What was said?" value={cBody} onChange={(e) => setCBody(e.target.value)} />
+            placeholder={isScheduleChannel ? "Notes for this touchpoint…" : "What was said?"}
+            value={cBody} onChange={(e) => setCBody(e.target.value)} />
           <div className="flex gap-1.5 items-center flex-wrap">
             <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]"
               value={cWho} onChange={(e) => setCWho(e.target.value)}>
@@ -215,18 +240,26 @@ export default function CommunicationCard({ b }: { b: Booking }) {
               {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
             </select>
             <input type="datetime-local" className="field !py-1 !text-xs !bg-white w-[11.5rem]"
-              value={cWhen} onChange={(e) => setCWhen(e.target.value)} title="When (blank = now)" />
-            <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={log}>Save</button>
+              value={cWhen} onChange={(e) => setCWhen(e.target.value)}
+              title={isScheduleChannel ? "Future = schedule · past/now = log" : "When (blank = now)"} />
+            <button className="!py-1 !px-2.5 text-xs rounded-lg bg-[#7A5BC2] text-white font-semibold hover:bg-[#5B3F9E] transition-colors" onClick={log}>Save</button>
             <button className="text-xs text-slate-400 underline" onClick={() => setComposer(false)}>cancel</button>
           </div>
-          {cDir === "inbound" && (
+          {/* Routing confirmation — no surprise about where this lands. */}
+          <p className="text-[11px] font-medium text-[#7A5BC2]">
+            {willSchedule
+              ? "📅 Will schedule as upcoming touchpoint"
+              : "💬 Will save as communication history"}
+          </p>
+          {!isScheduleChannel && cDir === "inbound" && (
             <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer pt-0.5">
-              <input type="checkbox" className="accent-navy" checked={cFollow} onChange={(e) => setCFollow(e.target.checked)} />
+              <input type="checkbox" className="accent-[#7A5BC2]" checked={cFollow} onChange={(e) => setCFollow(e.target.checked)} />
               This needs follow-up
             </label>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {entries.length === 0 && !composer && (
         <div className="flex items-start gap-2.5 py-1">

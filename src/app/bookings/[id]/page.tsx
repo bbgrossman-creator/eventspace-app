@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase, logActivity } from "@/lib/supabase";
 import AddressAutocomplete, { PlaceValue } from "@/components/AddressAutocomplete";
@@ -1271,36 +1271,7 @@ function TouchpointsPanel({ b, onChange, onConvert, onMarkLost }: {
   onConvert?: () => void; onMarkLost?: () => void;
 }) {
   const [items, setItems] = useState<Touchpoint[]>([]);
-  const [adding, setAdding] = useState(false);
-  const [kind, setKind] = useState("walkthrough");
-  const [when, setWhen] = useState("");
-  const [notes, setNotes] = useState("");
-  const [tpErr, setTpErr] = useState("");
-  const [tpAssignee, setTpAssignee] = useState("");
-  const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
   const [leadNext, setLeadNext] = useState(false);
-  const addRowRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (adding) setTimeout(() => addRowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 40);
-  }, [adding]);
-  useEffect(() => {
-    supabase.from("staff").select("id,name").eq("active", true).order("sort_order")
-      .then(({ data }) => setStaff((data ?? []) as { id: string; name: string }[]));
-  }, []);
-
-  // Which touchpoint types make sense at this booking's stage:
-  // - tasting: only while the menu is still open (it's the menu's finalizer)
-  // - walkthrough / contract: only before the paid/complete phase
-  // - follow-up: always (including after completion — "book the next simcha")
-  const idx = stageFor(b.status).stageIndex;
-  const allowed = Object.keys(TP_META).filter((k) => {
-    if (k === "followup") return true;
-    if (b.status === "cancelled" || b.status === "lead_lost") return false;
-    if (k === "tasting") return !hasMenu(b) && idx <= 2;
-    return idx <= 5; // walkthrough, contract
-  });
-  const blocked = Object.keys(TP_META).filter((k) => !allowed.includes(k));
-  useEffect(() => { if (!allowed.includes(kind)) setKind(allowed[0] ?? "followup"); }, [allowed, kind]);
 
   const loadTp = useCallback(async () => {
     const { data } = await supabase.from("touchpoints").select("*")
@@ -1308,19 +1279,6 @@ function TouchpointsPanel({ b, onChange, onConvert, onMarkLost }: {
     setItems((data ?? []) as Touchpoint[]);
   }, [b.id]);
   useEffect(() => { loadTp(); }, [loadTp]);
-
-  async function add() {
-    setTpErr("");
-    const { error } = await supabase.from("touchpoints").insert({
-      booking_id: b.id, invoice_num: b.invoice_num, kind,
-      scheduled_at: when || null, notes: notes.trim() || null,
-      assignee: tpAssignee || null,
-    });
-    if (error) { setTpErr(`Couldn't save: ${error.message} — run the touchpoints SQL if the table is missing.`); return; }
-    await logActivity(b.id, b.invoice_num, `${TP_META[kind].label} Scheduled`,
-      when ? `Set for ${new Date(when).toLocaleString()}` : "Added (no time set yet)");
-    setAdding(false); setWhen(""); setNotes(""); loadTp();
-  }
 
   async function complete(t: Touchpoint) {
     await supabase.from("touchpoints").update({ status: "completed" }).eq("id", t.id);
@@ -1342,21 +1300,12 @@ function TouchpointsPanel({ b, onChange, onConvert, onMarkLost }: {
     loadTp();
   }
 
-  if (items.length === 0 && !adding) {
-    return (
-      <p className="mb-5 -mt-1">
-        <button className="inline-flex items-center gap-1 text-xs font-semibold text-navy bg-white hover:bg-navy/5 border border-navy/15 rounded-full px-3 py-1 transition-colors" onClick={() => setAdding(true)}>
-          ＋ Add Touchpoint <span className="font-normal text-slate-400">(walkthrough · tasting · contract · follow-up)</span>
-        </button>
-      </p>
-    );
-  }
+  if (items.length === 0) return null;
 
   return (
     <div className="card p-4 mb-5">
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-display font-bold text-sm">📌 Touchpoints</h3>
-        {!adding && <button className="text-xs text-navy underline" onClick={() => setAdding(true)}>＋ Add</button>}
       </div>
 
       {leadNext && (
@@ -1366,16 +1315,13 @@ function TouchpointsPanel({ b, onChange, onConvert, onMarkLost }: {
             {onConvert && (
               <button className="btn-primary !py-1 !px-3 !text-[11px]" onClick={() => { setLeadNext(false); onConvert(); }}>⏳ Create 24-Hour Hold</button>
             )}
-            <button className="text-[11px] font-semibold rounded-lg border border-navy/20 text-navy px-3 py-1 hover:bg-navy/5"
-              onClick={() => { setLeadNext(false); setKind("followup"); setAdding(true); }}>☎️ Schedule Follow-up</button>
-            <button className="text-[11px] font-semibold rounded-lg border border-navy/20 text-navy px-3 py-1 hover:bg-navy/5"
-              onClick={() => { setLeadNext(false); setKind("walkthrough"); setAdding(true); }}>🚶 Another Walkthrough</button>
             {onMarkLost && (
               <button className="text-[11px] font-semibold rounded-lg border border-red-200 text-red-600 px-3 py-1 hover:bg-red-50"
                 onClick={() => { setLeadNext(false); onMarkLost(); }}>🚫 Mark Lost</button>
             )}
             <button className="text-[11px] text-slate-500 underline px-2" onClick={() => setLeadNext(false)}>Leave as prospect</button>
           </div>
+          <p className="text-[10px] text-slate-500 mt-2">To schedule a follow-up or another walkthrough, use ＋ Log Communication in the right rail.</p>
         </div>
       )}
       {items.map((t) => (
@@ -1394,35 +1340,6 @@ function TouchpointsPanel({ b, onChange, onConvert, onMarkLost }: {
           </span>
         </div>
       ))}
-      {adding && (
-        <div ref={addRowRef} className="mt-3 grid sm:grid-cols-5 gap-2 items-end">
-          <div><label className="label">Type</label>
-            <select className="field" value={kind} onChange={(e) => setKind(e.target.value)}>
-              {allowed.map((k) => <option key={k} value={k}>{TP_META[k].icon} {TP_META[k].label}</option>)}
-            </select></div>
-          <div><label className="label">When</label>
-            <input className="field" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></div>
-          <div><label className="label">With</label>
-            <select className="field" value={tpAssignee} onChange={(e) => setTpAssignee(e.target.value)}>
-              <option value="">— Anyone —</option>
-              {staff.map((st) => <option key={st.id} value={st.name}>{st.name}</option>)}
-            </select></div>
-          <div><label className="label">Note</label>
-            <input className="field" value={notes} onChange={(e) => setNotes(e.target.value)}
-              placeholder={kind === "followup" ? "e.g. call back re: pricing" : "optional"} /></div>
-          <div className="flex gap-2">
-            <button className="btn-primary !py-2 !px-4 text-sm" onClick={add}>Add</button>
-            <button className="btn-ghost !py-2 !px-3 text-sm" onClick={() => setAdding(false)}>Cancel</button>
-          </div>
-          {tpErr && <p className="text-red-600 text-xs sm:col-span-5">{tpErr}</p>}
-          {blocked.length > 0 && (
-            <p className="text-[10px] text-slate-400 sm:col-span-5">
-              Not available at this stage: {blocked.map((k) => TP_META[k].label).join(", ")}
-              {blocked.includes("tasting") && hasMenu(b) ? " (menu already finalized)" : ""}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }
