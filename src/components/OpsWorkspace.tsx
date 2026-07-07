@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { sentenceCase } from "@/lib/format";
 import { Booking, fmtTime, parseLocalDate } from "@/lib/workflow";
 
 /* ── Row shapes ── */
@@ -268,6 +269,7 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
             <div className="rounded-lg bg-slate-50 p-2.5 mb-3 space-y-1.5 reveal">
               <input className="field w-full !py-1.5 text-sm" autoFocus placeholder="What needs doing?"
                 value={tTitle} onChange={(e) => setTTitle(e.target.value)}
+                onBlur={(e) => setTTitle(sentenceCase(e.target.value))}
                 onKeyDown={(e) => { if (e.key === "Enter") addTask(); }} />
               <div className="flex gap-1.5 flex-wrap">
                 <select className="field !py-1 !text-xs flex-1 min-w-[90px]" value={tWho} onChange={(e) => setTWho(e.target.value)}>

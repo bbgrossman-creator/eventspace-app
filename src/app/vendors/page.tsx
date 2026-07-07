@@ -6,14 +6,15 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { titleCase, formatEmail, formatPhone, formatAddress } from "@/lib/format";
 
 interface Vendor {
   id: string; name: string; category: string | null;
   contact_person: string | null; phone: string | null; email: string | null;
-  notes: string | null; active: boolean; sort_order: number;
+  address: string | null; notes: string | null; active: boolean; sort_order: number;
 }
 
-const BLANK = { name: "", category: "", contact_person: "", phone: "", email: "", notes: "" };
+const BLANK = { name: "", category: "", contact_person: "", phone: "", email: "", address: "", notes: "" };
 
 export default function VendorsAdmin() {
   const [rows, setRows] = useState<Vendor[]>([]);
@@ -38,7 +39,8 @@ export default function VendorsAdmin() {
     const { error } = await supabase.from("vendors").insert({
       name: form.name.trim(), category: form.category.trim() || null,
       contact_person: form.contact_person.trim() || null, phone: form.phone.trim() || null,
-      email: form.email.trim() || null, notes: form.notes.trim() || null, active: true,
+      email: form.email.trim() || null, address: form.address.trim() || null,
+      notes: form.notes.trim() || null, active: true,
     });
     if (error) { setErr(`Couldn't add vendor: ${error.message}`); return; }
     setForm({ ...BLANK }); setAdding(false); load();
@@ -47,7 +49,7 @@ export default function VendorsAdmin() {
     setEditing(v.id);
     setEForm({
       name: v.name, category: v.category ?? "", contact_person: v.contact_person ?? "",
-      phone: v.phone ?? "", email: v.email ?? "", notes: v.notes ?? "",
+      phone: v.phone ?? "", email: v.email ?? "", address: v.address ?? "", notes: v.notes ?? "",
     });
   }
   async function saveEdit(id: string) {
@@ -55,8 +57,8 @@ export default function VendorsAdmin() {
     const { error } = await supabase.from("vendors").update({
       name: eForm.name.trim(), category: eForm.category.trim() || null,
       contact_person: eForm.contact_person.trim() || null, phone: eForm.phone.trim() || null,
-      email: eForm.email.trim() || null, notes: eForm.notes.trim() || null,
-      updated_at: new Date().toISOString(),
+      email: eForm.email.trim() || null, address: eForm.address.trim() || null,
+      notes: eForm.notes.trim() || null, updated_at: new Date().toISOString(),
     }).eq("id", id);
     if (error) { setErr(`Couldn't save: ${error.message}`); return; }
     setEditing(null); load();
@@ -88,16 +90,18 @@ export default function VendorsAdmin() {
           <h2 className="font-display font-bold text-sm">New vendor</h2>
           <div className="grid sm:grid-cols-2 gap-3">
             <div><label className="label">Vendor name *</label>
-              <input className="field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Blooms & Petals" /></div>
+              <input className="field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} onBlur={(e) => setForm({ ...form, name: titleCase(e.target.value) })} placeholder="e.g. Blooms & Petals" /></div>
             <div><label className="label">Category / type</label>
               <input className="field" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="e.g. Florist, Rentals, Photography" /></div>
             <div><label className="label">Contact person</label>
-              <input className="field" value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
+              <input className="field" value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} onBlur={(e) => setForm({ ...form, contact_person: titleCase(e.target.value) })} /></div>
             <div><label className="label">Phone</label>
-              <input className="field" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+              <input className="field" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} onBlur={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })} /></div>
             <div><label className="label">Email</label>
-              <input className="field" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+              <input className="field" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} onBlur={(e) => setForm({ ...form, email: formatEmail(e.target.value) })} /></div>
           </div>
+          <div><label className="label">Address</label>
+            <input className="field" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} onBlur={(e) => setForm({ ...form, address: formatAddress(e.target.value) })} /></div>
           <div><label className="label">Notes</label>
             <textarea className="field" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           <div className="flex gap-2">
@@ -129,16 +133,18 @@ export default function VendorsAdmin() {
                 <div className="space-y-3">
                   <div className="grid sm:grid-cols-2 gap-3">
                     <div><label className="label">Vendor name *</label>
-                      <input className="field" value={eForm.name} onChange={(e) => setEForm({ ...eForm, name: e.target.value })} /></div>
+                      <input className="field" value={eForm.name} onChange={(e) => setEForm({ ...eForm, name: e.target.value })} onBlur={(e) => setEForm({ ...eForm, name: titleCase(e.target.value) })} /></div>
                     <div><label className="label">Category / type</label>
                       <input className="field" value={eForm.category} onChange={(e) => setEForm({ ...eForm, category: e.target.value })} /></div>
                     <div><label className="label">Contact person</label>
-                      <input className="field" value={eForm.contact_person} onChange={(e) => setEForm({ ...eForm, contact_person: e.target.value })} /></div>
+                      <input className="field" value={eForm.contact_person} onChange={(e) => setEForm({ ...eForm, contact_person: e.target.value })} onBlur={(e) => setEForm({ ...eForm, contact_person: titleCase(e.target.value) })} /></div>
                     <div><label className="label">Phone</label>
-                      <input className="field" value={eForm.phone} onChange={(e) => setEForm({ ...eForm, phone: e.target.value })} /></div>
+                      <input className="field" value={eForm.phone} onChange={(e) => setEForm({ ...eForm, phone: e.target.value })} onBlur={(e) => setEForm({ ...eForm, phone: formatPhone(e.target.value) })} /></div>
                     <div><label className="label">Email</label>
-                      <input className="field" type="email" value={eForm.email} onChange={(e) => setEForm({ ...eForm, email: e.target.value })} /></div>
+                      <input className="field" type="email" value={eForm.email} onChange={(e) => setEForm({ ...eForm, email: e.target.value })} onBlur={(e) => setEForm({ ...eForm, email: formatEmail(e.target.value) })} /></div>
                   </div>
+                  <div><label className="label">Address</label>
+                    <input className="field" value={eForm.address} onChange={(e) => setEForm({ ...eForm, address: e.target.value })} onBlur={(e) => setEForm({ ...eForm, address: formatAddress(e.target.value) })} /></div>
                   <div><label className="label">Notes</label>
                     <textarea className="field" rows={2} value={eForm.notes} onChange={(e) => setEForm({ ...eForm, notes: e.target.value })} /></div>
                   <div className="flex gap-2">
@@ -157,6 +163,7 @@ export default function VendorsAdmin() {
                     <div className="text-[13px] text-slate-500 mt-1 space-y-0.5">
                       {v.contact_person && <div>👤 {v.contact_person}</div>}
                       {(v.phone || v.email) && <div>{[v.phone, v.email].filter(Boolean).join(" · ")}</div>}
+                      {v.address && <div>📍 {v.address}</div>}
                       {v.notes && <div className="text-slate-400">{v.notes}</div>}
                     </div>
                   </div>

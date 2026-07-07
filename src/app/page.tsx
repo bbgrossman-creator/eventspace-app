@@ -54,9 +54,23 @@ export default function DailyOps() {
   if (err) return <p className="text-red-600">Couldn&apos;t load bookings: {err}. Check your .env.local Supabase keys.</p>;
   if (!tasks) return <p className="text-slate-500">Loading…</p>;
 
-  const urgent = tasks.filter((t) => t.priority === "HIGH");
-  const week = tasks.filter((t) => t.priority === "MEDIUM");
-  const later = tasks.filter((t) => t.priority === "LOW");
+  // Within each urgency band, order by the attached event's date/time so the
+  // soonest events surface first; tasks with no event date fall to the end.
+  // This preserves the existing HIGH/MEDIUM/LOW bands — it only orders within.
+  const byEvent = (a: Task, z: Task) => {
+    const ad = a.booking.event_date, zd = z.booking.event_date;
+    if (ad && zd) {
+      if (ad !== zd) return ad < zd ? -1 : 1;
+      const at = a.booking.event_time ?? "", zt = z.booking.event_time ?? "";
+      return at < zt ? -1 : at > zt ? 1 : 0;
+    }
+    if (ad && !zd) return -1;   // dated events before undated
+    if (!ad && zd) return 1;
+    return 0;
+  };
+  const urgent = tasks.filter((t) => t.priority === "HIGH").sort(byEvent);
+  const week = tasks.filter((t) => t.priority === "MEDIUM").sort(byEvent);
+  const later = tasks.filter((t) => t.priority === "LOW").sort(byEvent);
 
   // Tile counts are EVENT-date based (so they match the calendar), distinct from
   // the task-priority sections below.
