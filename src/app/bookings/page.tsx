@@ -2,10 +2,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { Booking, fmtDate, fmtTime, fmtMoney, menuBadge, stageFor, isHoldExpired } from "@/lib/workflow";
+import { Booking, fmtDate, fmtTime, fmtMoney, menuBadge, stageFor, isHoldExpired, eventHealth, HealthInput } from "@/lib/workflow";
 
 export default function BookingsList() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
+  const [health, setHealth] = useState<Record<string, HealthInput>>({});
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"active" | "all" | "completed" | "cancelled">("active");
   const [sortKey, setSortKey] = useState<"invoice_num" | "contact_name" | "event_date" | "total_with_tax" | "status">("event_date");
@@ -87,6 +88,7 @@ export default function BookingsList() {
             <thead>
               <tr className="bg-ink text-white text-left">
                 {([
+                  ["", "", "w-6"],
                   ["invoice_num", "Invoice", ""],
                   ["contact_name", "Contact", ""],
                   ["event_date", "Event date", ""],
@@ -104,8 +106,19 @@ export default function BookingsList() {
             <tbody>
               {shown.map((b) => {
                 const st = stageFor(isHoldExpired(b) ? "hold_expired" : b.status);
+                const active = b.status !== "completed" && b.status !== "cancelled" && b.status !== "lead_lost";
+                const hi = health[b.id];
+                const h = active && hi ? eventHealth(b, hi) : null;
+                const dot = h ? (h.tier === "healthy" ? "#10b981" : h.tier === "attention" ? "#f59e0b" : "#ef4444") : null;
                 return (
                   <tr key={b.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="pl-4 pr-0 py-3">
+                      {dot && (
+                        <span className="inline-block w-2.5 h-2.5 rounded-full align-middle"
+                          style={{ background: dot }}
+                          title={`${h!.tierLabel} · ${h!.score}/100${h!.missing.length ? " — " + h!.missing.join(", ") : ""}`} />
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <Link href={`/bookings/${b.id}`} className="font-display font-bold text-navy hover:underline">
                         #{b.invoice_num}
