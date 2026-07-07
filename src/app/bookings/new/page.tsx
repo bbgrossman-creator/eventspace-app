@@ -180,6 +180,19 @@ export default function NewInquiry() {
 
   const confirmedClash = conflicts.some((c) =>
     !["on_hold", "conflict", "waitlisted", "hold_expired"].includes(c.status));
+
+  // Same-day events (real: from the loaded bookings), for the "nearby" read.
+  const nearbyCount = f.event_date
+    ? all.filter((b) => b.event_date === f.event_date && !["cancelled", "lead", "lead_lost"].includes(b.status)).length
+    : 0;
+  // Day-capacity read as a plain-language label (real: capacity engine).
+  const capLabel = cap
+    ? (cap.used + cap.mine <= cap.total * 0.5 ? "Light" : cap.used + cap.mine <= cap.total * 0.85 ? "Moderate" : cap.over ? "Over capacity" : "Heavy")
+    : null;
+  // Room fit (real: room capacity vs estimate).
+  const chosenRoom = rooms.find((r) => r.id === roomId);
+  const roomFits = chosenRoom?.guest_capacity && estGuests
+    ? Number(estGuests) <= chosenRoom.guest_capacity : null;
   // Smooth-scroll to a panel and pulse it so the eye lands there.
   function jumpTo(id: string) {
     const el = document.getElementById(id);
@@ -223,6 +236,20 @@ export default function NewInquiry() {
   const memory = useMemo(
     () => computeCustomerStats(household, memCharges, [], roomsMapForMemory(rooms)),
     [household, memCharges, rooms]);
+
+  // The recommendation — deterministic, and it can justify itself.
+  const recommendation = (() => {
+    if (!f.event_date || !f.contact_name.trim()) return null;
+    if (confirmedClash) return { action: "Resolve the conflict first", tone: "warn", reasons: ["This time clashes a confirmed booking"] };
+    if (roomFits === false) return { action: "Confirm room or guest count", tone: "warn", reasons: [`${chosenRoom?.name} seats ${chosenRoom?.guest_capacity}, estimate is ${estGuests}`] };
+    const reasons: string[] = [];
+    if (conflicts.length === 0) reasons.push("No conflicts on this date");
+    if (roomFits) reasons.push(`${estGuests} fits ${chosenRoom?.name} comfortably`);
+    if (memory) reasons.push(`Returning customer · ${memory.events} prior event${memory.events === 1 ? "" : "s"}`);
+    else if (f.event_type && estGuests) reasons.push("Details are firm enough to hold");
+    if (reasons.length === 0) return null;
+    return { action: "Reserve the date", tone: "go", reasons };
+  })();
 
   function set(k: string, v: string) { setF((p) => ({ ...p, [k]: v })); }
 
@@ -582,8 +609,8 @@ export default function NewInquiry() {
     <div className="max-w-6xl">
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">
-            New Inquiry
+          <h1 className="font-display text-3xl font-bold tracking-tight transition-all">
+            {f.contact_name.trim() ? <>{f.contact_name.trim()} <span className="text-slate-300 font-normal">· Inquiry</span></> : "New Inquiry"}
             {draftNumber && <span className="ml-3 align-middle text-[11px] font-semibold tracking-wide rounded-full px-2.5 py-1 bg-slate-100 text-slate-500">DRAFT {draftNumber}</span>}
           </h1>
           <p className="text-sm text-slate-500 mt-1">Creates a 24-hour hold and assigns the next invoice number.</p>
@@ -646,7 +673,7 @@ export default function NewInquiry() {
           </div>
         )}
         {/* 1 — Customer */}
-        <IntakeCard icon="👤" title="Contact Information" done={secDone.contact}
+        <IntakeCard icon="👤" tile="bg-[#EEEBFB] text-[#6B4E9E]" title="Contact Information" done={secDone.contact}
           summary={`${f.contact_name}${f.phone ? ` · ${f.phone}` : f.email ? ` · ${f.email}` : ""}`}>
         <div className="grid sm:grid-cols-2 gap-4">
           <div><label className="label">Customer name *</label>
@@ -701,7 +728,7 @@ export default function NewInquiry() {
         </div>
         </IntakeCard>
 
-        <IntakeCard icon="📅" title="Event Details" done={secDone.event && secDone.venue && secDone.guests}
+        <IntakeCard icon="📅" tile="bg-[#E4EEF9] text-[#3D6488]" title="Event Details" done={secDone.event && secDone.venue && secDone.guests}
           summary={[f.event_type, f.event_date ? fmtDate(f.event_date) : "", estGuests ? `${estGuests} guests` : ""].filter(Boolean).join(" · ")}>
         <div className="grid sm:grid-cols-2 gap-4">
           <div><label className="label">Event type</label>
@@ -804,7 +831,7 @@ export default function NewInquiry() {
         </div>
         </IntakeCard>
 
-        <IntakeCard icon="📝" title="Additional Notes" done={secDone.notes}
+        <IntakeCard icon="📝" tile="bg-[#F5EEDD] text-[#8A6534]" title="Additional Notes" done={secDone.notes}
           summary={f.notes.length > 64 ? f.notes.slice(0, 61) + "…" : f.notes}>
           <textarea className="field" rows={3} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Anything worth remembering from the conversation…" />
         </IntakeCard>
@@ -1049,11 +1076,11 @@ export default function NewInquiry() {
 
       {/* ═══ The concierge sidebar: what do we know · can we book it ·
           what's it worth · who are they · what happens next ═══ */}
-      <aside className="hidden xl:block w-[320px] shrink-0">
+      <aside className="hidden xl:block w-[340px] shrink-0">
         <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto pr-1 space-y-3">
 
           {/* Inquiry Snapshot — assembles live as the rep types */}
-          <div className="rounded-2xl p-4 text-white shadow-[0_4px_18px_rgba(15,23,42,0.15)]" style={{ background: "#102A43" }}>
+          <div className="rounded-2xl p-4 text-white shadow-[0_8px_24px_rgba(16,42,67,0.28)]" style={{ background: "#102A43" }}>
             <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-2">Inquiry Snapshot</div>
             {!hasContent ? (
               <p className="text-[13px] text-white/50 leading-relaxed">Start the conversation — the summary builds itself as you type.</p>
@@ -1072,6 +1099,16 @@ export default function NewInquiry() {
                       ? (rooms.find((r) => r.id === roomId)?.name ?? null)
                       : (place?.formatted || locName || "Off-premise")].filter(Boolean).join(" · ") || " "}
                 </div>
+                {memory && memory.tier && (
+                  <div className="inline-flex items-center gap-1 rounded-full bg-gold/20 text-gold px-2 py-0.5 text-[11px] font-semibold mt-1 reveal">
+                    ★ {memory.tier}
+                  </div>
+                )}
+                {estimate && (
+                  <div className="text-[13px] text-white/90 pt-1">
+                    <span className="text-white/50">Est. revenue</span> <b className="font-display">~${estimate.full_service.toLocaleString()}</b>
+                  </div>
+                )}
                 <div className="pt-2">
                   <div className="h-1.5 rounded-full bg-white/15 overflow-hidden">
                     <div className="h-full rounded-full bg-gold transition-all duration-500" style={{ width: `${progress}%` }} />
@@ -1090,18 +1127,36 @@ export default function NewInquiry() {
             </div>
             {!f.event_date ? (
               <p className="text-[13px] text-slate-400">Pick a date and the calendar answers instantly.</p>
-            ) : conflicts.length === 0 ? (
-              <p className="text-[14px] font-semibold text-emerald-700">✅ Available</p>
-            ) : confirmedClash ? (
-              <button className="text-left" onClick={() => jumpTo("conflict-panel")}>
-                <p className="text-[14px] font-semibold text-red-700">⛔ Unavailable — confirmed booking</p>
-                <p className="text-[11px] text-red-500 underline">Review the conflict</p>
-              </button>
             ) : (
-              <button className="text-left" onClick={() => jumpTo("conflict-panel")}>
-                <p className="text-[14px] font-semibold text-amber-700">⚠️ Possible conflict — unconfirmed hold</p>
-                <p className="text-[11px] text-amber-600 underline">Review options</p>
-              </button>
+              <div className="space-y-2">
+                {conflicts.length === 0 ? (
+                  <p className="text-[15px] font-semibold text-emerald-700">✓ Available</p>
+                ) : confirmedClash ? (
+                  <button className="text-left" onClick={() => jumpTo("conflict-panel")}>
+                    <p className="text-[15px] font-semibold text-red-700">⛔ Unavailable</p>
+                    <p className="text-[11px] text-red-500 underline">Clashes a confirmed booking — review</p>
+                  </button>
+                ) : (
+                  <button className="text-left" onClick={() => jumpTo("conflict-panel")}>
+                    <p className="text-[15px] font-semibold text-amber-700">⚠️ Possible conflict</p>
+                    <p className="text-[11px] text-amber-600 underline">Unconfirmed hold — review options</p>
+                  </button>
+                )}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] pt-1 border-t border-black/5">
+                  {chosenRoom && (
+                    <><span className="text-slate-400">Room</span><span className="text-right font-medium text-slate-600">{chosenRoom.name}</span></>
+                  )}
+                  {capLabel && (
+                    <><span className="text-slate-400">Kitchen load</span>
+                      <span className={`text-right font-medium ${capLabel === "Over capacity" ? "text-red-600" : capLabel === "Heavy" ? "text-amber-600" : "text-slate-600"}`}>{capLabel}</span></>
+                  )}
+                  <><span className="text-slate-400">Nearby events</span><span className="text-right font-medium text-slate-600">{nearbyCount}</span></>
+                  {roomFits != null && (
+                    <><span className="text-slate-400">Room fit</span>
+                      <span className={`text-right font-medium ${roomFits ? "text-emerald-600" : "text-red-600"}`}>{roomFits ? "Comfortable" : "Tight"}</span></>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
@@ -1120,9 +1175,32 @@ export default function NewInquiry() {
             )}
           </div>
 
-          {/* Relationship Memory — the concierge whisper */}
-          {dupes.length > 0 ? (
-            <div>{renderRelationshipMemory(false)}</div>
+          {/* Relationship Memory — real household stats, the concierge whisper */}
+          {memory ? (
+            <div className="rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 bg-[#F4F7FC] ring-[#D6E2F2]">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[#3D6488] mb-1.5">Relationship Memory</div>
+              {memory.tier && <div className="text-[15px] font-display font-bold text-navy leading-tight">★ {memory.tier}</div>}
+              <div className="text-[12px] text-slate-500 mb-2">
+                {memory.since ? `Customer since ${memory.since}` : "Returning customer"}
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]">
+                <span className="text-slate-400">Events</span><span className="text-right font-medium">{memory.events}</span>
+                <span className="text-slate-400">Lifetime</span><span className="text-right font-medium">${memory.lifetime.toLocaleString()}</span>
+                {memory.avgGuests != null && (<><span className="text-slate-400">Avg guests</span><span className="text-right font-medium">{memory.avgGuests}</span></>)}
+                {memory.outstanding > 0 && (<><span className="text-slate-400">Open balance</span><span className="text-right font-medium text-amber-600">${memory.outstanding.toLocaleString()}</span></>)}
+                {memory.favMenu && (<><span className="text-slate-400">Favorite menu</span><span className="text-right font-medium truncate">{memory.favMenu}</span></>)}
+                {memory.favRoom && (<><span className="text-slate-400">Favorite room</span><span className="text-right font-medium truncate">{memory.favRoom}</span></>)}
+              </div>
+              {household[0] && (
+                <a href={`/customers/${household[0].id}`} target="_blank" rel="noopener"
+                  className="inline-block text-[11px] text-navy hover:underline font-medium mt-2">View customer →</a>
+              )}
+              {dupes.length > 0 && (
+                <button className="block text-[11px] text-amber-600 hover:underline mt-1" onClick={() => jumpTo("dupes-panel")}>
+                  ⚠️ Possible duplicate — review
+                </button>
+              )}
+            </div>
           ) : (
             <div className="rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 bg-white ring-[#E6EAF2]">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Relationship Memory</div>
@@ -1134,9 +1212,23 @@ export default function NewInquiry() {
             </div>
           )}
 
-          {/* Next Steps — functional where flows exist, honest guidance where not */}
+          {/* Next Steps — the software recommends, then lists alternatives */}
           <div className="rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 bg-white ring-[#E6EAF2]">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Next Steps</div>
+            {recommendation && (
+              <button className={`w-full text-left rounded-xl p-3 mb-2.5 ring-1 transition-all reveal ${recommendation.tone === "go" ? "bg-[#F0FAF4] ring-emerald-200 hover:ring-emerald-400" : "bg-amber-50 ring-amber-200 hover:ring-amber-400"}`}
+                onClick={() => jumpTo("primary-ctas")}>
+                <div className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${recommendation.tone === "go" ? "text-emerald-600" : "text-amber-600"}`}>★ Recommended</div>
+                <div className="font-display font-bold text-[15px] text-ink">{recommendation.action}</div>
+                <ul className="mt-1 space-y-0.5">
+                  {recommendation.reasons.map((r, i) => (
+                    <li key={i} className="text-[11px] text-slate-500 flex items-start gap-1">
+                      <span className={recommendation.tone === "go" ? "text-emerald-500" : "text-amber-500"}>·</span>{r}
+                    </li>
+                  ))}
+                </ul>
+              </button>
+            )}
             <div className="space-y-1.5 text-[13px]">
               <button className="flex items-center gap-2 w-full text-left group" onClick={() => jumpTo("primary-ctas")}>
                 <span className="text-slate-300">☐</span>
@@ -1228,8 +1320,8 @@ function EmailMenusPanel({ defaultEmail, contactName }: { defaultEmail: string; 
 
 /** Concierge intake card: expands while working, collapses to a one-line
  *  ✓ summary once complete. Top-level (never nested) so children keep focus. */
-function IntakeCard({ icon, title, done, summary, children }: {
-  icon: string; title: string; done: boolean; summary: string; children: React.ReactNode;
+function IntakeCard({ icon, tile, title, done, summary, children }: {
+  icon: string; tile: string; title: string; done: boolean; summary: string; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(true);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -1251,17 +1343,18 @@ function IntakeCard({ icon, title, done, summary, children }: {
         if (done && !e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
       }}>
       {open ? (
-        <div className="p-5 reveal">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="grid place-items-center w-7 h-7 rounded-lg bg-slate-100 text-[15px]">{icon}</span>
-            <h2 className="font-display font-semibold text-[17px]">{title}</h2>
+        <div className="px-5 py-4 reveal">
+          <div className="flex items-center gap-2.5 mb-3.5">
+            <span className={`grid place-items-center w-8 h-8 rounded-xl text-[15px] ${tile}`}>{icon}</span>
+            <h2 className="font-display font-semibold text-[16px]">{title}</h2>
             {done && <span className="text-emerald-500 text-sm">✓</span>}
           </div>
           {children}
         </div>
       ) : (
-        <button className="w-full flex items-center gap-2.5 p-4 text-left group" onClick={() => setOpen(true)}>
-          <span className="text-emerald-500 font-bold">✓</span>
+        <button className="w-full flex items-center gap-2.5 px-4 py-3 text-left group" onClick={() => setOpen(true)}>
+          <span className={`grid place-items-center w-6 h-6 rounded-lg text-[12px] ${tile}`}>{icon}</span>
+          <span className="text-emerald-500 font-bold text-xs">✓</span>
           <span className="font-display font-semibold text-[14px]">{title}</span>
           <span className="text-[13px] text-slate-500 truncate flex-1 min-w-0">{summary}</span>
           <span className="text-[12px] text-navy opacity-0 group-hover:opacity-100 transition-opacity font-medium shrink-0">Edit</span>
