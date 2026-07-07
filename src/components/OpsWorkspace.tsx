@@ -92,6 +92,8 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [updateFor, setUpdateFor] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [noteChannel, setNoteChannel] = useState<string>("internal"); // internal|call|email|text
+
   const [menuFor, setMenuFor] = useState<string | null>(null);         // open ⋯ menu
   const [editingTask, setEditingTask] = useState<string | null>(null); // inline edit row
   const [eTitle, setETitle] = useState(""); const [eWho, setEWho] = useState("");
@@ -151,13 +153,24 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
   async function saveNote(task: TaskRow) {
     const d = draftOf(task.id);
     if (d.body.trim()) {
-      const { error } = await supabase.from("progress_updates").insert({
-        booking_id: b.id, invoice_num: b.invoice_num, task_id: task.id,
-        author: d.who || task.assignee || null, body: d.body.trim(),
-      });
-      if (error) { setErr(`Couldn't save note: ${error.message}`); return; }
+      if (noteChannel === "internal") {
+        // Team-facing → Task Log, exactly as before.
+        const { error } = await supabase.from("progress_updates").insert({
+          booking_id: b.id, invoice_num: b.invoice_num, task_id: task.id,
+          author: d.who || task.assignee || null, body: d.body.trim(),
+        });
+        if (error) { setErr(`Couldn't save note: ${error.message}`); return; }
+      } else {
+        // Customer-facing → Communications, carrying the task reference.
+        const { error } = await supabase.from("communications").insert({
+          booking_id: b.id, invoice_num: b.invoice_num, task_id: task.id,
+          channel: noteChannel, direction: "outbound",
+          author: d.who || task.assignee || null, body: d.body.trim(), source: "manual",
+        });
+        if (error) { setErr(`Couldn't log communication: ${error.message} — run v129_communications.sql.`); return; }
+      }
     }
-    clearDraft(task.id); setCompleting(null); load();
+    clearDraft(task.id); setCompleting(null); setNoteChannel("internal"); load();
   }
   async function addUpdate(task: TaskRow) {
     const d = draftOf(task.id);
@@ -374,8 +387,21 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
                 <button className="text-[11px] text-slate-400 hover:text-navy underline" onClick={() => reopen(completingTask)}>Reopen</button>
               </div>
               <div className="text-[11px] font-semibold text-slate-500 mb-1">Add a note</div>
+              <div className="flex gap-1 flex-wrap mb-1.5">
+                {[
+                  { v: "internal", l: "Internal" }, { v: "call", l: "☎ Call" },
+                  { v: "email", l: "📧 Email" }, { v: "text", l: "💬 Text" },
+                ].map((c) => (
+                  <button key={c.v}
+                    className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${noteChannel === c.v
+                      ? "bg-navy text-white border-navy" : "border-slate-200 text-slate-500 hover:bg-white"}`}
+                    onClick={() => setNoteChannel(c.v)}>{c.l}</button>
+                ))}
+              </div>
               <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
-                placeholder="Anything to record? e.g. Gary said white roses unavailable — switched to ivory"
+                placeholder={noteChannel === "internal"
+                  ? "Anything to record? e.g. Gary said white roses unavailable — switched to ivory"
+                  : "What was said to the customer?"}
                 value={draftOf(completingTask.id).body}
                 onChange={(e) => patchDraft(completingTask.id, { body: e.target.value })} />
               <div className="flex gap-1.5 items-center flex-wrap mt-1.5">
