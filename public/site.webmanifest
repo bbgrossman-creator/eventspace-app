@@ -1,11 +1,11 @@
 {
-  "name": "Event Space by Burger Bar",
-  "short_name": "Event Space",
+  "name": "EventCore",
+  "short_name": "EventCore",
   "icons": [
     { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
   ],
-  "theme_color": "#1F4E79",
-  "background_color": "#16314F",
+  "theme_color": "#103A73",
+  "background_color": "#103A73",
   "display": "standalone"
 }
