@@ -17,14 +17,6 @@ body {
   @apply bg-paper text-ink font-body antialiased;
 }
 
-/* The signature element: workflow pipeline */
-.pipeline-stage {
-  @apply flex-1 text-center text-[11px] font-medium py-1.5 px-1 rounded-full transition-colors;
-}
-.pipeline-done    { @apply bg-emerald-100 text-emerald-800; }
-.pipeline-current { @apply bg-navy text-white shadow-md; }
-.pipeline-pending { @apply bg-slate-100 text-slate-400; }
-
 .btn         { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none; }
 .btn-primary { @apply btn bg-navy text-white hover:bg-navylight; }
 .btn-success { @apply btn bg-emerald-600 text-white hover:bg-emerald-500; }

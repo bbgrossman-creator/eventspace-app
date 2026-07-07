@@ -10,9 +10,10 @@ import {
 function fmtMoney(n: number): string { return "$" + Math.round(n).toLocaleString(); }
 
 /** The three-second relationship read: who is this customer to us?
- *  One clean card, fixed height — the full CRM lives one click away on the
- *  Customer Profile page. (Booking answers "how do I handle THIS event?";
- *  Customer answers "tell me everything about THIS person.") */
+ *  A compact ribbon, not a hero section — customer intelligence should always
+ *  be visible without pushing the actual workflow below the fold. The full
+ *  CRM lives one click away on the Customer Profile page. (Booking answers
+ *  "how do I handle THIS event?"; Customer answers "who is this person?") */
 export default function CustomerSnapshot({ b }: { b: Booking }) {
   const [all, setAll] = useState<Booking[]>([]);
   const [charges, setCharges] = useState<CustomerChargeRow[]>([]);
@@ -44,43 +45,45 @@ export default function CustomerSnapshot({ b }: { b: Booking }) {
   if (err) return <p className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 mb-5">⚠️ {err}</p>;
   if (!stats) return null;
 
-  // Three questions only: how valuable · have we worked together · what do
-  // they usually do. Identity + planning; operational hints live elsewhere.
-  const metric = (value: string, label: string, tone = "") => (
-    <span className="whitespace-nowrap">
-      <b className={`font-semibold ${tone}`}>{value}</b>
-      <span className="text-white/45 text-[11px]"> {label}</span>
-    </span>
+  // Value-over-label KPI treatment: these four numbers are the visual
+  // anchors of the card. Favorite menu/room and tier are secondary metadata.
+  const kpi = (value: string, label: string, tone = "text-white") => (
+    <div className="leading-none">
+      <div className={`font-display font-bold text-base ${tone}`}>{value}</div>
+      <div className="text-[9px] font-semibold tracking-wide text-white/40 uppercase mt-1">{label}</div>
+    </div>
   );
 
   return (
-    <section className="rounded-2xl bg-surface-navy text-white px-5 py-4 mb-5 shadow-lg">
-      <div className="text-[9px] font-bold tracking-[0.18em] text-white/30 uppercase mb-1">Customer Snapshot</div>
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <div className="font-display font-bold text-base">{b.contact_name}</div>
+    <section className="rounded-2xl bg-surface-navy text-white px-5 py-3.5 mb-5 shadow-lg">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-display font-bold text-[15px] truncate">{b.contact_name}</span>
+          {stats.tier && (
+            <span className="shrink-0 text-[10px] font-bold text-gold whitespace-nowrap">{stats.tier}</span>
+          )}
+        </div>
         <Link href={`/customers/${b.id}`}
-          className="text-[11px] font-semibold text-white/55 hover:text-white underline underline-offset-2 whitespace-nowrap">
+          className="shrink-0 text-[11px] font-semibold text-white/55 hover:text-white underline underline-offset-2 whitespace-nowrap">
           Open Customer Profile →
         </Link>
       </div>
-      <div className="text-[11px] text-white/50 mb-2.5">
-        {stats.tier ? <span className="text-gold font-semibold">{stats.tier}</span> : "Returning"}
-        {" • "}Customer since {stats.since ?? "—"}
-      </div>
 
-      <div className="flex gap-x-6 gap-y-1 flex-wrap text-sm">
-        {metric(String(stats.events), stats.events === 1 ? "event" : "events")}
-        {metric(fmtMoney(stats.lifetime), "lifetime")}
-        {metric(stats.outstanding > 0 ? fmtMoney(stats.outstanding) : "None", "outstanding",
-          stats.outstanding > 0 ? "text-red-300" : "text-emerald-300")}
-      </div>
-      {(stats.avgGuests != null || stats.favRoom || stats.favMenu) && (
-        <div className="flex gap-x-6 gap-y-1 flex-wrap text-sm mt-1">
-          {stats.avgGuests != null && metric(`${stats.avgGuests}`, "avg guests")}
-          {stats.favRoom && metric(stats.favRoom, "favorite room")}
-          {stats.favMenu && metric(stats.favMenu, "favorite menu")}
+      <div className="flex items-end justify-between gap-4 mt-2.5">
+        <div className="flex items-end gap-x-6">
+          {kpi(String(stats.events), stats.events === 1 ? "Event" : "Events")}
+          {kpi(fmtMoney(stats.lifetime), "Lifetime")}
+          {kpi(stats.outstanding > 0 ? fmtMoney(stats.outstanding) : "$0", "Outstanding",
+            stats.outstanding > 0 ? "text-red-300" : "text-emerald-300")}
+          {stats.avgGuests != null && kpi(String(stats.avgGuests), "Avg Guests")}
         </div>
-      )}
+
+        {(stats.favMenu || stats.favRoom) && (
+          <div className="hidden sm:block text-[11px] text-white/40 text-right shrink-0 leading-tight">
+            {[stats.favMenu, stats.favRoom].filter(Boolean).join(" · ")}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

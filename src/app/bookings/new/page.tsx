@@ -558,22 +558,19 @@ export default function NewInquiry() {
     if (d.last_autosaved) setLastSavedAt(new Date(d.last_autosaved));
   }
 
-  // Boot: ?draft=<id> opens that draft; one open draft auto-restores; several → chooser.
+  // Boot: ONLY ?draft=<id> opens an existing draft (i.e. "Continue" from the
+  // Inquiry Drafts list). Clicking "New Inquiry" itself never carries that
+  // param, so it always lands here blank — no auto-restore, no chooser.
+  // Any unfinished draft simply stays put in Inquiry Drafts for later.
   useEffect(() => {
     (async () => {
       const want = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("draft") : null;
+      if (!want) { bootRef.current = true; return; }
       const { data, error } = await supabase.from("inquiry_drafts").select("*")
-        .eq("status", "draft").order("updated_at", { ascending: false });
-      if (error) { bootRef.current = true; return; }   // table missing → behave like v132
-      const drafts = (data ?? []) as DraftRow[];
-      if (want) {
-        const d = drafts.find((x) => x.id === want);
-        if (d) { applyDraft(d); setRestoredToast(true); setTimeout(() => setRestoredToast(false), 3500); }
-      } else if (drafts.length === 1) {
-        applyDraft(drafts[0]); setRestoredToast(true); setTimeout(() => setRestoredToast(false), 3500);
-      } else if (drafts.length > 1) {
-        setChooser(drafts);
-      }
+        .eq("status", "draft").eq("id", want).maybeSingle();
+      if (error || !data) { bootRef.current = true; return; }   // table missing / draft gone → blank form
+      applyDraft(data as DraftRow);
+      setRestoredToast(true); setTimeout(() => setRestoredToast(false), 3500);
       setTimeout(() => { bootRef.current = true; }, 300);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps

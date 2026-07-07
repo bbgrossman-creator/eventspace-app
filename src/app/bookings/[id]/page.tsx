@@ -316,7 +316,7 @@ export default function BookingDetail() {
 
       {/* Pipeline + current status */}
       {stage.stageIndex >= 0 && (
-        <div className="card p-5 mb-5">
+        <div className="card p-5 pb-6 mb-5">
           <StatusPipeline currentStage={stage.stageIndex} onStageClick={(i) => {
             const target = STAGE_TO_STATUS[i];
             if (target === b.status) return;
@@ -332,7 +332,6 @@ export default function BookingDetail() {
               setStatus(target, `Moved to ${TIMELINE_MILESTONES[i]}`, forward ? "Advanced manually" : "Moved back manually");
             }
           }} />
-          <p className="text-[11px] text-slate-400 mt-2">Tap any stage to move this booking forward or back.</p>
         </div>
       )}
       <div className="rounded-2xl px-5 py-4 mb-5 flex items-center justify-between"
