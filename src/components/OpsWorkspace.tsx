@@ -11,10 +11,8 @@ interface TaskRow {
   assignee?: string | null; completed_at?: string | null;
 }
 interface UpdateRow { id: string; author: string | null; body: string; task_id: string | null; created_at: string; }
-interface TpRow { id: string; kind: string; status: string; scheduled_at: string | null; assignee?: string | null; }
 interface StaffRow { id: string; name: string; }
 
-const TP_LABEL: Record<string, string> = { walkthrough: "Walkthrough", tasting: "Tasting", contract: "Contract", followup: "Follow-up" };
 
 function dayKey(iso: string): string {
   const d = new Date(iso);
@@ -111,7 +109,6 @@ function Empty({ icon, head, sub }: { icon: React.ReactNode; head: string; sub?:
 export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refreshKey?: number }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [updates, setUpdates] = useState<UpdateRow[]>([]);
-  const [tps, setTps] = useState<TpRow[]>([]);
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [err, setErr] = useState("");
 
@@ -142,10 +139,9 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
     setDrafts((prev) => { const n = { ...prev }; delete n[id]; return n; });
 
   const load = useCallback(async () => {
-    const [k, u, t, st] = await Promise.all([
+    const [k, u, st] = await Promise.all([
       supabase.from("tasks").select("*").eq("booking_id", b.id).order("due_date", { ascending: true, nullsFirst: false }),
       supabase.from("progress_updates").select("*").eq("booking_id", b.id).order("created_at", { ascending: true }),
-      supabase.from("touchpoints").select("id,kind,status,scheduled_at,assignee").eq("booking_id", b.id),
       supabase.from("staff").select("id,name").eq("active", true).order("sort_order"),
     ]);
     const e = k.error ?? u.error;
@@ -153,7 +149,6 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
     setErr("");
     setTasks((k.data ?? []) as TaskRow[]);
     setUpdates((u.data ?? []) as UpdateRow[]);
-    setTps((t.data ?? []) as TpRow[]);
     setStaff((st.data ?? []) as StaffRow[]);
   }, [b.id]);
   useEffect(() => { load(); }, [load, refreshKey]);
@@ -252,10 +247,6 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
     const zt = z.completed_at ?? threadFor(z.id).slice(-1)[0]?.created_at ?? "";
     return zt.localeCompare(at);
   });
-  const nextTp = tps
-    .filter((t) => t.status !== "completed" && t.scheduled_at && new Date(t.scheduled_at).getTime() > Date.now())
-    .sort((a, z) => a.scheduled_at!.localeCompare(z.scheduled_at!))[0] ?? null;
-
   return (
     <div>
       {err && <p className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 mb-3">⚠️ {err}</p>}
@@ -475,21 +466,6 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
               );
             })}
           </div>
-        </Card>
-
-        {/* ═══ Upcoming Touchpoints — informational ═══ */}
-        <Card title="Upcoming Touchpoints" icon="📅" accent="cool">
-          {nextTp ? (
-            <div>
-              <div className="text-[15px] font-medium">{TP_LABEL[nextTp.kind] ?? nextTp.kind}</div>
-              <div className="flex gap-1.5 mt-1">
-                <Chip>{stamp(nextTp.scheduled_at!)}</Chip>
-                {nextTp.assignee && <Chip>{nextTp.assignee}</Chip>}
-              </div>
-            </div>
-          ) : (
-            <Empty icon="📅" head="Nothing scheduled." sub="Upcoming calls and walkthroughs will show here." />
-          )}
         </Card>
       </div>
     </div>

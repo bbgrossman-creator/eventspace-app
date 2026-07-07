@@ -34,17 +34,13 @@ interface Entry {
 }
 interface StaffLite { id: string; name: string; }
 
-const CHANNELS: { value: string; label: string; icon: string; tpKind?: string }[] = [
+const CHANNELS: { value: string; label: string; icon: string }[] = [
   { value: "call",       label: "Call",       icon: "☎" },
   { value: "email",      label: "Email",      icon: "✉" },
   { value: "text",       label: "Text",       icon: "💬" },
-  { value: "whatsapp",   label: "WhatsApp",   icon: "💬" },
+  { value: "whatsapp",   label: "WhatsApp",   icon: "🟢" },
   { value: "in_person",  label: "In person",  icon: "🤝" },
-  { value: "walkthrough", label: "Walkthrough", icon: "🚶", tpKind: "walkthrough" },
-  { value: "contract",   label: "Contract",   icon: "📄", tpKind: "contract" },
-  { value: "site_visit", label: "Site visit", icon: "📷", tpKind: "walkthrough" },
 ];
-const tpKindFor = (channel: string) => CHANNELS.find((c) => c.value === channel)?.tpKind ?? null;
 const chIcon = (c: string) => CHANNELS.find((x) => x.value === c)?.icon ?? "•";
 // Communication is one soft-purple family — it reads as "conversation" at a
 // glance without competing with the status colors elsewhere on the page.
@@ -66,7 +62,7 @@ function fmtWhen(iso: string) {
   return `${fmtDate(iso.slice(0, 10))} ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
-export default function CommunicationCard({ b, onScheduled }: { b: Booking; onScheduled?: () => void }) {
+export default function CommunicationCard({ b }: { b: Booking }) {
   const [staff, setStaff] = useState<StaffLite[]>([]);
   const [rows, setRows] = useState<CommRow[]>([]);
   const [mirrored, setMirrored] = useState<Entry[]>([]);
@@ -78,12 +74,11 @@ export default function CommunicationCard({ b, onScheduled }: { b: Booking; onSc
   const [cBody, setCBody] = useState("");
   const [cWho, setCWho] = useState("");
   const [cWhen, setCWhen] = useState("");
-  const [cMode, setCMode] = useState<"now" | "schedule">("now");
   const [cFollow, setCFollow] = useState(false);
   const [taskDone, setTaskDone] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
-    const [comms, act, tps] = await Promise.all([
+    const [comms, act] = await Promise.all([
       supabase.from("communications")
         .select("id,channel,direction,author,body,occurred_at,source,task_id,requires_follow_up,follow_up_task_id")
         .eq("booking_id", b.id).order("occurred_at", { ascending: false }),
@@ -91,10 +86,6 @@ export default function CommunicationCard({ b, onScheduled }: { b: Booking; onSc
         .select("id,action,details,result,created_at")
         .eq("booking_id", b.id).ilike("action", "%email%").eq("result", "SUCCESS")
         .order("created_at", { ascending: false }).limit(50),
-      supabase.from("touchpoints")
-        .select("id,kind,status,scheduled_at,assignee")
-        .eq("booking_id", b.id).eq("status", "completed")
-        .order("scheduled_at", { ascending: false }).limit(50),
     ]);
     if (comms.error) { setErr(`Couldn't load communications: ${comms.error.message} — run v129_communications.sql.`); return; }
     setErr("");
@@ -115,15 +106,6 @@ export default function CommunicationCard({ b, onScheduled }: { b: Booking; onSc
         who: null, when: a.created_at, auto: true, source: "system",
       });
     }
-    for (const t of (tps.data ?? []) as { id: string; kind: string | null; scheduled_at: string | null; assignee: string | null }[]) {
-      if (!t.scheduled_at) continue;
-      m.push({
-        key: `tp-${t.id}`, channel: t.kind?.toLowerCase().includes("call") ? "call" : "in_person",
-        icon: t.kind?.toLowerCase().includes("call") ? "☎" : "🤝", dirMark: "→",
-        summary: `${t.kind ?? "Touchpoint"} completed`,
-        who: t.assignee, when: t.scheduled_at, auto: true, source: "mirrored",
-      });
-    }
     setMirrored(m);
   }, [b.id]);
   useEffect(() => { load(); }, [load]);
@@ -133,35 +115,18 @@ export default function CommunicationCard({ b, onScheduled }: { b: Booking; onSc
   }, []);
 
   async function log() {
-    const scheduling = cMode === "schedule";
-    if (scheduling && !cWhen) { setErr("Pick a date and time for the scheduled communication."); return; }
-    if (!scheduling && !cBody.trim()) return;
-    const when = scheduling ? new Date(cWhen) : (cWhen ? new Date(cWhen) : new Date());
-
-    if (scheduling) {
-      // A planned future interaction → Touchpoint, so it appears in the
-      // Upcoming queue. Every channel maps to a touchpoint kind.
-      const { error } = await supabase.from("touchpoints").insert({
-        booking_id: b.id, invoice_num: b.invoice_num, kind: tpKindFor(cChannel) ?? cChannel,
-        scheduled_at: when.toISOString(), notes: cBody.trim() || null,
-        assignee: cWho || null,
-      });
-      if (error) { setErr(`Couldn't schedule it: ${error.message} — run the touchpoints SQL if the table is missing.`); return; }
-      onScheduled?.();  // nudge the Upcoming Touchpoints widget to refresh
-    } else {
-      // A past/now interaction → Communication history.
-      const { error } = await supabase.from("communications").insert({
-        booking_id: b.id, invoice_num: b.invoice_num,
-        channel: cChannel, direction: cDir,
-        author: cWho || null, body: cBody.trim(),
-        customer_contact_value: cDir === "inbound" ? (b.phone || b.email || null) : null,
-        occurred_at: when.toISOString(),
-        requires_follow_up: cDir === "inbound" && cFollow,
-        source: "manual",
-      });
-      if (error) { setErr(`Couldn't log it: ${error.message} — run v131_communication_followup.sql.`); return; }
-    }
-    setCBody(""); setCWhen(""); setCMode("now"); setCFollow(false); setComposer(false); load();
+    if (!cBody.trim()) return;
+    const { error } = await supabase.from("communications").insert({
+      booking_id: b.id, invoice_num: b.invoice_num,
+      channel: cChannel, direction: cDir,
+      author: cWho || null, body: cBody.trim(),
+      customer_contact_value: cDir === "inbound" ? (b.phone || b.email || null) : null,
+      occurred_at: cWhen ? new Date(cWhen).toISOString() : new Date().toISOString(),
+      requires_follow_up: cDir === "inbound" && cFollow,
+      source: "manual",
+    });
+    if (error) { setErr(`Couldn't log it: ${error.message} — run v131_communication_followup.sql.`); return; }
+    setCBody(""); setCWhen(""); setCFollow(false); setComposer(false); load();
   }
 
   async function createFollowUpTask(commId: string, body: string) {
@@ -208,78 +173,37 @@ export default function CommunicationCard({ b, onScheduled }: { b: Booking; onSc
       {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-2.5 py-1.5 mb-2">{err}</p>}
 
       {composer && (
-        <div className="rounded-lg bg-[#F7F3FF] ring-1 ring-[#D8C7F5] p-2.5 mb-3 space-y-2 reveal">
-          {/* Type — every interaction kind in one list */}
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-[#7A5BC2]/70 mb-1">Type</div>
-            <div className="flex gap-1.5 flex-wrap">
-              {CHANNELS.map((c) => (
-                <button key={c.value}
-                  className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${cChannel === c.value
-                    ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
-                  onClick={() => setCChannel(c.value)}>{c.icon} {c.label}</button>
-              ))}
-            </div>
+        <div className="rounded-lg bg-[#F7F3FF] ring-1 ring-[#DCCCF5] p-2.5 mb-3 space-y-2 reveal">
+          <div className="flex gap-1.5 flex-wrap">
+            {CHANNELS.map((c) => (
+              <button key={c.value}
+                className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${cChannel === c.value
+                  ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#DCCCF5] text-[#7A5BC2] hover:bg-white"}`}
+                onClick={() => setCChannel(c.value)}>{c.icon} {c.label}</button>
+            ))}
           </div>
-
-          {/* When — the explicit choice: logging the past, or scheduling ahead */}
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-[#7A5BC2]/70 mb-1">When</div>
-            <div className="flex gap-1.5">
-              <button className={`text-[12px] px-3 py-1 rounded-full border flex-1 font-medium transition-colors ${cMode === "now"
-                ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
-                onClick={() => setCMode("now")}>Now</button>
-              <button className={`text-[12px] px-3 py-1 rounded-full border flex-1 font-medium transition-colors ${cMode === "schedule"
-                ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
-                onClick={() => setCMode("schedule")}>Schedule</button>
-            </div>
+          <div className="flex gap-1.5">
+            <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "outbound"
+              ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#DCCCF5] text-[#7A5BC2] hover:bg-white"}`}
+              onClick={() => setCDir("outbound")}>→ We reached out</button>
+            <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "inbound"
+              ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#DCCCF5] text-[#7A5BC2] hover:bg-white"}`}
+              onClick={() => setCDir("inbound")}>← They contacted us</button>
           </div>
-
-          {/* Scheduling: date + time. The touchpoint lands in Upcoming. */}
-          {cMode === "schedule" && (
-            <div className="reveal">
-              <input type="datetime-local" className="field !py-1.5 !text-xs !bg-white w-full"
-                value={cWhen} onChange={(e) => setCWhen(e.target.value)} />
-            </div>
-          )}
-
-          {/* Direction only matters for a past interaction we're recording */}
-          {cMode === "now" && (
-            <div className="flex gap-1.5">
-              <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "outbound"
-                ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
-                onClick={() => setCDir("outbound")}>→ We reached out</button>
-              <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "inbound"
-                ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
-                onClick={() => setCDir("inbound")}>← They contacted us</button>
-            </div>
-          )}
-
           <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
-            placeholder={cMode === "schedule" ? "Notes for this scheduled interaction…" : "What was said?"}
-            value={cBody} onChange={(e) => setCBody(e.target.value)} />
-
+            placeholder="What was said?" value={cBody} onChange={(e) => setCBody(e.target.value)} />
           <div className="flex gap-1.5 items-center flex-wrap">
             <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]"
               value={cWho} onChange={(e) => setCWho(e.target.value)}>
-              <option value="">{cMode === "schedule" ? "With whom?" : "Who?"}</option>
+              <option value="">Who?</option>
               {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
             </select>
-            {cMode === "now" && (
-              <input type="datetime-local" className="field !py-1 !text-xs !bg-white w-[11.5rem]"
-                value={cWhen} onChange={(e) => setCWhen(e.target.value)} title="When (blank = now)" />
-            )}
+            <input type="datetime-local" className="field !py-1 !text-xs !bg-white w-[11.5rem]"
+              value={cWhen} onChange={(e) => setCWhen(e.target.value)} title="When (blank = now)" />
             <button className="!py-1 !px-2.5 text-xs rounded-lg bg-[#7A5BC2] text-white font-semibold hover:bg-[#5B3F9E] transition-colors" onClick={log}>Save</button>
             <button className="text-xs text-slate-400 underline" onClick={() => setComposer(false)}>cancel</button>
           </div>
-
-          <p className="text-[11px] font-medium text-[#7A5BC2]">
-            {cMode === "schedule"
-              ? "📅 Will appear in Upcoming Touchpoints"
-              : "💬 Will save as communication history"}
-          </p>
-
-          {cMode === "now" && cDir === "inbound" && (
+          {cDir === "inbound" && (
             <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer pt-0.5">
               <input type="checkbox" className="accent-[#7A5BC2]" checked={cFollow} onChange={(e) => setCFollow(e.target.checked)} />
               This needs follow-up

@@ -5,6 +5,7 @@ import { supabase, logActivity } from "@/lib/supabase";
 import AddressAutocomplete, { PlaceValue } from "@/components/AddressAutocomplete";
 import OpsWorkspace from "@/components/OpsWorkspace";
 import CommunicationCard from "@/components/CommunicationCard";
+import TouchpointsCard from "@/components/TouchpointsCard";
 import CustomerSnapshot from "@/components/CustomerSnapshot";
 import FilesPanel from "@/components/FilesPanel";
 import {
@@ -831,7 +832,8 @@ export default function BookingDetail() {
         The left side explains the event; this side explains the work. ── */}
     <aside className="xl:w-[28%] xl:max-w-[480px] xl:shrink-0 mt-8 xl:mt-0">
       <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 space-y-3">
-        <CommunicationCard b={b} onScheduled={() => setRailRefresh((n) => n + 1)} />
+        <CommunicationCard b={b} />
+        <TouchpointsCard b={b} />
         <OpsWorkspace b={b} refreshKey={railRefresh} />
       </div>
     </aside>
