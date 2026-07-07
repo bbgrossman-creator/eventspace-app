@@ -66,7 +66,7 @@ function fmtWhen(iso: string) {
   return `${fmtDate(iso.slice(0, 10))} ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
-export default function CommunicationCard({ b }: { b: Booking }) {
+export default function CommunicationCard({ b, onScheduled }: { b: Booking; onScheduled?: () => void }) {
   const [staff, setStaff] = useState<StaffLite[]>([]);
   const [rows, setRows] = useState<CommRow[]>([]);
   const [mirrored, setMirrored] = useState<Entry[]>([]);
@@ -78,6 +78,7 @@ export default function CommunicationCard({ b }: { b: Booking }) {
   const [cBody, setCBody] = useState("");
   const [cWho, setCWho] = useState("");
   const [cWhen, setCWhen] = useState("");
+  const [cMode, setCMode] = useState<"now" | "schedule">("now");
   const [cFollow, setCFollow] = useState(false);
   const [taskDone, setTaskDone] = useState<Record<string, boolean>>({});
 
@@ -132,21 +133,23 @@ export default function CommunicationCard({ b }: { b: Booking }) {
   }, []);
 
   async function log() {
-    if (!cBody.trim() && !tpKindFor(cChannel)) return;
-    const when = cWhen ? new Date(cWhen) : new Date();
-    const isFuture = when.getTime() > Date.now() + 60000; // >1min ahead = scheduled
-    const tpKind = tpKindFor(cChannel);
+    const scheduling = cMode === "schedule";
+    if (scheduling && !cWhen) { setErr("Pick a date and time for the scheduled communication."); return; }
+    if (!scheduling && !cBody.trim()) return;
+    const when = scheduling ? new Date(cWhen) : (cWhen ? new Date(cWhen) : new Date());
 
-    if (isFuture && tpKind) {
-      // Future scheduling → Touchpoint, so it surfaces in Upcoming Touchpoints.
+    if (scheduling) {
+      // A planned future interaction → Touchpoint, so it appears in the
+      // Upcoming queue. Every channel maps to a touchpoint kind.
       const { error } = await supabase.from("touchpoints").insert({
-        booking_id: b.id, invoice_num: b.invoice_num, kind: tpKind,
+        booking_id: b.id, invoice_num: b.invoice_num, kind: tpKindFor(cChannel) ?? cChannel,
         scheduled_at: when.toISOString(), notes: cBody.trim() || null,
         assignee: cWho || null,
       });
       if (error) { setErr(`Couldn't schedule it: ${error.message} — run the touchpoints SQL if the table is missing.`); return; }
+      onScheduled?.();  // nudge the Upcoming Touchpoints widget to refresh
     } else {
-      // Now or past → Communication history.
+      // A past/now interaction → Communication history.
       const { error } = await supabase.from("communications").insert({
         booking_id: b.id, invoice_num: b.invoice_num,
         channel: cChannel, direction: cDir,
@@ -158,7 +161,7 @@ export default function CommunicationCard({ b }: { b: Booking }) {
       });
       if (error) { setErr(`Couldn't log it: ${error.message} — run v131_communication_followup.sql.`); return; }
     }
-    setCBody(""); setCWhen(""); setCFollow(false); setComposer(false); load();
+    setCBody(""); setCWhen(""); setCMode("now"); setCFollow(false); setComposer(false); load();
   }
 
   async function createFollowUpTask(commId: string, body: string) {
@@ -204,23 +207,44 @@ export default function CommunicationCard({ b }: { b: Booking }) {
       </div>
       {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-2.5 py-1.5 mb-2">{err}</p>}
 
-      {composer && (() => {
-        // Automatic routing preview: a future date on a schedulable channel
-        // becomes an Upcoming Touchpoint; anything else is logged history.
-        const willSchedule = !!tpKindFor(cChannel) && !!cWhen &&
-          new Date(cWhen).getTime() > Date.now() + 60000;
-        const isScheduleChannel = !!tpKindFor(cChannel);
-        return (
-        <div className="rounded-lg bg-[#F7F3FF] ring-1 ring-[#D8C7F5] p-2.5 mb-3 space-y-1.5 reveal">
-          <div className="flex gap-1.5 flex-wrap">
-            {CHANNELS.map((c) => (
-              <button key={c.value}
-                className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${cChannel === c.value
-                  ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
-                onClick={() => setCChannel(c.value)}>{c.icon} {c.label}</button>
-            ))}
+      {composer && (
+        <div className="rounded-lg bg-[#F7F3FF] ring-1 ring-[#D8C7F5] p-2.5 mb-3 space-y-2 reveal">
+          {/* Type — every interaction kind in one list */}
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#7A5BC2]/70 mb-1">Type</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {CHANNELS.map((c) => (
+                <button key={c.value}
+                  className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${cChannel === c.value
+                    ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
+                  onClick={() => setCChannel(c.value)}>{c.icon} {c.label}</button>
+              ))}
+            </div>
           </div>
-          {!isScheduleChannel && (
+
+          {/* When — the explicit choice: logging the past, or scheduling ahead */}
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#7A5BC2]/70 mb-1">When</div>
+            <div className="flex gap-1.5">
+              <button className={`text-[12px] px-3 py-1 rounded-full border flex-1 font-medium transition-colors ${cMode === "now"
+                ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
+                onClick={() => setCMode("now")}>Now</button>
+              <button className={`text-[12px] px-3 py-1 rounded-full border flex-1 font-medium transition-colors ${cMode === "schedule"
+                ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
+                onClick={() => setCMode("schedule")}>Schedule</button>
+            </div>
+          </div>
+
+          {/* Scheduling: date + time. The touchpoint lands in Upcoming. */}
+          {cMode === "schedule" && (
+            <div className="reveal">
+              <input type="datetime-local" className="field !py-1.5 !text-xs !bg-white w-full"
+                value={cWhen} onChange={(e) => setCWhen(e.target.value)} />
+            </div>
+          )}
+
+          {/* Direction only matters for a past interaction we're recording */}
+          {cMode === "now" && (
             <div className="flex gap-1.5">
               <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "outbound"
                 ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#D8C7F5] text-[#7A5BC2] hover:bg-white"}`}
@@ -230,36 +254,39 @@ export default function CommunicationCard({ b }: { b: Booking }) {
                 onClick={() => setCDir("inbound")}>← They contacted us</button>
             </div>
           )}
+
           <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
-            placeholder={isScheduleChannel ? "Notes for this touchpoint…" : "What was said?"}
+            placeholder={cMode === "schedule" ? "Notes for this scheduled interaction…" : "What was said?"}
             value={cBody} onChange={(e) => setCBody(e.target.value)} />
+
           <div className="flex gap-1.5 items-center flex-wrap">
             <select className="field !py-1 !text-xs !bg-white flex-1 min-w-[90px]"
               value={cWho} onChange={(e) => setCWho(e.target.value)}>
-              <option value="">Who?</option>
+              <option value="">{cMode === "schedule" ? "With whom?" : "Who?"}</option>
               {staff.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
             </select>
-            <input type="datetime-local" className="field !py-1 !text-xs !bg-white w-[11.5rem]"
-              value={cWhen} onChange={(e) => setCWhen(e.target.value)}
-              title={isScheduleChannel ? "Future = schedule · past/now = log" : "When (blank = now)"} />
+            {cMode === "now" && (
+              <input type="datetime-local" className="field !py-1 !text-xs !bg-white w-[11.5rem]"
+                value={cWhen} onChange={(e) => setCWhen(e.target.value)} title="When (blank = now)" />
+            )}
             <button className="!py-1 !px-2.5 text-xs rounded-lg bg-[#7A5BC2] text-white font-semibold hover:bg-[#5B3F9E] transition-colors" onClick={log}>Save</button>
             <button className="text-xs text-slate-400 underline" onClick={() => setComposer(false)}>cancel</button>
           </div>
-          {/* Routing confirmation — no surprise about where this lands. */}
+
           <p className="text-[11px] font-medium text-[#7A5BC2]">
-            {willSchedule
-              ? "📅 Will schedule as upcoming touchpoint"
+            {cMode === "schedule"
+              ? "📅 Will appear in Upcoming Touchpoints"
               : "💬 Will save as communication history"}
           </p>
-          {!isScheduleChannel && cDir === "inbound" && (
+
+          {cMode === "now" && cDir === "inbound" && (
             <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer pt-0.5">
               <input type="checkbox" className="accent-[#7A5BC2]" checked={cFollow} onChange={(e) => setCFollow(e.target.checked)} />
               This needs follow-up
             </label>
           )}
         </div>
-        );
-      })()}
+      )}
 
       {entries.length === 0 && !composer && (
         <div className="flex items-start gap-2.5 py-1">

@@ -108,7 +108,7 @@ function Empty({ icon, head, sub }: { icon: React.ReactNode; head: string; sub?:
  *  (Permanent customer facts live on the Customer Profile.)
  *  Completing a task moves it — with its explanation — into the Task Log,
  *  so the execution history writes itself. */
-export default function OpsWorkspace({ b }: { b: Booking }) {
+export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refreshKey?: number }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [updates, setUpdates] = useState<UpdateRow[]>([]);
   const [tps, setTps] = useState<TpRow[]>([]);
@@ -156,7 +156,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
     setTps((t.data ?? []) as TpRow[]);
     setStaff((st.data ?? []) as StaffRow[]);
   }, [b.id]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   /* ── mutations ── */
   async function addTask() {

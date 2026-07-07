@@ -57,6 +57,7 @@ export default function BookingDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [b, setB] = useState<Booking | null>(null);
+  const [railRefresh, setRailRefresh] = useState(0);
   const [overdueHrs, setOverdueHrs] = useState(1);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
@@ -830,8 +831,8 @@ export default function BookingDetail() {
         The left side explains the event; this side explains the work. ── */}
     <aside className="xl:w-[28%] xl:max-w-[480px] xl:shrink-0 mt-8 xl:mt-0">
       <div className="xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1 space-y-3">
-        <CommunicationCard b={b} />
-        <OpsWorkspace b={b} />
+        <CommunicationCard b={b} onScheduled={() => setRailRefresh((n) => n + 1)} />
+        <OpsWorkspace b={b} refreshKey={railRefresh} />
       </div>
     </aside>
     </div>
