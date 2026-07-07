@@ -774,9 +774,13 @@ export default function NewInquiry() {
                 <option>Son</option><option>Daughter</option>
                 <option>Grandson</option><option>Granddaughter</option>
                 <option>Self</option><option>Sibling</option>
-                <option>Parent</option><option>Other</option>
+                <option>Mother</option><option>Father</option>
+                <option>Niece</option><option>Nephew</option>
+                <option>Friend</option><option>Other</option>
               </select>
-              <input className="field w-20" type="number" min="0" max="120" placeholder="Age" value={celAge} onChange={(e) => setCelAge(e.target.value)} />
+              {f.event_type === "Birthday Party" && (
+                <input className="field w-20" type="number" min="0" max="120" placeholder="Age" value={celAge} onChange={(e) => setCelAge(e.target.value)} />
+              )}
             </div></div>
           <div><label className="label">Event date</label>
             <input className="field" type="date" value={f.event_date} onChange={(e) => set("event_date", e.target.value)} /></div>
@@ -1027,18 +1031,18 @@ export default function NewInquiry() {
             I reviewed the conflict and still want to reserve this date.
           </label>
         )}
-        <div className="flex gap-3 pt-1 flex-wrap items-center">
+        <div className="flex gap-3 pt-1 flex-wrap items-stretch">
           <button onClick={createBooking} disabled={saving || locMode === "none" || (confirmedClash && !conflictAck)}
             title={confirmedClash && !conflictAck ? "Acknowledge the conflict above to reserve" : locMode === "none" ? "No bookable locations — configure Locations & Capacity first" : undefined}
-            className="btn-primary flex-1 min-w-[180px] disabled:opacity-50">
+            className="flex-1 min-w-[180px] rounded-xl border-2 border-navy bg-navy text-white font-semibold py-2.5 px-4 hover:bg-navylight hover:border-navylight transition-colors disabled:opacity-50">
             {saving ? "Working…" : confirmedClash ? "Reserve Over Conflict" : conflicts.length > 0 ? "Reserve Date (review options)" : "Reserve Date (24-Hour Hold)"}
           </button>
           <button onClick={() => setShowWalkthrough((v) => !v)} disabled={saving}
-            className="flex-1 min-w-[180px] rounded-xl border-2 border-navy text-navy font-semibold py-2.5 px-4 hover:bg-navy/5 transition-colors">
-            🚶 Schedule Walkthrough
+            className="flex-1 min-w-[180px] rounded-xl border-2 border-navy bg-white text-navy font-semibold py-2.5 px-4 hover:bg-navy/5 transition-colors disabled:opacity-50">
+            Schedule Walkthrough
           </button>
           <button onClick={() => createLead(false)} disabled={saving}
-            className="text-sm font-semibold text-slate-500 hover:text-navy underline underline-offset-2 px-2">
+            className="flex-1 min-w-[180px] rounded-xl border-2 border-slate-200 bg-white text-slate-600 font-semibold py-2.5 px-4 hover:border-navy hover:text-navy transition-colors disabled:opacity-50">
             Save as Lead
           </button>
         </div>

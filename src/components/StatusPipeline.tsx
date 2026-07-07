@@ -35,15 +35,24 @@ export default function StatusPipeline({
     <div className="flex gap-1.5 flex-wrap">
       {TIMELINE_MILESTONES.map((m, i) => {
         const cls = `pipeline-stage ${i < currentStage ? "pipeline-done" : i === currentStage ? "pipeline-current" : "pipeline-pending"}`;
+        const num = <span className="block text-center text-[9px] leading-none text-slate-300 font-semibold mb-0.5 select-none">{i + 1}</span>;
         if (onStageClick) {
           return (
-            <button key={m} className={`${cls} cursor-pointer hover:ring-2 hover:ring-navy/40`}
-              title={`Go to ${m}`} onClick={() => onStageClick(i)}>
-              {m}
-            </button>
+            <div key={m} className="flex flex-col">
+              {num}
+              <button className={`${cls} cursor-pointer hover:ring-2 hover:ring-navy/40`}
+                title={`Go to ${m}`} onClick={() => onStageClick(i)}>
+                {m}
+              </button>
+            </div>
           );
         }
-        return <span key={m} className={cls}>{m}</span>;
+        return (
+          <div key={m} className="flex flex-col">
+            {num}
+            <span className={cls}>{m}</span>
+          </div>
+        );
       })}
     </div>
   );

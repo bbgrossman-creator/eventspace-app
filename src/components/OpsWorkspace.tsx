@@ -420,11 +420,12 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
               );
             })}
           </div>
-        </Card>
 
-        {/* ═══ Task Log — the execution history, written by finishing work ═══ */}
-        <Card title="Task Log" icon="✓" accent="cool">
-          {completingTask && (
+          {/* Completed — same card, a quiet divider marks the boundary */}
+          <div className="mt-3 pt-3 border-t border-slate-200">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Completed</div>
+        {/* ═══ Task Log content — now inside the Tasks card ═══ */}
+        {completingTask && (
             <div ref={pendingRef} className="rounded-lg bg-emerald-50/60 ring-1 ring-emerald-200 p-2.5 mb-3 reveal">
               <div className="text-[14px] font-medium leading-snug">
                 <span className="text-emerald-600 mr-1.5">✓</span>{completingTask.title}
@@ -493,6 +494,7 @@ export default function OpsWorkspace({ b, refreshKey = 0 }: { b: Booking; refres
                 </div>
               );
             })}
+          </div>
           </div>
         </Card>
       </div>

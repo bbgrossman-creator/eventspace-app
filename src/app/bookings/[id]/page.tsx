@@ -878,10 +878,20 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 }
 
 // ─── Deposit form (duplicate-protected, CC fee aware) ───
+function useStaffNames(): string[] {
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => {
+    supabase.from("staff").select("name").eq("active", true).order("sort_order")
+      .then(({ data }) => setNames((data ?? []).map((s: { name: string }) => s.name)));
+  }, []);
+  return names;
+}
+
 function DepositForm({ b, done }: { b: Booking; done: () => void }) {
   const [method, setMethod] = useState("Cash");
   const [amount, setAmount] = useState(String(PRICING.DEPOSIT_AMOUNT));
-  const [by, setBy] = useState("Ben");
+  const [by, setBy] = useState("");
+  const staffNames = useStaffNames();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -949,7 +959,10 @@ function DepositForm({ b, done }: { b: Booking; done: () => void }) {
         <div><label className="label">Amount received</label>
           <input className="field" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
         <div><label className="label">Received by</label>
-          <input className="field" value={by} onChange={(e) => setBy(e.target.value)} /></div>
+          <select className="field" value={by} onChange={(e) => setBy(e.target.value)}>
+            <option value="">Select…</option>
+            {staffNames.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select></div>
       </div>
       {method === "Credit Card" && (
         <p className="text-xs text-amber-700 mt-2">
@@ -967,10 +980,11 @@ function DepositForm({ b, done }: { b: Booking; done: () => void }) {
 // ─── Payment form ───
 interface FinShape { balance: number; subtotal: number; tax: number; paid: number; total: number; }
 function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => void }) {
+  const paymentStaff = useStaffNames();
   const balance = fin.balance;
   const [method, setMethod] = useState("Cash");
   const [amount, setAmount] = useState(balance.toFixed(2));
-  const [by, setBy] = useState("Ben");
+  const [by, setBy] = useState("");
   const [checkNum, setCheckNum] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -1031,7 +1045,10 @@ function PaymentForm({ b, fin, done }: { b: Booking; fin: FinShape; done: () => 
         <div><label className="label">Amount received</label>
           <input className="field" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
         <div><label className="label">Received by</label>
-          <input className="field" value={by} onChange={(e) => setBy(e.target.value)} /></div>
+          <select className="field" value={by} onChange={(e) => setBy(e.target.value)}>
+            <option value="">Select…</option>
+            {paymentStaff.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select></div>
       </div>
       {method === "Check" && (
         <div className="mt-3">

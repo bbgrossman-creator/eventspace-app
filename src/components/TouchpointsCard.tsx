@@ -180,29 +180,29 @@ export default function TouchpointsCard({ b }: { b: Booking }) {
             </div>
           ))}
         </div>
-      </TpCard>
 
-      {/* ═══ Completed Touchpoints — history, mirrors Task Log ═══ */}
-      <TpCard title="Completed Touchpoints" icon="✓">
-        {completed.length === 0 && (
-          <TpEmpty head="No completed touchpoints yet." sub="Finished milestones get documented here." />
-        )}
-        <div className="divide-y divide-[#F0D89A]/50">
-          {shownDone.map((t) => (
-            <div key={t.id} className="flex gap-2.5 py-2 first:pt-0 last:pb-0">
-              <span className="grid place-items-center w-7 h-7 rounded-lg text-[13px] shrink-0 bg-[#F3ECD8] text-[#9A8442]">{tpMeta(t.kind).icon}</span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-medium text-slate-500 leading-tight line-through">{tpMeta(t.kind).label}</div>
-                <div className="text-[11px] text-slate-400">{stamp(t.scheduled_at)}{t.assignee ? ` · ${t.assignee}` : ""}</div>
-              </div>
+        {/* Completed — same card, a quiet divider marks the boundary */}
+        {completed.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-[#F0D89A]/70">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#B88A1C]/60 mb-1.5">Completed</div>
+            <div className="divide-y divide-[#F0D89A]/40">
+              {shownDone.map((t) => (
+                <div key={t.id} className="flex gap-2.5 py-1.5 first:pt-0 last:pb-0">
+                  <span className="grid place-items-center w-6 h-6 rounded-lg text-[12px] shrink-0 bg-[#F3ECD8] text-[#9A8442]">{tpMeta(t.kind).icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-medium text-slate-500 leading-tight line-through">{tpMeta(t.kind).label}</div>
+                    <div className="text-[11px] text-slate-400">{stamp(t.scheduled_at)}{t.assignee ? ` · ${t.assignee}` : ""}</div>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        {completed.length > 4 && (
-          <button className="text-[11px] text-slate-400 hover:text-[#B88A1C] underline mt-2.5"
-            onClick={() => setShowDoneAll((v) => !v)}>
-            {showDoneAll ? "Show less" : `View all ${completed.length} completed →`}
-          </button>
+            {completed.length > 4 && (
+              <button className="text-[11px] text-slate-400 hover:text-[#B88A1C] underline mt-2"
+                onClick={() => setShowDoneAll((v) => !v)}>
+                {showDoneAll ? "Show less" : `View all ${completed.length} completed →`}
+              </button>
+            )}
+          </div>
         )}
       </TpCard>
     </div>
