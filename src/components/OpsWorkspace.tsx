@@ -53,23 +53,52 @@ function Chip({ children, tone = "" }: { children: React.ReactNode; tone?: strin
   );
 }
 
-function Card({ title, action, onAction, feeder = false, children }: {
-  title: string; action?: string; onAction?: () => void; feeder?: boolean; children: React.ReactNode;
+function Card({ title, icon, action, onAction, accent = "plain", children }: {
+  title: string; icon: React.ReactNode; action?: string; onAction?: () => void;
+  accent?: "plain" | "feeder" | "cool"; children: React.ReactNode;
 }) {
-  // Feeder (Tasks) wears a faint salmon: "this is where you work."
-  // Receivers (Task Log, Touchpoints) stay white: "this is where work lands."
+  // One skeleton, four personalities — shared radius/shadow/padding; the accent
+  // is the header icon tile + ring tint, so the widgets are instantly
+  // distinguishable but obviously siblings.
+  //   feeder (Tasks) = warm peach: "this is where you work"
+  //   cool (Task Log / Touchpoints) = blue-gray: "this is record / schedule"
+  //   plain (Communication) = neutral slate: "customer memory"
+  const shell = accent === "feeder"
+    ? "bg-[#FFF9F6] ring-1 ring-[#F3DAce]"
+    : accent === "cool"
+    ? "bg-white ring-1 ring-[#E4E9F1]"
+    : "bg-white ring-1 ring-[#E6EAF2]";
+  const tile = accent === "feeder"
+    ? "bg-[#FBE4D8] text-[#B5623B]"
+    : accent === "cool"
+    ? "bg-[#E7EDF6] text-[#4C6285]"
+    : "bg-[#EAECF3] text-[#465069]";
   return (
-    <div className={feeder
-      ? "rounded-xl p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] bg-[#FFF7F4] ring-1 ring-[#F4D8CE]"
-      : "rounded-xl bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-[#E6EAF2]"}>
-      <div className="flex items-baseline justify-between gap-3 mb-2.5">
-        <h3 className="font-display font-semibold text-[15px] leading-none">{title}</h3>
+    <div className={`rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ${shell}`}>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`grid place-items-center w-6 h-6 rounded-lg text-[13px] shrink-0 ${tile}`}>{icon}</span>
+          <h3 className="font-display font-semibold text-[15px] leading-none truncate">{title}</h3>
+        </div>
         {action && onAction && (
-          <button className="text-xs text-slate-400 hover:text-navy transition-colors whitespace-nowrap"
+          <button className="text-xs font-medium text-slate-400 hover:text-navy transition-colors whitespace-nowrap shrink-0"
             onClick={onAction}>＋ {action}</button>
         )}
       </div>
       {children}
+    </div>
+  );
+}
+
+/** Refined empty state: soft icon + headline + one supporting line. */
+function Empty({ icon, head, sub }: { icon: React.ReactNode; head: string; sub?: string }) {
+  return (
+    <div className="flex items-start gap-2.5 py-1">
+      <span className="text-[17px] opacity-40 shrink-0 leading-none mt-0.5">{icon}</span>
+      <div>
+        <p className="text-[13px] font-medium text-slate-500 leading-snug">{head}</p>
+        {sub && <p className="text-[12px] text-slate-400 leading-snug mt-0.5">{sub}</p>}
+      </div>
     </div>
   );
 }
@@ -228,12 +257,12 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
     .sort((a, z) => a.scheduled_at!.localeCompare(z.scheduled_at!))[0] ?? null;
 
   return (
-    <div className="rounded-2xl p-3" style={{ background: "#F5F6F8" }}>
+    <div>
       {err && <p className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 mb-3">⚠️ {err}</p>}
 
       <div className="space-y-3">
         {/* ═══ Tasks — still needs doing ═══ */}
-        <Card title="Tasks" action="New Task" feeder onAction={() => setTaskEditor((v) => !v)}>
+        <Card title="Tasks" icon="○" accent="feeder" action="New Task" onAction={() => setTaskEditor((v) => !v)}>
           {taskEditor && (
             <div className="rounded-lg bg-slate-50 p-2.5 mb-3 space-y-1.5 reveal">
               <input className="field w-full !py-1.5 text-sm" autoFocus placeholder="What needs doing?"
@@ -254,7 +283,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
             </div>
           )}
           {openTasks.length === 0 && !taskEditor && (
-            <p className="text-[13px] text-slate-400 leading-relaxed">The queue is clear.</p>
+            <Empty icon="○" head="The queue is clear." sub="New tasks and follow-ups will appear here." />
           )}
           <div className="space-y-3">
             {openTasks.map((t) => {
@@ -376,7 +405,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
         </Card>
 
         {/* ═══ Task Log — the execution history, written by finishing work ═══ */}
-        <Card title="Task Log">
+        <Card title="Task Log" icon="✓" accent="cool">
           {completingTask && (
             <div ref={pendingRef} className="rounded-lg bg-emerald-50/60 ring-1 ring-emerald-200 p-2.5 mb-3 reveal">
               <div className="text-[14px] font-medium leading-snug">
@@ -419,9 +448,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
             </div>
           )}
           {logTasks.length === 0 && !completingTask && (
-            <p className="text-[13px] text-slate-400 leading-relaxed">
-              No completed tasks yet.
-            </p>
+            <Empty icon="✓" head="No completed tasks yet." sub="Finished work gets documented here." />
           )}
           <div className="space-y-3.5">
             {logTasks.map((t) => {
@@ -451,7 +478,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
         </Card>
 
         {/* ═══ Upcoming Touchpoints — informational ═══ */}
-        <Card title="Upcoming Touchpoints">
+        <Card title="Upcoming Touchpoints" icon="📅" accent="cool">
           {nextTp ? (
             <div>
               <div className="text-[15px] font-medium">{TP_LABEL[nextTp.kind] ?? nextTp.kind}</div>
@@ -461,7 +488,7 @@ export default function OpsWorkspace({ b }: { b: Booking }) {
               </div>
             </div>
           ) : (
-            <p className="text-[13px] text-slate-400 leading-relaxed">Nothing scheduled.</p>
+            <Empty icon="📅" head="Nothing scheduled." sub="Upcoming calls and walkthroughs will show here." />
           )}
         </Card>
       </div>

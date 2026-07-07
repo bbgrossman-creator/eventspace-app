@@ -27,8 +27,8 @@ interface CommRow {
   requires_follow_up?: boolean | null; follow_up_task_id?: string | null;
 }
 interface Entry {
-  key: string; icon: string; dirMark: string; summary: string;
-  who: string | null; when: string; auto: boolean;
+  key: string; channel: string; icon: string; dirMark: string; summary: string;
+  who: string | null; when: string; auto: boolean; source: string;
   commId?: string; direction?: string;
   needsFollowUp?: boolean; followUpTaskId?: string | null;
 }
@@ -42,6 +42,23 @@ const CHANNELS: { value: string; label: string; icon: string }[] = [
   { value: "in_person", label: "In person", icon: "🤝" },
 ];
 const chIcon = (c: string) => CHANNELS.find((x) => x.value === c)?.icon ?? "•";
+const CH_TILE: Record<string, string> = {
+  call: "bg-[#E4EEF6] text-[#3D6488]", email: "bg-[#EEE8F7] text-[#6B4E9E]",
+  text: "bg-[#E4F0E9] text-[#3F7355]", whatsapp: "bg-[#E1F1E4] text-[#2F7D45]",
+  in_person: "bg-[#F5EBDD] text-[#8A6534]", portal: "bg-[#E7EBF3] text-[#4A5578]",
+};
+const chTile = (c: string) => CH_TILE[c] ?? "bg-slate-100 text-slate-500";
+// "did the customer hear it or say it?" → a plain-language label per row.
+function dirLabel(channel: string, direction: string): string {
+  const inbound = direction === "inbound" || direction === "inbound_customer";
+  if (channel === "call")      return inbound ? "They called us" : "We called";
+  if (channel === "email")     return inbound ? "They emailed us" : "We emailed";
+  if (channel === "text")      return inbound ? "They texted us" : "We texted";
+  if (channel === "whatsapp")  return inbound ? "They messaged us" : "We messaged";
+  if (channel === "in_person") return "We met in person";
+  if (channel === "portal")    return inbound ? "They messaged us" : "We replied";
+  return inbound ? "They contacted us" : "We reached out";
+}
 
 function fmtWhen(iso: string) {
   const d = new Date(iso);
@@ -91,17 +108,18 @@ export default function CommunicationCard({ b }: { b: Booking }) {
     const m: Entry[] = [];
     for (const a of (act.data ?? []) as { id: string; action: string; details: string | null; created_at: string }[]) {
       m.push({
-        key: `act-${a.id}`, icon: "📧", dirMark: "→",
+        key: `act-${a.id}`, channel: "email", icon: "📧", dirMark: "→",
         summary: (a.details ?? a.action).replace(/^"|"$/g, ""),
-        who: null, when: a.created_at, auto: true,
+        who: null, when: a.created_at, auto: true, source: "system",
       });
     }
     for (const t of (tps.data ?? []) as { id: string; kind: string | null; scheduled_at: string | null; assignee: string | null }[]) {
       if (!t.scheduled_at) continue;
       m.push({
-        key: `tp-${t.id}`, icon: t.kind?.toLowerCase().includes("call") ? "☎" : "🤝", dirMark: "→",
+        key: `tp-${t.id}`, channel: t.kind?.toLowerCase().includes("call") ? "call" : "in_person",
+        icon: t.kind?.toLowerCase().includes("call") ? "☎" : "🤝", dirMark: "→",
         summary: `${t.kind ?? "Touchpoint"} completed`,
-        who: t.assignee, when: t.scheduled_at, auto: true,
+        who: t.assignee, when: t.scheduled_at, auto: true, source: "mirrored",
       });
     }
     setMirrored(m);
@@ -148,9 +166,9 @@ export default function CommunicationCard({ b }: { b: Booking }) {
 
   const entries: Entry[] = [
     ...rows.map((r) => ({
-      key: `c-${r.id}`, icon: chIcon(r.channel),
-      dirMark: r.direction === "inbound" ? "←" : "→",
-      summary: r.body, who: r.author, when: r.occurred_at, auto: false,
+      key: `c-${r.id}`, channel: r.channel, icon: chIcon(r.channel),
+      dirMark: r.direction.startsWith("inbound") ? "←" : "→",
+      summary: r.body, who: r.author, when: r.occurred_at, auto: false, source: r.source,
       commId: r.id, direction: r.direction,
       needsFollowUp: !!r.requires_follow_up, followUpTaskId: r.follow_up_task_id ?? null,
     })),
@@ -159,10 +177,13 @@ export default function CommunicationCard({ b }: { b: Booking }) {
   const shown = showAll ? entries : entries.slice(0, 4);
 
   return (
-    <div className="rounded-xl bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-[#E6EAF2]">
-      <div className="flex items-center justify-between mb-2.5">
-        <h3 className="font-display font-bold text-[15px]">Communication</h3>
-        <button className="text-[11px] font-semibold text-slate-400 hover:text-navy transition-colors"
+    <div className="rounded-2xl bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 ring-[#E6EAF2]">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="grid place-items-center w-6 h-6 rounded-lg text-[13px] shrink-0 bg-[#EAECF3] text-[#465069]">💬</span>
+          <h3 className="font-display font-semibold text-[15px] leading-none truncate">Communication</h3>
+        </div>
+        <button className="text-xs font-medium text-slate-400 hover:text-navy transition-colors whitespace-nowrap shrink-0"
           onClick={() => setComposer((v) => !v)}>＋ Log</button>
       </div>
       {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-2.5 py-1.5 mb-2">{err}</p>}
@@ -208,46 +229,59 @@ export default function CommunicationCard({ b }: { b: Booking }) {
       )}
 
       {entries.length === 0 && !composer && (
-        <p className="text-[13px] text-slate-400 leading-relaxed">
-          No customer communication logged yet. Calls, emails, and messages land here.
-        </p>
-      )}
-      <div className="space-y-2.5">
-        {shown.map((e) => (
-          <div key={e.key} className="text-[13px] leading-snug">
-            <div className="flex items-baseline gap-1.5">
-              <span className="shrink-0">{e.icon}</span>
-              <span className={`shrink-0 font-bold ${e.dirMark === "←" ? "text-emerald-600" : "text-slate-400"}`}>{e.dirMark}</span>
-              <span className="min-w-0 whitespace-pre-wrap">{e.summary}</span>
-            </div>
-            <div className="text-[10px] text-slate-400 pl-6">
-              {e.who && <b className="font-semibold text-slate-500">{e.who} · </b>}
-              {fmtWhen(e.when)}{e.auto && <span className="ml-1 text-slate-300">auto</span>}
-            </div>
-            {/* Follow-up affordances: only on real (non-mirrored) comm rows */}
-            {e.commId && (e.needsFollowUp || e.followUpTaskId) && (
-              <div className="pl-6 mt-0.5">
-                {e.followUpTaskId ? (
-                  <span className={`text-[10px] font-semibold ${taskDone[e.followUpTaskId] ? "text-emerald-600" : "text-amber-600"}`}>
-                    {taskDone[e.followUpTaskId] ? "✓ Follow-up task done" : "◷ Follow-up task open"}
-                  </span>
-                ) : e.needsFollowUp ? (
-                  <span className="inline-flex items-center gap-2">
-                    <button className="text-[10px] font-semibold text-navy hover:underline"
-                      onClick={() => createFollowUpTask(e.commId!, e.summary)}>＋ Create task from this</button>
-                    <button className="text-[10px] text-slate-300 hover:text-slate-500 underline"
-                      onClick={() => dismissFollowUp(e.commId!)}>dismiss</button>
-                  </span>
-                ) : null}
-              </div>
-            )}
+        <div className="flex items-start gap-2.5 py-1">
+          <span className="text-[17px] opacity-40 shrink-0 leading-none mt-0.5">💬</span>
+          <div>
+            <p className="text-[13px] font-medium text-slate-500 leading-snug">No customer communication yet</p>
+            <p className="text-[12px] text-slate-400 leading-snug mt-0.5">Calls, emails, texts, WhatsApps, and in-person notes will appear here.</p>
           </div>
-        ))}
+        </div>
+      )}
+      <div className="divide-y divide-slate-100">
+        {shown.map((e) => {
+          const inbound = e.dirMark === "←";
+          const dotColor = e.source === "manual" ? "#cbd5e1"
+            : e.source === "system" || e.source === "mirrored" ? "#c4b5fd" : "#93c5fd";
+          return (
+          <div key={e.key} className="flex gap-2.5 py-2 first:pt-0 last:pb-0">
+            <span className={`grid place-items-center w-7 h-7 rounded-lg text-[13px] shrink-0 ${chTile(e.channel)}`}>{e.icon}</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[12px] font-bold leading-none ${inbound ? "text-emerald-700" : "text-slate-600"}`}>{dirLabel(e.channel, e.direction ?? (inbound ? "inbound" : "outbound"))}</span>
+                <span className="w-1.5 h-1.5 rounded-full shrink-0 ml-auto" style={{ background: dotColor }}
+                  title={e.source === "manual" ? "Logged by staff" : e.source === "system" || e.source === "mirrored" ? "System / auto" : "Integration"} />
+              </div>
+              <p className="text-[13px] text-slate-700 leading-snug mt-0.5 whitespace-pre-wrap">{e.summary}</p>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {e.who && <b className="font-semibold text-slate-500">{e.who} · </b>}
+                {fmtWhen(e.when)}{e.auto && <span className="ml-1 text-slate-300">auto</span>}
+              </div>
+              {e.commId && (e.needsFollowUp || e.followUpTaskId) && (
+                <div className="mt-1">
+                  {e.followUpTaskId ? (
+                    <span className={`inline-block text-[10px] font-semibold rounded-full px-2 py-0.5 ${taskDone[e.followUpTaskId] ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                      {taskDone[e.followUpTaskId] ? "✓ Follow-up done" : "◷ Follow-up open"}
+                    </span>
+                  ) : e.needsFollowUp ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="inline-block text-[10px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">Needs follow-up</span>
+                      <button className="text-[10px] font-semibold text-navy hover:underline"
+                        onClick={() => createFollowUpTask(e.commId!, e.summary)}>＋ Create task</button>
+                      <button className="text-[10px] text-slate-300 hover:text-slate-500 underline"
+                        onClick={() => dismissFollowUp(e.commId!)}>dismiss</button>
+                    </span>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+          );
+        })}
       </div>
       {entries.length > 4 && (
         <button className="text-[11px] text-slate-400 hover:text-navy underline mt-2.5"
           onClick={() => setShowAll((v) => !v)}>
-          {showAll ? "show less" : `view all ${entries.length} →`}
+          {showAll ? "Show less" : `View all ${entries.length} communications →`}
         </button>
       )}
     </div>
