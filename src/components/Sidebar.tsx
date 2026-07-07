@@ -75,7 +75,7 @@ export default function Sidebar() {
         <div className="flex items-center justify-center h-full">
           {!collapsed ? (
             <>
-              <img src={BRAND.horizontalDark} alt={BRAND.name}
+              <img src={BRAND.horizontalDarkNoTagline} alt={BRAND.name}
                 style={{ width: "200px", height: "auto", objectFit: "contain", maxWidth: "100%" }}
                 onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; const sib = el.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
               {/* Wordmark fallback if the asset is missing */}

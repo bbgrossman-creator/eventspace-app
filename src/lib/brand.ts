@@ -19,6 +19,7 @@ export const BRAND = {
   logoDark: "/brand/eventcore-logo-dark.png",
   horizontalLight: "/brand/eventcore-horizontal-light.png",
   horizontalDark: "/brand/eventcore-horizontal-dark.png",
+  horizontalDarkNoTagline: "/brand/eventcore-horizontal-dark-notagline.png",
   iconLight: "/brand/eventcore-icon-light.png",
   iconDark: "/brand/eventcore-icon-dark.png",
   colors: {
