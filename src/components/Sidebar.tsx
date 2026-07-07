@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { BRAND } from "@/lib/brand";
 import { usePathname } from "next/navigation";
 
 const NAV = [
@@ -72,8 +73,8 @@ export default function Sidebar() {
         <div className="flex items-start justify-between gap-1">
           {!collapsed && (
             <div>
-              <div className="font-display text-lg font-bold leading-tight tracking-tight">EVENT SPACE</div>
-              <div className="text-[11px] tracking-[0.25em] text-gold font-semibold mt-0.5">BY BURGER BAR</div>
+              <div className="font-display text-lg font-bold leading-tight tracking-tight">{BRAND.name}</div>
+              <div className="text-[11px] tracking-[0.18em] text-gold font-semibold mt-0.5">{BRAND.tagline.toUpperCase()}</div>
             </div>
           )}
           <button onClick={toggleCollapsed} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}

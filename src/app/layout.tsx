@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import AuthGate from "@/components/AuthGate";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Event Space by Burger Bar — Operations",
+  title: `${BRAND.name} — ${BRAND.tagline}`,
   description: "Booking and event management",
   manifest: "/site.webmanifest",
   icons: {

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { BRAND } from "@/lib/brand";
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -132,8 +133,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Brand() {
   return (
     <>
-      <div className="font-display text-xl font-bold">EVENT SPACE</div>
-      <div className="text-[11px] tracking-[0.25em] text-gold font-semibold mb-6">BY BURGER BAR</div>
+      <div className="font-display text-xl font-bold">{BRAND.name}</div>
+      <div className="text-[11px] tracking-[0.18em] text-gold font-semibold mb-6">{BRAND.tagline.toUpperCase()}</div>
     </>
   );
 }
