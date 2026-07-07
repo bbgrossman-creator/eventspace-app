@@ -24,10 +24,13 @@ import { Booking, fmtDate } from "@/lib/workflow";
 interface CommRow {
   id: string; channel: string; direction: string; author: string | null;
   body: string; occurred_at: string; source: string; task_id: string | null;
+  requires_follow_up?: boolean | null; follow_up_task_id?: string | null;
 }
 interface Entry {
   key: string; icon: string; dirMark: string; summary: string;
   who: string | null; when: string; auto: boolean;
+  commId?: string; direction?: string;
+  needsFollowUp?: boolean; followUpTaskId?: string | null;
 }
 interface StaffLite { id: string; name: string; }
 
@@ -57,11 +60,13 @@ export default function CommunicationCard({ b }: { b: Booking }) {
   const [cBody, setCBody] = useState("");
   const [cWho, setCWho] = useState("");
   const [cWhen, setCWhen] = useState("");
+  const [cFollow, setCFollow] = useState(false);
+  const [taskDone, setTaskDone] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     const [comms, act, tps] = await Promise.all([
       supabase.from("communications")
-        .select("id,channel,direction,author,body,occurred_at,source,task_id")
+        .select("id,channel,direction,author,body,occurred_at,source,task_id,requires_follow_up,follow_up_task_id")
         .eq("booking_id", b.id).order("occurred_at", { ascending: false }),
       supabase.from("activity_log")
         .select("id,action,details,result,created_at")
@@ -74,7 +79,15 @@ export default function CommunicationCard({ b }: { b: Booking }) {
     ]);
     if (comms.error) { setErr(`Couldn't load communications: ${comms.error.message} — run v129_communications.sql.`); return; }
     setErr("");
-    setRows((comms.data ?? []) as CommRow[]);
+    const cr = (comms.data ?? []) as CommRow[];
+    setRows(cr);
+    const taskIds = cr.map((r) => r.follow_up_task_id).filter(Boolean) as string[];
+    if (taskIds.length) {
+      const { data: tk } = await supabase.from("tasks").select("id,done").in("id", taskIds);
+      const m: Record<string, boolean> = {};
+      for (const t of (tk ?? []) as { id: string; done: boolean }[]) m[t.id] = t.done;
+      setTaskDone(m);
+    }
     const m: Entry[] = [];
     for (const a of (act.data ?? []) as { id: string; action: string; details: string | null; created_at: string }[]) {
       m.push({
@@ -105,11 +118,32 @@ export default function CommunicationCard({ b }: { b: Booking }) {
       booking_id: b.id, invoice_num: b.invoice_num,
       channel: cChannel, direction: cDir,
       author: cWho || null, body: cBody.trim(),
+      customer_contact_value: cDir === "inbound" ? (b.phone || b.email || null) : null,
       occurred_at: cWhen ? new Date(cWhen).toISOString() : new Date().toISOString(),
+      requires_follow_up: cDir === "inbound" && cFollow,
       source: "manual",
     });
-    if (error) { setErr(`Couldn't log it: ${error.message} — run v129_communications.sql.`); return; }
-    setCBody(""); setCWhen(""); setComposer(false); load();
+    if (error) { setErr(`Couldn't log it: ${error.message} — run v131_communication_followup.sql.`); return; }
+    setCBody(""); setCWhen(""); setCFollow(false); setComposer(false); load();
+  }
+
+  async function createFollowUpTask(commId: string, body: string) {
+    const short = body.length > 60 ? body.slice(0, 57) + "…" : body;
+    const { data, error } = await supabase.from("tasks").insert({
+      booking_id: b.id, invoice_num: b.invoice_num,
+      title: `Follow up: ${short}`, assignee: null, done: false,
+    }).select("id").single();
+    if (error || !data) { setErr(`Couldn't create the task: ${error?.message ?? "unknown"}`); return; }
+    const { error: e2 } = await supabase.from("communications")
+      .update({ follow_up_task_id: data.id }).eq("id", commId);
+    if (e2) { setErr(`Task made, but couldn't link it: ${e2.message}`); return; }
+    load();
+  }
+  async function dismissFollowUp(commId: string) {
+    const { error } = await supabase.from("communications")
+      .update({ requires_follow_up: false }).eq("id", commId);
+    if (error) { setErr(`Couldn't clear it: ${error.message}`); return; }
+    load();
   }
 
   const entries: Entry[] = [
@@ -117,6 +151,8 @@ export default function CommunicationCard({ b }: { b: Booking }) {
       key: `c-${r.id}`, icon: chIcon(r.channel),
       dirMark: r.direction === "inbound" ? "←" : "→",
       summary: r.body, who: r.author, when: r.occurred_at, auto: false,
+      commId: r.id, direction: r.direction,
+      needsFollowUp: !!r.requires_follow_up, followUpTaskId: r.follow_up_task_id ?? null,
     })),
     ...mirrored,
   ].sort((a, z) => z.when.localeCompare(a.when));
@@ -162,6 +198,12 @@ export default function CommunicationCard({ b }: { b: Booking }) {
             <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={log}>Save</button>
             <button className="text-xs text-slate-400 underline" onClick={() => setComposer(false)}>cancel</button>
           </div>
+          {cDir === "inbound" && (
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer pt-0.5">
+              <input type="checkbox" className="accent-navy" checked={cFollow} onChange={(e) => setCFollow(e.target.checked)} />
+              This needs follow-up
+            </label>
+          )}
         </div>
       )}
 
@@ -182,6 +224,23 @@ export default function CommunicationCard({ b }: { b: Booking }) {
               {e.who && <b className="font-semibold text-slate-500">{e.who} · </b>}
               {fmtWhen(e.when)}{e.auto && <span className="ml-1 text-slate-300">auto</span>}
             </div>
+            {/* Follow-up affordances: only on real (non-mirrored) comm rows */}
+            {e.commId && (e.needsFollowUp || e.followUpTaskId) && (
+              <div className="pl-6 mt-0.5">
+                {e.followUpTaskId ? (
+                  <span className={`text-[10px] font-semibold ${taskDone[e.followUpTaskId] ? "text-emerald-600" : "text-amber-600"}`}>
+                    {taskDone[e.followUpTaskId] ? "✓ Follow-up task done" : "◷ Follow-up task open"}
+                  </span>
+                ) : e.needsFollowUp ? (
+                  <span className="inline-flex items-center gap-2">
+                    <button className="text-[10px] font-semibold text-navy hover:underline"
+                      onClick={() => createFollowUpTask(e.commId!, e.summary)}>＋ Create task from this</button>
+                    <button className="text-[10px] text-slate-300 hover:text-slate-500 underline"
+                      onClick={() => dismissFollowUp(e.commId!)}>dismiss</button>
+                  </span>
+                ) : null}
+              </div>
+            )}
           </div>
         ))}
       </div>
