@@ -493,8 +493,13 @@ export default function BookingDetail() {
                       const res = await fetch("/api/calendar-sync", { method: "POST" });
                       const data = await res.json();
                       if (!data.ok) { setMsg({ ok: false, text: data.detail }); return; }
-                      if (data.filled > 0) { load(); setMsg({ ok: true, text: `Found and filled ${data.filled} call time(s) ✓` }); }
-                      else setMsg({ ok: true, text: `No matching calendar appointment found yet (scanned ${data.events_scanned}).` });
+                      if (data.filled > 0) {
+                        load();
+                        const ambNote = data.ambiguous > 0 ? ` — ⚠️ ${data.ambiguous} other event${data.ambiguous === 1 ? "" : "s"} matched more than one booking and needs manual review (check Activity).` : "";
+                        setMsg({ ok: true, text: `Found and filled ${data.filled} call time(s) ✓${ambNote}` });
+                      } else if (data.ambiguous > 0) {
+                        setMsg({ ok: false, text: `⚠️ ${data.ambiguous} calendar event(s) matched more than one booking — needs manual review (check Activity). Nothing was auto-filled for ${data.ambiguous === 1 ? "it" : "them"}.` });
+                      } else setMsg({ ok: true, text: `No matching calendar appointment found yet (scanned ${data.events_scanned}).` });
                     } catch (e) {
                       setMsg({ ok: false, text: `Sync failed: ${(e as Error).message}` });
                     }

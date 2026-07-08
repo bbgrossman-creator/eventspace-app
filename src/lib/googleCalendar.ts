@@ -107,7 +107,57 @@ export async function fetchCalendarEvents(
 // ─── Match an event to a booking ───
 const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
-export function matchEventToBooking(ev: GCalEvent, bookings: Booking[]): Booking | null {
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july",
+  "august", "september", "october", "november", "december"];
+// Explicit aliases, not a slice(0,3) guess — September genuinely has two
+// common abbreviations in the wild ("Sep" and "Sept"), and a mechanical
+// 3-letter slice silently misses the 4-letter one.
+const MONTH_ALIASES: string[][] = [
+  ["january", "jan"], ["february", "feb"], ["march", "mar"], ["april", "apr"],
+  ["may"], ["june", "jun"], ["july", "jul"], ["august", "aug"],
+  ["september", "sep", "sept"], ["october", "oct"], ["november", "nov"], ["december", "dec"],
+];
+
+// Lenient check: does the customer's typed event date (from the "What's your
+// event date?" booking-page question) appear anywhere in the event text?
+// Used ONLY to break a tie between two otherwise-equal candidates — never as
+// a primary signal on its own, since it's free text a customer typed once.
+// Hand-rolled matching (no date-parsing library) — deliberately permissive:
+// numeric M/D and M/D/Y (with or without leading zeros), plus every common
+// month-name alias in either "Month Day" or "Day Month" order, with an
+// optional ordinal suffix (1st/2nd/3rd/13th) and an optional trailing period
+// on the month token ("Sept." / "Aug."). Always matched against lowercased
+// text, so capitalization never matters.
+function eventDateAppearsIn(eventDateIso: string | null | undefined, text: string): boolean {
+  if (!eventDateIso) return false;
+  const d = new Date(`${eventDateIso}T00:00:00`);
+  if (isNaN(d.getTime())) return false;
+  const month = d.getMonth() + 1, day = d.getDate(), year = d.getFullYear();
+  const mm = String(month).padStart(2, "0"), dd = String(day).padStart(2, "0");
+  const numeric = [
+    `${month}/${day}`, `${mm}/${dd}`, `${month}-${day}`, `${mm}-${dd}`,
+    `${month}/${day}/${year}`, `${mm}/${dd}/${year}`,
+  ];
+  if (numeric.some((p) => text.includes(p))) return true;
+  const ordinal = "(st|nd|rd|th)?";
+  const wordPatterns: RegExp[] = [];
+  for (const alias of MONTH_ALIASES[month - 1]) {
+    wordPatterns.push(new RegExp(`\\b${alias}\\.?\\s+${day}${ordinal}\\b`));
+    wordPatterns.push(new RegExp(`\\b${day}${ordinal}\\s+${alias}\\.?\\b`));
+  }
+  return wordPatterns.some((re) => re.test(text));
+}
+
+export interface MatchResult {
+  booking: Booking | null;
+  // "matched": booking is set. "none": nothing scored — not this event's booking,
+  // ignore quietly. "ambiguous": 2+ candidates tied and the date tie-breaker
+  // couldn't separate them — needs a human, never guess.
+  reason: "matched" | "none" | "ambiguous";
+  tiedCount?: number;
+}
+
+export function matchEventToBooking(ev: GCalEvent, bookings: Booking[]): MatchResult {
   const evText = ev.scanText.toLowerCase();
   const evDigits = digits(ev.scanText);
 
@@ -136,21 +186,28 @@ export function matchEventToBooking(ev: GCalEvent, bookings: Booking[]): Booking
     if (score > 0) scored.push({ b, score, emailMatch });
   }
 
-  if (scored.length === 0) return null;
+  if (scored.length === 0) return { booking: null, reason: "none" };
 
   // CRITICAL disambiguation: if ANY candidate matches by email, only consider
   // email-matched candidates. This prevents a phone-only match from stealing an
   // event that actually belongs to a different booking (the same-phone bug).
   const anyEmail = scored.some((s) => s.emailMatch);
   const pool = anyEmail ? scored.filter((s) => s.emailMatch) : scored;
+  pool.sort((a, z) => z.score - a.score);
 
-  // Highest score wins. Ties (e.g. two phone-only matches) are ambiguous —
-  // refuse rather than guess wrong. Email matches are allowed to win outright.
-  pool.sort((a, b) => b.score - a.score);
-  if (pool.length >= 2 && pool[0].score === pool[1].score && !pool[0].emailMatch) {
-    return null; // ambiguous phone/name-only match — don't risk the wrong booking
+  // A genuine tie at the top — same score, could be same email shared across
+  // multiple bookings (the same-email bug), or two equally-weak phone/name
+  // matches. Try the event-date tie-breaker before giving up.
+  const tiedTop = pool.filter((s) => s.score === pool[0].score);
+  if (tiedTop.length >= 2) {
+    const dateMatches = tiedTop.filter((s) => eventDateAppearsIn(s.b.event_date, evText));
+    if (dateMatches.length === 1) return { booking: dateMatches[0].b, reason: "matched" };
+    // Still ambiguous — 0 or 2+ tied candidates also share the typed date
+    // (or no date question was answered at all). Refuse rather than guess.
+    return { booking: null, reason: "ambiguous", tiedCount: tiedTop.length };
   }
-  return pool[0].b;
+
+  return { booking: pool[0].b, reason: "matched" };
 }
 
 // Only bookings awaiting a scheduled call are eligible to be matched/filled.
@@ -162,7 +219,7 @@ export function syncEligible(b: Booking): boolean {
 //     so there's no internal HTTP hop that can fail on origin resolution. ───
 export interface SyncResult {
   ok: boolean; detail?: string;
-  events_scanned?: number; awaiting_call?: number; filled?: number; matches?: string[];
+  events_scanned?: number; awaiting_call?: number; filled?: number; ambiguous?: number; matches?: string[];
 }
 
 export async function syncCalendar(): Promise<SyncResult> {
@@ -188,10 +245,34 @@ export async function syncCalendar(): Promise<SyncResult> {
   const bookings = ((rows ?? []) as Booking[]).filter(syncEligible);
 
   let filled = 0;
+  let ambiguous = 0;
   const matches: string[] = [];
   for (const ev of events) {
-    const b = matchEventToBooking(ev, bookings);
-    if (!b) continue;
+    const result = matchEventToBooking(ev, bookings);
+
+    if (result.reason === "ambiguous") {
+      // Never guess: 2+ eligible bookings tied (typically a shared email) and
+      // the event-date tie-breaker couldn't separate them either. Flag every
+      // tied candidate so a human resolves it from whichever booking they open.
+      const evText = ev.scanText.toLowerCase();
+      const tied = bookings.filter((b) => {
+        const be = (b.email ?? "").toLowerCase();
+        return be && (ev.attendeeEmails.includes(be) || evText.includes(be));
+      });
+      for (const b of tied) {
+        await db.from("activity_log").insert({
+          booking_id: b.id, invoice_num: b.invoice_num,
+          action: "Calendar Match Ambiguous — Needs Review",
+          details: `"${ev.summary}" at ${new Date(ev.start).toLocaleString()} matches ${tied.length} bookings with this email and couldn't be told apart automatically. Check which one this call belongs to and set the call time manually.`,
+          result: "WARNING",
+        });
+      }
+      ambiguous++;
+      continue;
+    }
+    if (!result.booking) continue;
+
+    const b = result.booking;
     await db.from("bookings").update({
       menu_discussion_date: ev.start,
       menu_discussion_status: "Scheduled",
@@ -208,5 +289,5 @@ export async function syncCalendar(): Promise<SyncResult> {
     matches.push(`${ev.summary} → #${b.invoice_num}`);
   }
 
-  return { ok: true, events_scanned: events.length, awaiting_call: bookings.length + filled, filled, matches };
+  return { ok: true, events_scanned: events.length, awaiting_call: bookings.length + filled, filled, ambiguous, matches };
 }
