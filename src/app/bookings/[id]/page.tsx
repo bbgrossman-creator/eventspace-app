@@ -495,10 +495,12 @@ export default function BookingDetail() {
                       if (!data.ok) { setMsg({ ok: false, text: data.detail }); return; }
                       if (data.filled > 0) {
                         load();
-                        const ambNote = data.ambiguous > 0 ? ` — ⚠️ ${data.ambiguous} other event${data.ambiguous === 1 ? "" : "s"} matched more than one booking and needs manual review (check Activity).` : "";
+                        const flags = (data.ambiguous ?? 0) + (data.low_confidence ?? 0);
+                        const ambNote = flags > 0 ? ` — ⚠️ ${flags} other event${flags === 1 ? "" : "s"} needs manual review (check Activity).` : "";
                         setMsg({ ok: true, text: `Found and filled ${data.filled} call time(s) ✓${ambNote}` });
-                      } else if (data.ambiguous > 0) {
-                        setMsg({ ok: false, text: `⚠️ ${data.ambiguous} calendar event(s) matched more than one booking — needs manual review (check Activity). Nothing was auto-filled for ${data.ambiguous === 1 ? "it" : "them"}.` });
+                      } else if ((data.ambiguous ?? 0) + (data.low_confidence ?? 0) > 0) {
+                        const flags = (data.ambiguous ?? 0) + (data.low_confidence ?? 0);
+                        setMsg({ ok: false, text: `⚠️ ${flags} calendar event(s) couldn't be confidently matched — needs manual review (check Activity). Nothing was auto-filled for ${flags === 1 ? "it" : "them"}.` });
                       } else setMsg({ ok: true, text: `No matching calendar appointment found yet (scanned ${data.events_scanned}).` });
                     } catch (e) {
                       setMsg({ ok: false, text: `Sync failed: ${(e as Error).message}` });

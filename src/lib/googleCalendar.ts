@@ -151,19 +151,22 @@ function eventDateAppearsIn(eventDateIso: string | null | undefined, text: strin
 export interface MatchResult {
   booking: Booking | null;
   // "matched": booking is set. "none": nothing scored — not this event's booking,
-  // ignore quietly. "ambiguous": 2+ candidates tied and the date tie-breaker
-  // couldn't separate them — needs a human, never guess.
-  reason: "matched" | "none" | "ambiguous";
+  // ignore quietly. "ambiguous": 2+ eligible candidates tied and the date
+  // tie-breaker couldn't separate them. "low_confidence": only one eligible
+  // candidate, but its email is shared elsewhere in the system and nothing
+  // else (name/date) confirms it — could be a coincidental attendee match on
+  // an unrelated event. Never guess on either.
+  reason: "matched" | "none" | "ambiguous" | "low_confidence";
   tiedCount?: number;
 }
 
-export function matchEventToBooking(ev: GCalEvent, bookings: Booking[]): MatchResult {
+export function matchEventToBooking(ev: GCalEvent, bookings: Booking[], sharedEmails: Set<string>): MatchResult {
   const evText = ev.scanText.toLowerCase();
   const evDigits = digits(ev.scanText);
 
   // Score every booking against this event. Higher = more confident.
   // Email is decisive; phone is supporting; name only breaks ties.
-  type Scored = { b: Booking; score: number; emailMatch: boolean };
+  type Scored = { b: Booking; score: number; emailMatch: boolean; nameMatch: boolean };
   const scored: Scored[] = [];
 
   for (const b of bookings) {
@@ -171,6 +174,7 @@ export function matchEventToBooking(ev: GCalEvent, bookings: Booking[]): MatchRe
     const bp = digits(b.phone);
     let score = 0;
     let emailMatch = false;
+    let nameMatch = false;
 
     // Email — strongest signal. Attendee field is most reliable; body text next.
     if (be && ev.attendeeEmails.includes(be)) { score += 100; emailMatch = true; }
@@ -181,9 +185,9 @@ export function matchEventToBooking(ev: GCalEvent, bookings: Booking[]): MatchRe
 
     // Name — weak tiebreaker only (truncation/dupes make it unreliable alone).
     const nm = (b.contact_name ?? "").trim().toLowerCase();
-    if (nm.length >= 4 && evText.includes(nm)) score += 5;
+    if (nm.length >= 4 && evText.includes(nm)) { score += 5; nameMatch = true; }
 
-    if (score > 0) scored.push({ b, score, emailMatch });
+    if (score > 0) scored.push({ b, score, emailMatch, nameMatch });
   }
 
   if (scored.length === 0) return { booking: null, reason: "none" };
@@ -207,7 +211,21 @@ export function matchEventToBooking(ev: GCalEvent, bookings: Booking[]): MatchRe
     return { booking: null, reason: "ambiguous", tiedCount: tiedTop.length };
   }
 
-  return { booking: pool[0].b, reason: "matched" };
+  // No live tie among *currently eligible* bookings — but that alone isn't
+  // enough. If this booking's email is shared by other bookings elsewhere in
+  // the system (even ones not eligible right now — completed, cancelled,
+  // mid-flow), a bare email match is coincidence, not confirmation: some
+  // unrelated event that happens to list this address as an attendee could
+  // silently attach itself to whichever booking happens to be the only one
+  // waiting at that moment. Require the event to also confirm the name or
+  // the typed date before trusting it in that case.
+  const top = pool[0];
+  const emailIsStructurallyShared = top.emailMatch && sharedEmails.has((top.b.email ?? "").toLowerCase());
+  if (emailIsStructurallyShared && !top.nameMatch && !eventDateAppearsIn(top.b.event_date, evText)) {
+    return { booking: null, reason: "low_confidence" };
+  }
+
+  return { booking: top.b, reason: "matched" };
 }
 
 // Only bookings awaiting a scheduled call are eligible to be matched/filled.
@@ -219,7 +237,7 @@ export function syncEligible(b: Booking): boolean {
 //     so there's no internal HTTP hop that can fail on origin resolution. ───
 export interface SyncResult {
   ok: boolean; detail?: string;
-  events_scanned?: number; awaiting_call?: number; filled?: number; ambiguous?: number; matches?: string[];
+  events_scanned?: number; awaiting_call?: number; filled?: number; ambiguous?: number; low_confidence?: number; matches?: string[];
 }
 
 export async function syncCalendar(): Promise<SyncResult> {
@@ -244,11 +262,23 @@ export async function syncCalendar(): Promise<SyncResult> {
     .eq("status", "schedule_menu_discussion").is("menu_discussion_date", null);
   const bookings = ((rows ?? []) as Booking[]).filter(syncEligible);
 
+  // Emails that appear on more than one booking ANYWHERE in the system (not
+  // just currently-eligible ones) — a bare match against one of these is
+  // coincidence, not confirmation. See matchEventToBooking's low_confidence path.
+  const { data: allEmailRows } = await db.from("bookings").select("email").not("email", "is", null);
+  const emailCounts: Record<string, number> = {};
+  for (const r of (allEmailRows ?? []) as { email: string }[]) {
+    const e = r.email.toLowerCase();
+    emailCounts[e] = (emailCounts[e] ?? 0) + 1;
+  }
+  const sharedEmails = new Set(Object.keys(emailCounts).filter((e) => emailCounts[e] >= 2));
+
   let filled = 0;
   let ambiguous = 0;
+  let lowConfidence = 0;
   const matches: string[] = [];
   for (const ev of events) {
-    const result = matchEventToBooking(ev, bookings);
+    const result = matchEventToBooking(ev, bookings, sharedEmails);
 
     if (result.reason === "ambiguous") {
       // Never guess: 2+ eligible bookings tied (typically a shared email) and
@@ -270,6 +300,26 @@ export async function syncCalendar(): Promise<SyncResult> {
       ambiguous++;
       continue;
     }
+    if (result.reason === "low_confidence") {
+      // Only one eligible booking shared this event's email, but the email
+      // itself is reused elsewhere in the system and nothing else confirmed
+      // it — flag it rather than risk attaching an unrelated event's time.
+      const evText = ev.scanText.toLowerCase();
+      const candidate = bookings.find((b) => {
+        const be = (b.email ?? "").toLowerCase();
+        return be && (ev.attendeeEmails.includes(be) || evText.includes(be));
+      });
+      if (candidate) {
+        await db.from("activity_log").insert({
+          booking_id: candidate.id, invoice_num: candidate.invoice_num,
+          action: "Calendar Match Low-Confidence — Needs Review",
+          details: `"${ev.summary}" at ${new Date(ev.start).toLocaleString()} matches this booking only by email, and that email is shared by other bookings in the system. Neither the name nor the event date confirmed it, so it wasn't auto-filled. Check whether this call actually belongs here.`,
+          result: "WARNING",
+        });
+      }
+      lowConfidence++;
+      continue;
+    }
     if (!result.booking) continue;
 
     const b = result.booking;
@@ -289,5 +339,5 @@ export async function syncCalendar(): Promise<SyncResult> {
     matches.push(`${ev.summary} → #${b.invoice_num}`);
   }
 
-  return { ok: true, events_scanned: events.length, awaiting_call: bookings.length + filled, filled, ambiguous, matches };
+  return { ok: true, events_scanned: events.length, awaiting_call: bookings.length + filled, filled, ambiguous, low_confidence: lowConfidence, matches };
 }
