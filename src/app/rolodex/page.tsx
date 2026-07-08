@@ -58,6 +58,10 @@ export default function RolodexPage() {
   const [importing, setImporting] = useState(false);
   const [copyMsg, setCopyMsg] = useState("");
 
+  // Browse landing — the "true knowledge base" face of the Rolodex.
+  const [popular, setPopular] = useState<{ title: string; count: number }[]>([]);
+  const [lessons, setLessons] = useState<{ text: string; field: "worked" | "didnt_work" | "would_repeat"; author: string | null; booking_id: string; who: string }[]>([]);
+
   useEffect(() => { loadCapabilities().then((c) => setCaps(c.caps)); }, []);
 
   const search = useCallback(async (raw: string) => {
@@ -173,6 +177,43 @@ export default function RolodexPage() {
 
   useEffect(() => { if (caps?.rolodex) search(""); }, [caps, search]);
 
+  // Landing data: what the company reaches for most, and what it learned last.
+  useEffect(() => {
+    if (!caps?.rolodex) return;
+    (async () => {
+      const { data: titles } = await supabase.from("event_components").select("title");
+      const counts: Record<string, number> = {};
+      for (const t of (titles ?? []) as { title: string }[]) {
+        const key = t.title.trim();
+        if (key) counts[key] = (counts[key] ?? 0) + 1;
+      }
+      setPopular(Object.keys(counts).map((title) => ({ title, count: counts[title] }))
+        .sort((a, z) => z.count - a.count).slice(0, 8));
+
+      const { data: dbs } = await supabase.from("event_debriefs")
+        .select("booking_id,author,worked,didnt_work,would_repeat,created_at")
+        .order("created_at", { ascending: false }).limit(8);
+      const rows = (dbs ?? []) as { booking_id: string; author: string | null; worked: string | null; didnt_work: string | null; would_repeat: string | null }[];
+      const names: Record<string, string> = {};
+      if (rows.length) {
+        const { data: bs } = await supabase.from("bookings").select("id,contact_name,event_type")
+          .in("id", rows.map((r) => r.booking_id));
+        for (const bk of (bs ?? []) as { id: string; contact_name: string; event_type: string | null }[]) {
+          names[bk.id] = `${bk.contact_name}${bk.event_type ? ` ${bk.event_type}` : ""}`;
+        }
+      }
+      const out: typeof lessons = [];
+      for (const r of rows) {
+        for (const f of ["didnt_work", "would_repeat", "worked"] as const) {
+          const v = r[f];
+          if (v && out.length < 5) out.push({ text: v, field: f, author: r.author, booking_id: r.booking_id, who: names[r.booking_id] ?? "" });
+        }
+      }
+      setLessons(out);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caps]);
+
   // Copy-mode destination options (active bookings), loaded lazily.
   useEffect(() => {
     if (mode !== "copy" || destOptions.length) return;
@@ -229,8 +270,9 @@ export default function RolodexPage() {
         </div>
       </div>
       <p className="text-sm text-slate-500 mt-2 mb-5 max-w-2xl">
-        Everything the company has learned, searchable — components, dishes, and debrief wisdom
-        from every event. {mode === "explore" ? "Browse for ideas; click through to any event." : "Pick a destination booking, check components anywhere below, import."}
+        Your company&apos;s memory. Every event ever produced — its components, dishes, and
+        lessons — searchable in one place, so 3,000 events from now nobody has to remember
+        any of it themselves.
       </p>
 
       <input className="field w-full max-w-xl !py-2.5" autoFocus
@@ -238,10 +280,21 @@ export default function RolodexPage() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") search(q); }} />
-      <div className="text-[11px] text-slate-400 mt-1 mb-4">Press Enter to search · empty search shows everything</div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400 mt-1.5 mb-4">
+        <span>Press Enter · searches:</span>
+        <span className="text-slate-500">✓ Components</span>
+        <span className="text-slate-500">✓ Menu items</span>
+        <span className="text-slate-500">✓ Debriefs (Worked / Didn&apos;t / Repeat)</span>
+      </div>
 
       {mode === "copy" && (
-        <div className="card p-3 mb-5 flex items-center gap-2 flex-wrap sticky top-2 z-10">
+        <div className="card p-3 mb-5 sticky top-2 z-10">
+          <div className="text-[11px] text-slate-500 mb-2">
+            <b>How copying works:</b> ① pick the destination booking → ② check components in
+            the results below → ③ Copy Selected. Items, quantities, notes &amp; requirements come
+            along; <b>pricing does not</b> — price fresh on the booking.
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Copy to</span>
           {dest ? (
             <>
@@ -272,10 +325,48 @@ export default function RolodexPage() {
             {importing ? "Copying…" : `Copy ${Object.values(checked).filter(Boolean).length || ""} selected`}
           </button>
           {copyMsg && <span className="w-full text-xs text-slate-600">{copyMsg}</span>}
+          </div>
         </div>
       )}
 
       {err && <p className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 mb-4">⚠️ {err}</p>}
+
+      {!q.trim() && !busy && (popular.length > 0 || lessons.length > 0) && (
+        <div className="grid sm:grid-cols-2 gap-4 mb-6">
+          {popular.length > 0 && (
+            <div className="card p-4">
+              <h2 className="font-display font-semibold text-[14px] mb-2">⭐ Popular Components</h2>
+              <div className="flex flex-wrap gap-1.5">
+                {popular.map((p) => (
+                  <button key={p.title} type="button"
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] ring-1 ring-[#E7EDF5] bg-[#F6F8FB] hover:bg-[#F4F9FF] hover:ring-[#4A9EFF] transition-colors"
+                    onClick={() => { setQ(p.title); search(p.title); }}>
+                    <span className="font-medium">{p.title}</span>
+                    <span className="text-slate-400">({p.count})</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-2">Times each has appeared across all events — click to see them.</p>
+            </div>
+          )}
+          {lessons.length > 0 && (
+            <div className="card p-4">
+              <h2 className="font-display font-semibold text-[14px] mb-2">💡 Recent Lessons</h2>
+              <div className="space-y-1.5">
+                {lessons.map((l, i) => (
+                  <p key={i} className="text-[12px] text-slate-600 border-l-2 pl-2"
+                    style={{ borderColor: l.field === "didnt_work" ? "var(--ec-danger)" : l.field === "worked" ? "var(--ec-success)" : "var(--ec-blue)" }}>
+                    {l.text}
+                    <Link href={`/bookings/${l.booking_id}`} className="text-slate-400 hover:underline"> — {l.who}{l.author ? `, ${l.author}` : ""}</Link>
+                  </p>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-2">The latest debrief wisdom — searchable like everything else.</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {busy && <p className="text-sm text-slate-400">Searching…</p>}
       {!busy && events.length === 0 && !err && (
         <p className="text-sm text-slate-400">Nothing found{q ? ` for “${q}”` : ""} — components appear here once events have them (run the Tier-1 backfill under Business Model).</p>
