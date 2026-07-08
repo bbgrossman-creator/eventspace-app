@@ -4,21 +4,29 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { BRAND } from "@/lib/brand";
 import { usePathname } from "next/navigation";
-import { loadCapabilities } from "@/lib/capabilities";
+import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 
-const NAV = [
+// Nav is DATA: each item may declare `cap`, a capability key it requires.
+// No `cap` → always shown. The sidebar filters against loaded capabilities,
+// so the Business Model page is the single source of truth and navigation
+// composes itself. Adding a future module (Inventory, Production Board) is a
+// one-line entry here + one flag in capabilities.ts — never a bespoke showX.
+type NavItem = { href: string; label: string; icon: string; cap?: keyof Capabilities };
+
+const NAV: NavItem[] = [
   { href: "/", label: "Daily Ops", icon: "📋" },
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/bookings", label: "Bookings", icon: "🗂️" },
   { href: "/calendar", label: "Calendar", icon: "📅" },
   { href: "/bookings/new", label: "New Inquiry", icon: "📞" },
   { href: "/drafts", label: "Inquiry Drafts", icon: "📝" },
+  { href: "/rolodex", label: "Rolodex", icon: "🔭", cap: "rolodex" },
+  // Future, already wired: { href: "/proposals", ..., cap: "proposals" }
+  //                        { href: "/inventory", ..., cap: "inventory" }
 ];
-// Appended to NAV only when caps.rolodex — template-driven never sees it.
-const ROLODEX_ITEM = { href: "/rolodex", label: "Rolodex", icon: "🔭" };
 
 // Back office groups — no section title; the divider tells the story.
-const BACKOFFICE_GROUPS: { title: string; icon: string; items: { href: string; label: string; icon: string }[] }[] = [
+const BACKOFFICE_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
   {
     title: "Content", icon: "🍽️",
     items: [
@@ -57,11 +65,21 @@ export default function Sidebar() {
   };
   const [open, setOpen] = useState<Record<string, boolean>>(initialOpen);
   const [collapsed, setCollapsed] = useState(false);
-  const [showRolodex, setShowRolodex] = useState(false);
+  // null until loaded; before load we show only always-on items (no cap),
+  // so a capability-gated item never flashes in then vanishes.
+  const [caps, setCaps] = useState<Capabilities | null>(null);
   useEffect(() => {
     try { setCollapsed(localStorage.getItem("sidebar_collapsed") === "1"); } catch {}
-    loadCapabilities().then((c) => setShowRolodex(c.caps.rolodex)).catch(() => {});
+    loadCapabilities().then((c) => setCaps(c.caps)).catch(() => {});
   }, []);
+
+  // A cap-gated item shows only once caps are loaded AND the flag is true.
+  const allowed = (item: NavItem) => !item.cap || (!!caps && !!caps[item.cap]);
+  const navItems = NAV.filter(allowed);
+  // Groups filter their items, then empty groups drop their header entirely.
+  const groups = BACKOFFICE_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter(allowed) }))
+    .filter((g) => g.items.length > 0);
   const toggleCollapsed = () => {
     setCollapsed((c) => {
       try { localStorage.setItem("sidebar_collapsed", c ? "0" : "1"); } catch {}
@@ -110,7 +128,7 @@ export default function Sidebar() {
       </div>
 
       <nav className={`flex-1 ${collapsed ? "px-2" : "px-4"} space-y-1`}>
-        {[...NAV, ...(showRolodex ? [ROLODEX_ITEM] : [])].map((n) => {
+        {navItems.map((n) => {
           const active = n.href === "/" ? path === "/" : path.startsWith(n.href) && (n.href !== "/bookings" || path === "/bookings" || path.match(/^\/bookings\/(?!new)/));
           return (
             <Link key={n.href} href={n.href} title={collapsed ? n.label : undefined}
@@ -131,7 +149,7 @@ export default function Sidebar() {
         {/* Divider alone marks the back office — no label needed */}
         <div className="!my-4 border-t border-white/10" />
 
-        {BACKOFFICE_GROUPS.map((g) => {
+        {groups.map((g) => {
           const isOpen = !!open[g.title];
           const hasActive = g.items.some((i) => path.startsWith(i.href));
           if (collapsed) {
