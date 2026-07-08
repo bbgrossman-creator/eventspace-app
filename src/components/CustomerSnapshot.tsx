@@ -56,7 +56,7 @@ export default function CustomerSnapshot({ b }: { b: Booking }) {
   );
 
   return (
-    <section className="rounded-2xl bg-surface-navy text-white px-4 py-2.5 shadow-lg">
+    <section className="rounded-lg bg-surface-navy text-white px-4 py-2.5 ec-card-shadow">
       <div className="flex items-center justify-between gap-2">
         <span className="font-display font-bold text-[13px] truncate">{b.contact_name}</span>
         {stats.tier && (
@@ -78,7 +78,8 @@ export default function CustomerSnapshot({ b }: { b: Booking }) {
           </span>
         ) : <span />}
         <Link href={`/customers/${b.id}`}
-          className="shrink-0 text-[11px] font-semibold text-white/55 hover:text-white underline underline-offset-2 whitespace-nowrap">
+          className="shrink-0 text-[11px] font-semibold whitespace-nowrap hover:underline underline-offset-2"
+          style={{ color: "#8FC4FF" }}>
           Open Profile →
         </Link>
       </div>

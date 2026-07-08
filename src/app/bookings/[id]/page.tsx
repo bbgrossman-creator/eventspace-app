@@ -373,7 +373,7 @@ export default function BookingDetail() {
         }} />
 
       {msg && (
-        <div className={`rounded-lg px-4 py-3 mb-5 text-sm font-semibold ${msg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
+        <div className={`rounded-lg px-4 py-3 mb-5 text-sm font-semibold border ${msg.ok ? "status-success" : "status-conflict"}`}>
           {msg.text}
         </div>
       )}
@@ -388,24 +388,24 @@ export default function BookingDetail() {
       <div className="card p-5 mb-5">
         {/* Menu discussion sub-state banners */}
         {b.status === "schedule_menu_discussion" && ds === "link_sent" && (
-          <div className="rounded-lg bg-amber-50 border border-amber-300 px-4 py-3 mb-3 text-sm text-amber-800">
+          <div className="rounded-lg status-warning border px-4 py-3 mb-3 text-sm">
             <b>📧 Scheduling link sent</b>{" "}
             {new Date(b.menu_discussion_sent_at!).toLocaleDateString()} — waiting for customer to pick a time
           </div>
         )}
         {b.status === "schedule_menu_discussion" && ds === "scheduled" && (
-          <div className="rounded-lg bg-emerald-50 border border-emerald-300 px-4 py-3 mb-3 text-sm text-emerald-800">
+          <div className="rounded-lg status-success border px-4 py-3 mb-3 text-sm">
             <b>📞 Call scheduled:</b> {apptFmt}
           </div>
         )}
         {b.status === "schedule_menu_discussion" && ds === "overdue" && (
-          <div className="rounded-lg bg-red-50 border border-red-300 px-4 py-3 mb-3 text-sm text-red-800">
+          <div className="rounded-lg status-conflict border px-4 py-3 mb-3 text-sm">
             <b>⚠️ Scheduled call missed</b> — was {apptFmt}, menu not completed. Follow up with {b.contact_name}.
           </div>
         )}
 
         {b.deposit_ready && (b.status === "on_hold" || b.status === "conflict") && (
-          <div className="rounded-lg bg-emerald-50 border border-emerald-300 px-4 py-2.5 mb-3 text-sm text-emerald-800">
+          <div className="rounded-lg status-success border px-4 py-2.5 mb-3 text-sm">
             💳 <b>Ready to collect</b> — this party committed with a card on file
             {b.card_last4 ? <> (•••• {b.card_last4})</> : ""}. Collect the deposit to confirm.
           </div>
@@ -827,17 +827,14 @@ export default function BookingDetail() {
       <button className="text-xs text-slate-400 hover:text-navy mt-6" onClick={() => router.push("/bookings")}>← Back to bookings</button>
     </div>
 
-    {/* ── Right rail: two modes of thinking, split into two sections.
-        Customer Snapshot is pinned context — it stays put as you scroll.
-        Communication/Touchpoints/Tasks are the relationship timeline — they
-        scroll under it like any other content. Top of the snapshot aligns
-        with the top of the Contact strip in the main column (both are
-        top-aligned flex children of the same row, no extra offset here). ── */}
+    {/* ── Right rail: Customer Snapshot is the first card — foundational
+        context, not a floating overlay. It does NOT stick; the entire rail
+        scrolls together as one column. Top of the snapshot aligns with the
+        top of the Contact strip (both are top-aligned flex children of the
+        same row, no extra offset here). ── */}
     <aside className="xl:w-[28%] xl:max-w-[480px] xl:shrink-0 mt-8 xl:mt-0">
-      <div className="xl:sticky xl:top-4 xl:z-10">
+      <div className="space-y-3">
         <CustomerSnapshot b={b} />
-      </div>
-      <div className="space-y-3 mt-3">
         <CommunicationCard b={b} />
         <TouchpointsCard b={b} />
         <OpsWorkspace b={b} refreshKey={railRefresh} />
@@ -1239,9 +1236,9 @@ function ConflictPanel({ b, onChange }: { b: Booking; onChange: () => void }) {
   }
 
   return (
-    <div className="card p-5 mb-5 border-2 border-red-200">
+    <div className="card p-5 mb-5 status-conflict" style={{ borderWidth: 1, borderStyle: "solid" }}>
       <h2 className="font-display font-bold text-sm mb-1">⚠️ Conflict — same date</h2>
-      <p className="text-xs text-slate-500 mb-3">
+      <p className="text-xs mb-3" style={{ color: "var(--ec-text-secondary)" }}>
         {anyBooked
           ? "This date is held by a CONFIRMED booking — the date is taken. Inform this customer or offer an alternative."
           : "This date is held by another unconfirmed party. Per your policy, first right of refusal may apply."}

@@ -71,12 +71,12 @@ export default function Sidebar() {
     <aside className={`${collapsed ? "w-16" : "w-56"} shrink-0 bg-ink text-white flex flex-col sticky top-0 h-screen overflow-y-auto overflow-x-hidden transition-[width] duration-200`}>
       {/* Brand — the logo is the focal point, centered and given room */}
       <div className={`relative ${collapsed ? "px-2" : "px-3"}`}
-        style={{ minHeight: "96px", paddingTop: "24px", paddingBottom: "20px" }}>
+        style={{ minHeight: "108px", paddingTop: "28px", paddingBottom: "24px" }}>
         <div className="flex items-center justify-center h-full">
           {!collapsed ? (
             <>
               <img src={BRAND.horizontalDarkNoTagline} alt={BRAND.name}
-                style={{ width: "200px", height: "auto", objectFit: "contain", maxWidth: "100%", opacity: 1, filter: "none", mixBlendMode: "normal" }}
+                style={{ width: "224px", height: "auto", objectFit: "contain", maxWidth: "100%", opacity: 1, filter: "none", mixBlendMode: "normal" }}
                 onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; const sib = el.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
               {/* Wordmark fallback if the asset is missing */}
               <div className="font-display text-lg font-bold tracking-tight" style={{ display: "none" }}>{BRAND.name}</div>
@@ -114,7 +114,7 @@ export default function Sidebar() {
                   : "text-slate-300 hover:bg-white/5 hover:text-white hover:translate-x-[1px]"
               }`}>
               {active && !collapsed && (
-                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-gold" />
+                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-[#4A9EFF]" />
               )}
               <span className="w-5 text-center text-[15px] opacity-80 transition-transform duration-150 group-hover:translate-x-[2px]">{n.icon}</span>
               {!collapsed && n.label}
@@ -161,7 +161,7 @@ export default function Sidebar() {
                           className={`group relative flex items-center gap-2.5 rounded-full pl-8 pr-3 py-2 text-[13px] transition-all duration-150 ${
                             active ? "bg-white/10 text-white font-medium" : "text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-[1px]"
                           }`}>
-                          {active && <span className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-[3px] rounded-full bg-gold" />}
+                          {active && <span className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-[3px] rounded-full bg-[#4A9EFF]" />}
                           <span className="w-4 text-center text-xs opacity-70 transition-transform duration-150 group-hover:translate-x-[2px]">{n.icon}</span>
                           {n.label}
                         </Link>

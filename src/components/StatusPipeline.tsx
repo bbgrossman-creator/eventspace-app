@@ -59,12 +59,13 @@ export default function StatusPipeline({
                 "flex items-center justify-center w-10 h-10 rounded-full text-[13px] font-semibold shrink-0",
                 "transition-all duration-150 ease-out",
                 state === "done" && "bg-emerald-500 text-white",
-                state === "current" && "bg-navy text-white shadow-md",
+                state === "current" && "text-white shadow-md",
                 state === "future" && "bg-white text-slate-300 border-2 border-slate-200",
                 clickable && state === "future" && "hover:border-slate-400 hover:shadow-md hover:-translate-y-px",
                 clickable && state === "current" && "hover:brightness-110",
                 clickable && state === "done" && "hover:ring-2 hover:ring-emerald-200",
               ].filter(Boolean).join(" ")}
+              style={state === "current" ? { backgroundColor: "var(--ec-blue)" } : undefined}
             >
               {state === "done" ? <CheckIcon /> : i + 1}
             </div>
@@ -99,7 +100,7 @@ export default function StatusPipeline({
                   <div className="flex-1 h-[2px] mt-5 rounded-full bg-emerald-400" />
                 ) : i === currentStage ? (
                   <div className="flex-1 flex mt-5">
-                    <div className="flex-1 h-[2px] rounded-full bg-navy" />
+                    <div className="flex-1 h-[2px] rounded-full" style={{ backgroundColor: "var(--ec-blue)" }} />
                     <div className="flex-1 h-[2px] rounded-full bg-slate-200" />
                   </div>
                 ) : (

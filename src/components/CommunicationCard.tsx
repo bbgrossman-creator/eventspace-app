@@ -16,6 +16,9 @@
  * v129 is deliberately internal-only: manual logging + mirrored outbound.
  * No sending layer, no inbox, no portal — but the schema already speaks
  * portal (source/direction/customer_id), so those arrive as new writers.
+ *
+ * v2 visual refresh: white card, blue accent family (was soft-purple) —
+ * matches the EventCore brand system in globals.css (--ec-blue / --ec-navy-hover).
  */
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -42,9 +45,9 @@ const CHANNELS: { value: string; label: string; icon: string }[] = [
   { value: "in_person",  label: "In person",  icon: "🤝" },
 ];
 const chIcon = (c: string) => CHANNELS.find((x) => x.value === c)?.icon ?? "•";
-// Communication is one soft-purple family — it reads as "conversation" at a
-// glance without competing with the status colors elsewhere on the page.
-const chTile = (_c: string) => "bg-[#F1EBFB] text-[#7A5BC2]";
+// Communication reads as "conversation" via the brand accent blue — one
+// consistent family, not competing with the status colors elsewhere.
+const chTile = (_c: string) => "bg-accent-tint text-accent-ink";
 // "did the customer hear it or say it?" → a plain-language label per row.
 function dirLabel(channel: string, direction: string): string {
   const inbound = direction === "inbound" || direction === "inbound_customer";
@@ -161,33 +164,33 @@ export default function CommunicationCard({ b }: { b: Booking }) {
   const shown = showAll ? entries : entries.slice(0, 4);
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ring-1 ring-[#E6EAF2]">
+    <div className="rounded-2xl bg-white p-4 ec-card-shadow ring-1 ring-[#E7EDF5]">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="grid place-items-center w-6 h-6 rounded-lg text-[13px] shrink-0 bg-[#F1EBFB] text-[#7A5BC2]">💬</span>
-          <h3 className="font-display font-semibold text-[15px] leading-none truncate">Communication</h3>
+          <span className="grid place-items-center w-6 h-6 rounded-lg text-[13px] shrink-0 bg-accent-tint text-accent-ink">💬</span>
+          <h3 className="font-display font-semibold text-[15px] leading-none truncate text-accent-ink">Communication</h3>
         </div>
-        <button className="text-xs font-medium text-[#7A5BC2] hover:text-[#5B3F9E] transition-colors whitespace-nowrap shrink-0"
+        <button className="text-xs font-medium text-accent-ink hover:text-[#102F56] transition-colors whitespace-nowrap shrink-0"
           onClick={() => setComposer((v) => !v)}>＋ Log Communication</button>
       </div>
       {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-2.5 py-1.5 mb-2">{err}</p>}
 
       {composer && (
-        <div className="rounded-lg bg-[#F7F3FF] ring-1 ring-[#DCCCF5] p-2.5 mb-3 space-y-2 reveal">
+        <div className="rounded-lg bg-[#F6F8FB] ring-1 ring-[#E7EDF5] p-2.5 mb-3 space-y-2 reveal">
           <div className="flex gap-1.5 flex-wrap">
             {CHANNELS.map((c) => (
               <button key={c.value}
                 className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${cChannel === c.value
-                  ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#DCCCF5] text-[#7A5BC2] hover:bg-white"}`}
+                  ? "bg-accent text-white border-transparent" : "border-[#E7EDF5] text-accent-ink hover:bg-white"}`}
                 onClick={() => setCChannel(c.value)}>{c.icon} {c.label}</button>
             ))}
           </div>
           <div className="flex gap-1.5">
             <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "outbound"
-              ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#DCCCF5] text-[#7A5BC2] hover:bg-white"}`}
+              ? "bg-accent text-white border-transparent" : "border-[#E7EDF5] text-accent-ink hover:bg-white"}`}
               onClick={() => setCDir("outbound")}>→ We reached out</button>
             <button className={`text-[11px] px-2 py-1 rounded-full border flex-1 transition-colors ${cDir === "inbound"
-              ? "bg-[#7A5BC2] text-white border-[#7A5BC2]" : "border-[#DCCCF5] text-[#7A5BC2] hover:bg-white"}`}
+              ? "bg-accent text-white border-transparent" : "border-[#E7EDF5] text-accent-ink hover:bg-white"}`}
               onClick={() => setCDir("inbound")}>← They contacted us</button>
           </div>
           <textarea className="field w-full !py-1.5 text-[13px] !bg-white" rows={2} autoFocus
@@ -200,12 +203,12 @@ export default function CommunicationCard({ b }: { b: Booking }) {
             </select>
             <input type="datetime-local" className="field !py-1 !text-xs !bg-white w-[11.5rem]"
               value={cWhen} onChange={(e) => setCWhen(e.target.value)} title="When (blank = now)" />
-            <button className="!py-1 !px-2.5 text-xs rounded-lg bg-[#7A5BC2] text-white font-semibold hover:bg-[#5B3F9E] transition-colors" onClick={log}>Save</button>
+            <button className="btn-accent !py-1 !px-2.5 text-xs" onClick={log}>Save</button>
             <button className="text-xs text-slate-400 underline" onClick={() => setComposer(false)}>cancel</button>
           </div>
           {cDir === "inbound" && (
             <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer pt-0.5">
-              <input type="checkbox" className="accent-[#7A5BC2]" checked={cFollow} onChange={(e) => setCFollow(e.target.checked)} />
+              <input type="checkbox" className="accent-[#4A9EFF]" checked={cFollow} onChange={(e) => setCFollow(e.target.checked)} />
               This needs follow-up
             </label>
           )}
@@ -225,7 +228,7 @@ export default function CommunicationCard({ b }: { b: Booking }) {
         {shown.map((e) => {
           const inbound = e.dirMark === "←";
           const dotColor = e.source === "manual" ? "#cbd5e1"
-            : e.source === "system" || e.source === "mirrored" ? "#c4b5fd" : "#93c5fd";
+            : e.source === "system" || e.source === "mirrored" ? "#A9CDF5" : "#93c5fd";
           return (
           <div key={e.key} className="flex gap-2.5 py-2 first:pt-0 last:pb-0">
             <span className={`grid place-items-center w-7 h-7 rounded-lg text-[13px] shrink-0 ${chTile(e.channel)}`}>{e.icon}</span>
@@ -249,7 +252,7 @@ export default function CommunicationCard({ b }: { b: Booking }) {
                   ) : e.needsFollowUp ? (
                     <span className="inline-flex items-center gap-2">
                       <span className="inline-block text-[10px] font-semibold rounded-full px-2 py-0.5 bg-amber-50 text-amber-700">Needs follow-up</span>
-                      <button className="text-[10px] font-semibold text-navy hover:underline"
+                      <button className="text-[10px] font-semibold text-accent-ink hover:underline"
                         onClick={() => createFollowUpTask(e.commId!, e.summary)}>＋ Create task</button>
                       <button className="text-[10px] text-slate-300 hover:text-slate-500 underline"
                         onClick={() => dismissFollowUp(e.commId!)}>dismiss</button>
@@ -263,7 +266,7 @@ export default function CommunicationCard({ b }: { b: Booking }) {
         })}
       </div>
       {entries.length > 4 && (
-        <button className="text-[11px] text-slate-400 hover:text-navy underline mt-2.5"
+        <button className="text-[11px] text-slate-400 hover:text-accent-ink underline mt-2.5"
           onClick={() => setShowAll((v) => !v)}>
           {showAll ? "Show less" : `View all ${entries.length} communications →`}
         </button>

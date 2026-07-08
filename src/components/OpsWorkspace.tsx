@@ -64,17 +64,17 @@ function Card({ title, icon, action, onAction, accent = "plain", children }: {
   //   cool (Task Log / Touchpoints) = blue-gray: "this is record / schedule"
   //   plain (Communication) = neutral slate: "customer memory"
   const shell = accent === "feeder"
-    ? "bg-[#FFF9F6] ring-1 ring-[#F3DAce]"
+    ? "bg-white ring-1 ring-[#E7EDF5]"
     : accent === "cool"
-    ? "bg-white ring-1 ring-[#E4E9F1]"
-    : "bg-white ring-1 ring-[#E6EAF2]";
+    ? "bg-white ring-1 ring-[#E7EDF5]"
+    : "bg-white ring-1 ring-[#E7EDF5]";
   const tile = accent === "feeder"
     ? "bg-[#FBE4D8] text-[#B5623B]"
     : accent === "cool"
     ? "bg-[#E7EDF6] text-[#4C6285]"
     : "bg-[#EAECF3] text-[#465069]";
   return (
-    <div className={`rounded-2xl p-4 shadow-[0_1px_3px_rgba(15,23,42,0.05)] ${shell}`}>
+    <div className={`rounded-2xl p-4 ec-card-shadow ${shell}`}>
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`grid place-items-center w-6 h-6 rounded-lg text-[13px] shrink-0 ${tile}`}>{icon}</span>

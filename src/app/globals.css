@@ -2,35 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── EventCore design tokens ───────────────────────────────────────────────
-   Centralized so the visual language is consistent as the app grows. The
-   sidebar keeps the darkest brand navy (bg-ink, from the Tailwind theme); dark
-   information CARDS use surface-navy — a few percent lighter — so the sidebar
-   stays the darkest object and the white typography breathes.               */
+/* ─── EventCore design tokens — v2 visual refresh ───────────────────────────
+   Matches the new logo/brand system. Sidebar keeps the darkest brand navy
+   (bg-ink, from the Tailwind theme — see tailwind.config.ts); dark hero CARDS
+   (Customer Snapshot) use surface-navy, a step lighter, so the sidebar stays
+   the darkest object. Blue is now the primary interactive accent everywhere
+   else; gold is semantic-only (customer tier), never chrome/backgrounds.    */
 :root {
-  --surface-navy: #23486F;   /* card navy — lighter than the sidebar */
-  --brand-gold:   #C79A2B;   /* semantic: premium / VIP / tier only */
+  --surface-navy:      #234A74;   /* hero cards (Customer Snapshot) — Secondary Navy */
+  --brand-gold:         #C79A2B;  /* semantic: premium / VIP / tier only */
+  --ec-navy:            #102F56;  /* Primary Navy — sidebar */
+  --ec-navy-hover:      #2C5C8F;  /* Hover Navy */
+  --ec-blue:            #4A9EFF;  /* Primary Blue — logo blue, primary accent */
+  --ec-blue-tint:       rgba(74, 158, 255, 0.12);   /* light icon-tile fill */
+  --ec-success:         #22B573;
+  --ec-warning:         #F5A623;
+  --ec-danger:          #E45757;
+  --ec-page-bg:         #F6F8FB;
+  --ec-card-bg:         #FFFFFF;
+  --ec-text-secondary:  #6F7F92;
+  --ec-border:          #E7EDF5;
 }
 .bg-surface-navy { background-color: var(--surface-navy); }
 
+/* Brand accent utilities — plain CSS (not Tailwind theme keys) so they work
+   without touching tailwind.config.ts, which lives outside the deploy zip. */
+.bg-accent        { background-color: var(--ec-blue); }
+.text-accent      { color: var(--ec-blue); }
+.border-accent    { border-color: var(--ec-blue); }
+.bg-accent-tint   { background-color: var(--ec-blue-tint); }
+.text-accent-ink  { color: var(--ec-navy-hover); }   /* legible on-white blue for text/links */
+
+/* Very subtle elevation — flat with slight lift, no heavy drop shadows. */
+.ec-card-shadow { box-shadow: 0 1px 2px rgba(20, 48, 79, 0.05); }
+
 body {
-  @apply bg-paper text-ink font-body antialiased;
+  @apply text-ink font-body antialiased;
+  background-color: var(--ec-page-bg);
 }
 
 .btn         { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none; }
-.btn-primary { @apply btn bg-navy text-white hover:bg-navylight; }
-.btn-success { @apply btn bg-emerald-600 text-white hover:bg-emerald-500; }
-.btn-warn    { @apply btn bg-amber-400 text-amber-950 hover:bg-amber-300; }
-.btn-danger  { @apply btn bg-red-600 text-white hover:bg-red-500; }
-.btn-ghost   { @apply btn bg-white text-ink border border-slate-200 hover:border-navy hover:text-navy; }
+/* Primary = blue filled. Secondary = white with blue border. Danger = white
+   with red text — avoid multiple competing filled colors. */
+.btn-primary { @apply btn text-white; background-color: var(--ec-blue); }
+.btn-primary:hover { background-color: var(--ec-navy-hover); }
+.btn-accent  { @apply btn text-white; background-color: var(--ec-blue); }  /* alias — same blue-filled treatment */
+.btn-accent:hover { background-color: var(--ec-navy-hover); }
+.btn-success { @apply btn text-white; background-color: var(--ec-success); }
+.btn-success:hover { filter: brightness(0.92); }
+.btn-warn    { @apply btn text-amber-950; background-color: var(--ec-warning); }
+.btn-warn:hover { filter: brightness(0.95); }
+.btn-danger  { @apply btn bg-white; border: 1px solid var(--ec-danger); color: var(--ec-danger); }
+.btn-danger:hover { background-color: #FFF4F4; }
+.btn-ghost   { @apply btn bg-white; border: 1px solid var(--ec-blue); color: var(--ec-navy-hover); }
+.btn-ghost:hover { background-color: var(--ec-blue-tint); }
 
-.card  { @apply bg-white rounded-2xl ring-1 ring-slate-900/[0.04]; box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px -12px rgb(15 23 42 / 0.12); }
-.field { @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-navy focus:ring-2 focus:ring-navy/20 focus:outline-none bg-white; }
+.card  { @apply bg-white rounded-2xl; border: 1px solid var(--ec-border); box-shadow: 0 1px 2px rgba(20, 48, 79, 0.04); }
+.field { @apply w-full rounded-lg px-3 py-2 text-sm outline-none bg-white; border: 1px solid var(--ec-border); }
+.field:focus { border-color: var(--ec-blue); box-shadow: 0 0 0 3px var(--ec-blue-tint); }
 .label { @apply block text-xs font-semibold text-slate-600 mb-1; }
 
-/* Page-title rule — neutral, not gold. Gold is now reserved as a semantic
-   accent for premium/VIP/tier indicators, never decorative chrome. */
-.gold-rule { @apply h-[3px] w-10 rounded-full bg-slate-200; }
+/* Soft status backgrounds — for alert/banner UI (conflict, warning, success,
+   informational), not the deeper per-workflow-stage palette in workflow.ts. */
+.status-conflict { background-color: #FFF4F4; border-color: #F6C5C5; color: #B23A3A; }
+.status-warning  { background-color: #FFF9EC; border-color: #F5DFA6; color: #92620B; }
+.status-success  { background-color: #EEF9F2; border-color: #BEE8CE; color: #1D7A46; }
+.status-info     { background-color: #F4F9FF; border-color: #CFE3FB; color: #265D8F; }
+
+/* Page-title rule — neutral border color, not gold. Gold is reserved strictly
+   for tier indicators, never decorative chrome. */
+.gold-rule { height: 3px; width: 2.5rem; border-radius: 9999px; background-color: var(--ec-border); }
 
 /* Print: hide chrome, show only the invoice document */
 @media print {
