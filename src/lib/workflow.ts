@@ -113,6 +113,9 @@ export interface Booking {
   celebrant_name?: string | null;
   celebrant_relation?: string | null;
   celebrant_age?: number | null;
+  // Genealogy (Knowledge Architecture §3): the event this lead attended.
+  source_booking_id?: string | null;
+  source_note?: string | null;
   affiliation?: string | null;
   notes: string | null;
   status: Status;

@@ -25,6 +25,7 @@ interface DraftRow {
   event_type: string | null; celebrant_name: string | null; celebrant_relation: string | null;
   celebrant_age: number | null; affiliation: string | null;
   referral_channel: string | null; referral_name: string | null;
+  source_booking_id: string | null; source_note: string | null;
   event_date: string | null; start_time: string | null; duration: string | null;
   guest_count: string | null; venue_type: string | null; venue_room: string | null;
   off_premise_location: string | null; notes: string | null;
@@ -247,6 +248,25 @@ export default function NewInquiry() {
   const [affiliation, setAffiliation] = useState("");
   const [refChannel, setRefChannel] = useState("");
   const [refName, setRefName] = useState("");
+  // Genealogy: "I was at the Goldberg wedding" — the lead volunteers the
+  // connection; this is just a place to put it. (Knowledge Architecture §3)
+  const [srcBookingId, setSrcBookingId] = useState("");
+  const [srcQuery, setSrcQuery] = useState("");          // autocomplete text
+  const [srcNote, setSrcNote] = useState("");            // "loved the cocktail hour"
+  const [pastEvents, setPastEvents] = useState<{ id: string; invoice_num: string; contact_name: string; event_name: string | null; event_type: string | null; event_date: string | null }[]>([]);
+  // Load past events only when "Attended Previous Event" is picked. Completed
+  // AND active events both qualify — a guest can call before the host's own
+  // invoice is even settled.
+  useEffect(() => {
+    if (refChannel !== "Attended Previous Event" || pastEvents.length > 0) return;
+    supabase.from("bookings")
+      .select("id,invoice_num,contact_name,event_name,event_type,event_date")
+      .neq("status", "cancelled")
+      .order("event_date", { ascending: false })
+      .limit(400)
+      .then(({ data }) => setPastEvents((data ?? []) as typeof pastEvents));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refChannel]);
   const referralValue = refChannel === "Referral" && refName.trim()
     ? `Referral: ${refName.trim()}` : (refChannel || null);
   const [memCharges, setMemCharges] = useState<CustomerChargeRow[]>([]);
@@ -311,6 +331,8 @@ export default function NewInquiry() {
       ...offFields(),
       ...relationshipSeeds(),
       referral_source: referralValue,
+      source_booking_id: srcBookingId || null,
+      source_note: refChannel === "Attended Previous Event" && srcNote.trim() ? srcNote.trim() : null,
       capacity_points: cap?.extra ? cap.mine : null,
       est_guests: estGuests ? Number(estGuests) : null,
       event_type: f.event_type || null,
@@ -394,6 +416,8 @@ export default function NewInquiry() {
         ...offFields(),
         ...relationshipSeeds(),
         referral_source: referralValue,
+        source_booking_id: srcBookingId || null,
+        source_note: refChannel === "Attended Previous Event" && srcNote.trim() ? srcNote.trim() : null,
         capacity_points: cap?.extra ? cap.mine : null,
         est_guests: estGuests ? Number(estGuests) : null,
         event_type: f.event_type || null,
@@ -490,6 +514,8 @@ export default function NewInquiry() {
     celebrant_age: celAge ? Number(celAge) : null,
     affiliation: affiliation.trim() || null,
     referral_channel: refChannel || null, referral_name: refName.trim() || null,
+    source_booking_id: srcBookingId || null,
+    source_note: srcNote.trim() || null,
     event_date: f.event_date || null, start_time: f.event_time || null,
     duration: f.expected_hours || null, guest_count: estGuests || null,
     venue_type: locType, venue_room: locType === "on_prem" ? (roomId || null) : null,
@@ -498,7 +524,7 @@ export default function NewInquiry() {
     pricing_snapshot: estimate,
     last_autosaved: new Date().toISOString(), updated_at: new Date().toISOString(),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [f, celName, celRelation, celAge, affiliation, refChannel, refName, estGuests, locType, roomId, locName, place, estimate]);
+  }), [f, celName, celRelation, celAge, affiliation, refChannel, refName, srcBookingId, srcNote, estGuests, locType, roomId, locName, place, estimate]);
 
   const hasContent = !!(f.contact_name.trim() || f.phone.trim() || f.email.trim() || f.event_type || f.event_date || estGuests || f.notes.trim());
 
@@ -529,7 +555,7 @@ export default function NewInquiry() {
     draftTimer.current = setTimeout(flushDraft, 2000);
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [f, celName, celRelation, celAge, affiliation, refChannel, refName, estGuests, locType, roomId, locName, place]);
+  }, [f, celName, celRelation, celAge, affiliation, refChannel, refName, srcBookingId, srcNote, estGuests, locType, roomId, locName, place]);
 
   // When the connection returns, sync.
   useEffect(() => {
@@ -550,6 +576,13 @@ export default function NewInquiry() {
     setCelName(d.celebrant_name ?? ""); setCelRelation(d.celebrant_relation ?? "");
     setCelAge(d.celebrant_age != null ? String(d.celebrant_age) : "");
     setAffiliation(d.affiliation ?? ""); setRefChannel(d.referral_channel ?? ""); setRefName(d.referral_name ?? "");
+    setSrcBookingId(d.source_booking_id ?? "");
+    setSrcNote(d.source_note ?? "");
+    if (d.source_booking_id) {
+      // Re-label the picker from the saved id (draft only stores the id).
+      supabase.from("bookings").select("contact_name,event_type,event_date").eq("id", d.source_booking_id).maybeSingle()
+        .then(({ data }) => { if (data) setSrcQuery(`${data.contact_name}${data.event_type ? ` · ${data.event_type}` : ""}${data.event_date ? ` · ${data.event_date}` : ""}`); });
+    } else setSrcQuery("");
     setEstGuests(d.guest_count ?? "");
     setLocType((d.venue_type as "on_prem" | "off_prem") ?? "on_prem");
     setRoomId(d.venue_room ?? "");
@@ -705,10 +738,13 @@ export default function NewInquiry() {
               value={affiliation} onChange={(e) => setAffiliation(e.target.value)} /></div>
           <div><label className="label">How did you hear about us? <span className="text-slate-300">(optional)</span></label>
             <div className="flex gap-2">
-              <select className="field" value={refChannel} onChange={(e) => setRefChannel(e.target.value)}>
+              <select className="field" value={refChannel} onChange={(e) => { setRefChannel(e.target.value); if (e.target.value !== "Attended Previous Event") { setSrcBookingId(""); setSrcQuery(""); setSrcNote(""); } }}>
                 <option value="">— Select —</option>
                 <option>Referral</option>
                 <option>Repeat customer</option>
+                <option>Attended Previous Event</option>
+                <option>Planner</option>
+                <option>Venue</option>
                 <option>Google</option>
                 <option>Instagram / Facebook</option>
                 <option>Drove by / local</option>
@@ -717,7 +753,53 @@ export default function NewInquiry() {
               {refChannel === "Referral" && (
                 <input className="field reveal" placeholder="Referred by…" value={refName} onChange={(e) => setRefName(e.target.value)} />
               )}
-            </div></div>
+            </div>
+            {refChannel === "Attended Previous Event" && (
+              <div className="mt-2 space-y-2 reveal">
+                <div className="relative">
+                  <input className="field" placeholder="Which event? Start typing a name…"
+                    value={srcQuery}
+                    onChange={(e) => { setSrcQuery(e.target.value); setSrcBookingId(""); }} />
+                  {srcQuery.trim().length >= 2 && !srcBookingId && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 max-h-52 overflow-y-auto rounded-lg bg-white border border-[#E7EDF5] shadow-lg">
+                      {pastEvents
+                        .filter((p) => {
+                          const q = srcQuery.trim().toLowerCase();
+                          return (p.contact_name ?? "").toLowerCase().includes(q)
+                            || (p.event_name ?? "").toLowerCase().includes(q)
+                            || (p.event_type ?? "").toLowerCase().includes(q)
+                            || (p.invoice_num ?? "").includes(q);
+                        })
+                        .slice(0, 8)
+                        .map((p) => (
+                          <button key={p.id} type="button"
+                            className="block w-full text-left px-3 py-2 text-sm hover:bg-[#F4F9FF]"
+                            onClick={() => { setSrcBookingId(p.id); setSrcQuery(`${p.contact_name}${p.event_type ? ` · ${p.event_type}` : ""}${p.event_date ? ` · ${p.event_date}` : ""}`); }}>
+                            <span className="font-semibold">{p.contact_name}</span>
+                            <span className="text-slate-400"> · {p.event_name || p.event_type || "Event"}{p.event_date ? ` · ${p.event_date}` : ""} · #{p.invoice_num}</span>
+                          </button>
+                        ))}
+                      {pastEvents.filter((p) => {
+                        const q = srcQuery.trim().toLowerCase();
+                        return (p.contact_name ?? "").toLowerCase().includes(q)
+                          || (p.event_name ?? "").toLowerCase().includes(q)
+                          || (p.event_type ?? "").toLowerCase().includes(q)
+                          || (p.invoice_num ?? "").includes(q);
+                      }).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-slate-400">No matching event — leave it blank and mention it in the note.</div>
+                      )}
+                    </div>
+                  )}
+                  {srcBookingId && (
+                    <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 text-sm"
+                      title="Clear" onClick={() => { setSrcBookingId(""); setSrcQuery(""); }}>✕</button>
+                  )}
+                </div>
+                <input className="field" placeholder="What did they love? (optional — e.g. the cocktail hour)"
+                  value={srcNote} onChange={(e) => setSrcNote(e.target.value)} />
+              </div>
+            )}
+          </div>
 
           {/* Optional second contact — hidden until needed (e.g. spouse, event planner) */}
           {!showContact2 ? (

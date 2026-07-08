@@ -100,6 +100,17 @@ export default function BookingDetail() {
       setRoomsMap(new Map(((data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name]))));
   }, []);
 
+  // Genealogy read-side: "Came from: Goldberg Wedding". One tiny lookup,
+  // only when the link exists. (Knowledge Architecture §3)
+  const [srcEvent, setSrcEvent] = useState<{ id: string; contact_name: string; event_name: string | null; event_type: string | null; event_date: string | null } | null>(null);
+  useEffect(() => {
+    if (!b?.source_booking_id) { setSrcEvent(null); return; }
+    supabase.from("bookings").select("id,contact_name,event_name,event_type,event_date")
+      .eq("id", b.source_booking_id).maybeSingle()
+      .then(({ data }) => setSrcEvent((data as typeof srcEvent) ?? null));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [b?.source_booking_id]);
+
   // ─── Financials ───
   const fin = useMemo(() => {
     if (!b) return null;
@@ -291,6 +302,11 @@ export default function BookingDetail() {
           <Info label="Celebrating" value={`🎉 ${b.celebrant_name}${b.celebrant_relation ? ` (${b.celebrant_relation.toLowerCase()}${b.celebrant_age != null ? `, ${b.celebrant_age}` : ""})` : b.celebrant_age != null ? ` (${b.celebrant_age})` : ""}`} />
         )}
         {b.affiliation && <Info label="Community" value={`🕍 ${b.affiliation}`} />}
+        {srcEvent && (
+          <Info label="Came From"
+            value={`🎊 ${srcEvent.contact_name}${srcEvent.event_type ? ` ${srcEvent.event_type}` : ""}${b.source_note ? ` — “${b.source_note}”` : ""}`}
+            link={`/bookings/${srcEvent.id}`} />
+        )}
         {(b.location_type === "off_prem" || (b.room_id && roomsMap.size > 1)) && (
           b.location_type === "off_prem" ? (
             <Info label="Location" value={`📍 ${b.offprem_address ?? "Off-premise"}`}
