@@ -80,7 +80,7 @@ export default function Search() {
   return (
     <div className="max-w-4xl">
       <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Search</h1>
+        <h1 className="page-title">Search</h1>
         <p className="text-sm text-slate-500 mt-1">Find any booking by name, event type, date, invoice #, phone, or email.</p>
         <div className="gold-rule mt-3" />
       </header>

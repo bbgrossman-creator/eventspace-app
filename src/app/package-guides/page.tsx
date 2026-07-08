@@ -46,7 +46,7 @@ export default function PackageGuides() {
   return (
     <div>
       <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Package Guides</h1>
+        <h1 className="page-title">Package Guides</h1>
         <p className="text-sm text-slate-500 mt-1">
           How reps present each package. This is the &ldquo;how to sell&rdquo; content that appears when a rep taps a package on the New Inquiry page.
         </p>

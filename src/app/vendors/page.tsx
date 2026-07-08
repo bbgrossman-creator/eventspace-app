@@ -76,7 +76,7 @@ export default function VendorsAdmin() {
     <div className="max-w-4xl">
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Vendors</h1>
+          <h1 className="page-title">Vendors</h1>
           <p className="text-sm text-slate-500 mt-1">Outside suppliers a task can be assigned to.</p>
           <div className="gold-rule mt-3" />
         </div>

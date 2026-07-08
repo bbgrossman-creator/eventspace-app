@@ -209,7 +209,7 @@ export default function TemplateBuilder() {
     return (
       <div className="max-w-xl">
         <button className="text-xs text-slate-400 hover:text-navy" onClick={() => router.push("/templates")}>← Templates</button>
-        <h1 className="font-display text-3xl font-bold tracking-tight mt-2">New Menu Template</h1>
+        <h1 className="page-title mt-2">New Menu Template</h1>
         <p className="text-sm text-slate-500 mt-1">A few questions, then we build sections.</p>
         <div className="gold-rule mt-3 mb-6" />
 

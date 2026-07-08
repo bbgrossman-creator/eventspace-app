@@ -91,7 +91,7 @@ export default function InquiryDrafts() {
     <div className="max-w-4xl">
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Inquiry Drafts</h1>
+          <h1 className="page-title">Inquiry Drafts</h1>
           <p className="text-sm text-slate-500 mt-1">Unfinished conversations — nothing here is lost.</p>
           <div className="gold-rule mt-3" />
         </div>

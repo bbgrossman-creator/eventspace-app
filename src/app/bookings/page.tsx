@@ -52,7 +52,7 @@ export default function BookingsList() {
     <div>
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Bookings</h1>
+          <h1 className="page-title">Bookings</h1>
           <div className="gold-rule mt-3" />
         </div>
         <Link href="/bookings/new" className="btn-primary">+ New Inquiry</Link>

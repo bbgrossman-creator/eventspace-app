@@ -270,7 +270,7 @@ export default function Calendar() {
       )}
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Calendar</h1>
+          <h1 className="page-title">Calendar</h1>
           <p className="text-sm text-slate-500 mt-1">{title} · {Array.from(byDate.values()).reduce((n, l) => n + l.length, 0)} item{Array.from(byDate.values()).reduce((n, l) => n + l.length, 0) === 1 ? "" : "s"}</p>
           <div className="gold-rule mt-3" />
           {fetchErr && (

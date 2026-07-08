@@ -20,7 +20,7 @@ export default function SopAdmin() {
   return (
     <div className="max-w-3xl">
       <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">SOP / Playbook</h1>
+        <h1 className="page-title">SOP / Playbook</h1>
         <p className="text-sm text-slate-500 mt-1">
           Guidance the rep sees on a booking at each stage. The stages themselves are fixed — this is the &quot;what to do here&quot; text, editable per how you run things. Leave a stage blank to hide its note.
         </p>

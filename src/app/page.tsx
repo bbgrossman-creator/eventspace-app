@@ -90,7 +90,7 @@ export default function DailyOps() {
   return (
     <div>
       <header className="mb-8">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Daily Ops</h1>
+        <h1 className="page-title">Daily Ops</h1>
         <p className="text-sm text-slate-500 mt-1">
           {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
         </p>

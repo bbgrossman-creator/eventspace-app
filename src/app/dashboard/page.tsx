@@ -291,7 +291,7 @@ export default function Dashboard() {
   return (
     <div>
       <header className="mb-8">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="page-title">Dashboard</h1>
         <p className="text-sm text-slate-500 mt-1">Live from bookings, charges, and payments — nothing to refresh.</p>
         <div className="gold-rule mt-3" />
       </header>
@@ -723,7 +723,7 @@ function DonutChart({ data }: { data: { type: string; v: number }[] }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="font-display font-bold text-sm uppercase tracking-wider text-slate-600 mb-3">{children}</h2>
+    <h2 className="font-display font-bold text-sm uppercase tracking-wider text-slate-600 mt-10 mb-3">{children}</h2>
   );
 }
 function Big({ label, value, tone }: { label: string; value: string; tone: string }) {

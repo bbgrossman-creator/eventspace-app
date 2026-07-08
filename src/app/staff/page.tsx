@@ -57,7 +57,7 @@ export default function StaffAdmin() {
   return (
     <div className="max-w-3xl">
       <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Staff &amp; Approvals</h1>
+        <h1 className="page-title">Staff &amp; Approvals</h1>
         <p className="text-sm text-slate-500 mt-1">Who can confirm actions and approve money-policy exceptions, and how they&apos;re identified.</p>
         <div className="gold-rule mt-3" />
       </header>

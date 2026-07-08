@@ -635,7 +635,7 @@ export default function NewInquiry() {
     <div className="w-full">
       <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight transition-all">
+          <h1 className="page-title transition-all">
             {f.contact_name.trim() ? <>{f.contact_name.trim()} <span className="text-slate-300 font-normal">· Inquiry</span></> : "New Inquiry"}
             {draftNumber && <span className="ml-3 align-middle text-[11px] font-semibold tracking-wide rounded-full px-2.5 py-1 bg-slate-100 text-slate-500">DRAFT {draftNumber}</span>}
           </h1>

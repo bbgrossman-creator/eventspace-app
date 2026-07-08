@@ -252,7 +252,7 @@ export default function BookingDetail() {
       <header className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="font-display text-3xl font-bold tracking-tight">
+            <h1 className="page-title">
               {b.event_name || b.event_type || "Event"}
             </h1>
             <p className="text-sm text-slate-500 mt-1">

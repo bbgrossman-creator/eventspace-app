@@ -163,7 +163,7 @@ export default function MenuForm() {
     return (
       <div className="max-w-2xl">
         <button className="text-xs text-slate-400 hover:text-navy" onClick={() => router.push(`/bookings/${b.id}`)}>← Back to #{b.invoice_num}</button>
-        <h1 className="font-display text-3xl font-bold tracking-tight mt-2">Build the Menu</h1>
+        <h1 className="page-title mt-2">Build the Menu</h1>
         <p className="text-sm text-slate-500 mt-1">{b.contact_name} · {fmtDate(b.event_date)}</p>
         <div className="gold-rule mt-3 mb-6" />
         <div className="card p-6">
@@ -197,7 +197,7 @@ export default function MenuForm() {
     <div className="max-w-3xl pb-32">
       <header className="mb-6">
         <button className="text-xs text-slate-400 hover:text-navy" onClick={() => router.push(`/bookings/${b.id}`)}>← Back to #{b.invoice_num}</button>
-        <h1 className="font-display text-3xl font-bold tracking-tight mt-2">{template.name}</h1>
+        <h1 className="page-title mt-2">{template.name}</h1>
         <p className="text-sm text-slate-500 mt-1">
           {b.contact_name} · {b.event_name || b.event_type} · {fmtDate(b.event_date)}
         </p>

@@ -20,7 +20,7 @@ export default function PoliciesAdmin() {
   return (
     <div className="max-w-3xl">
       <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Policies</h1>
+        <h1 className="page-title">Policies</h1>
         <p className="text-sm text-slate-500 mt-1">Configure how the app handles date conflicts and event billing. These rules drive the workflow automatically.</p>
         <div className="gold-rule mt-3" />
       </header>

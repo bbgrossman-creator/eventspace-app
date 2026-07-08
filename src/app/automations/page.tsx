@@ -90,7 +90,7 @@ export default function Automations() {
   return (
     <div>
       <header className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Email Automations</h1>
+        <h1 className="page-title">Email Automations</h1>
         <p className="text-sm text-slate-500 mt-1">
           Every automated email, fully configurable — what it says, who gets it, and exactly when it goes out.
           The scheduler runs every 15 minutes; each automation sends at most once per booking.

@@ -76,7 +76,7 @@ export default function CustomerProfilePage() {
       <header className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="font-display text-3xl font-bold tracking-tight">{seed.contact_name}</h1>
+            <h1 className="page-title">{seed.contact_name}</h1>
             <p className="text-sm text-slate-500 mt-1">
               {stats?.since ? `Customer since ${stats.since}` : "New customer"}
               {stats?.tier ? <span className="text-gold font-bold"> · {stats.tier}</span> : ""}

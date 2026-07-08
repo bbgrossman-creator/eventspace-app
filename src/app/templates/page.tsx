@@ -60,7 +60,7 @@ export default function Templates() {
     <div>
       <header className="mb-6 flex items-end justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Menu Templates</h1>
+          <h1 className="page-title">Menu Templates</h1>
           <p className="text-sm text-slate-500 mt-1">
             The menus are data — build and edit them here. Changes apply to menu forms immediately.
           </p>
