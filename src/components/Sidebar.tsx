@@ -76,7 +76,7 @@ export default function Sidebar() {
           {!collapsed ? (
             <>
               <img src={BRAND.horizontalDarkNoTagline} alt={BRAND.name}
-                style={{ width: "224px", height: "auto", objectFit: "contain", maxWidth: "100%", opacity: 1, filter: "none", mixBlendMode: "normal" }}
+                style={{ width: "244px", height: "auto", objectFit: "contain", maxWidth: "100%", opacity: 1, filter: "none", mixBlendMode: "normal" }}
                 onError={(e) => { const el = e.currentTarget as HTMLImageElement; el.style.display = "none"; const sib = el.nextElementSibling as HTMLElement | null; if (sib) sib.style.display = "block"; }} />
               {/* Wordmark fallback if the asset is missing */}
               <div className="font-display text-lg font-bold tracking-tight" style={{ display: "none" }}>{BRAND.name}</div>

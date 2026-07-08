@@ -19,7 +19,10 @@ export const BRAND = {
   logoDark: "/brand/eventcore-logo-dark.png",
   horizontalLight: "/brand/eventcore-horizontal-light.png",
   horizontalDark: "/brand/eventcore-horizontal-dark.png",
-  horizontalDarkNoTagline: "/brand/eventcore-horizontal-dark-notagline.png",
+  // v=2 cache-busts the July 2026 swap to the transparent-background PNG —
+  // same filename, new bytes. Bump this again if the file is replaced but a
+  // stale cached copy keeps showing up.
+  horizontalDarkNoTagline: "/brand/eventcore-horizontal-dark-notagline.png?v=2",
   iconLight: "/brand/eventcore-icon-light.png",
   iconDark: "/brand/eventcore-icon-dark.png",
   colors: {
