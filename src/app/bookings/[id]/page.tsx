@@ -486,7 +486,7 @@ export default function BookingDetail() {
                   onClick={() => setPanel(panel === "schedulecall" ? "" : "schedulecall")}>
                   📅 Schedule Call Manually
                 </button>
-                <button className="btn-ghost"
+                <button className="btn-tertiary"
                   onClick={async () => {
                     setMsg({ ok: true, text: "Checking the calendar…" });
                     try {
@@ -607,7 +607,7 @@ export default function BookingDetail() {
             <button className="btn-ghost" onClick={() => setStatus("lead", "Lead Reopened", "Back to active prospects.")}>🌱 Reopen Lead</button>
           )}
           {b.status !== "cancelled" && (
-            <button className="btn-ghost" onClick={() => setPanel(panel === "edit" ? "" : "edit")}>✏️ Edit Details</button>
+            <button className="btn-tertiary" onClick={() => setPanel(panel === "edit" ? "" : "edit")}>✏️ Edit Details</button>
           )}
         </div>
 

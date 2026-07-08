@@ -54,20 +54,28 @@ body {
 .btn-warn:hover { filter: brightness(0.95); }
 .btn-danger  { @apply btn bg-white; border: 1px solid var(--ec-danger); color: var(--ec-danger); }
 .btn-danger:hover { background-color: #FFF4F4; }
-.btn-ghost   { @apply btn; background-color: #EEF6FF; border: 1px solid #4A90FF; color: #2F80ED; }
-.btn-ghost:hover { background-color: #E0EEFF; }
+.btn-ghost   { @apply btn; background-color: #F4F9FF; border: 1px solid #4A90FF; color: #2F80ED; }
+.btn-ghost:hover { background-color: #E8F2FF; }
+/* Tertiary — infrequent utilities (Edit Details, Sync). Text/icon only, no
+   fill or border, so they read as quiet affordances rather than actions
+   competing with primary/secondary. */
+.btn-tertiary { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none; color: var(--ec-text-secondary); }
+.btn-tertiary:hover { color: #2F80ED; background-color: #F4F9FF; }
 
 .card  { @apply bg-white rounded-2xl; border: 1px solid var(--ec-border); box-shadow: 0 1px 2px rgba(20, 48, 79, 0.04); }
 .field { @apply w-full rounded-lg px-3 py-2 text-sm outline-none bg-white; border: 1px solid var(--ec-border); }
 .field:focus { border-color: var(--ec-blue); box-shadow: 0 0 0 3px var(--ec-blue-tint); }
 .label { @apply block text-xs font-semibold text-slate-600 mb-1; }
 
-/* Soft status backgrounds — for alert/banner UI (conflict, warning, success,
-   informational), not the deeper per-workflow-stage palette in workflow.ts. */
-.status-conflict { background-color: #FFF4F4; border-color: #F6C5C5; color: #B23A3A; }
-.status-warning  { background-color: #FFF9EC; border-color: #F5DFA6; color: #92620B; }
-.status-success  { background-color: #EEF9F2; border-color: #BEE8CE; color: #1D7A46; }
-.status-info     { background-color: #F4F9FF; border-color: #CFE3FB; color: #265D8F; }
+/* Soft status accents — for alert/banner UI (conflict, warning, success,
+   informational), not the deeper per-workflow-stage palette in workflow.ts.
+   Backgrounds stay near-neutral (not a full color wash) and the colored left
+   border + text carry the meaning — this keeps them from visually blending
+   into whatever colored "current status" banner sits above them. */
+.status-conflict { background-color: #FDFBFB; border: 1px solid #F6C5C5; border-left: 3px solid var(--ec-danger); color: #B23A3A; }
+.status-warning  { background-color: #FDFCFA; border: 1px solid #F5DFA6; border-left: 3px solid var(--ec-warning); color: #92620B; }
+.status-success  { background-color: #FBFDFC; border: 1px solid #BEE8CE; border-left: 3px solid var(--ec-success); color: #1D7A46; }
+.status-info     { background-color: #FBFDFF; border: 1px solid #CFE3FB; border-left: 3px solid var(--ec-blue); color: #265D8F; }
 
 /* Page-title rule — neutral border color, not gold. Gold is reserved strictly
    for tier indicators, never decorative chrome. */
