@@ -10,6 +10,7 @@ import CustomerSnapshot from "@/components/CustomerSnapshot";
 import FilesPanel from "@/components/FilesPanel";
 import ComponentsCard from "@/components/ComponentsCard";
 import DebriefCard from "@/components/DebriefCard";
+import EventLegacyCard from "@/components/EventLegacyCard";
 import {
   Booking,
   Status,
@@ -865,6 +866,7 @@ export default function BookingDetail() {
     <aside className="xl:w-[28%] xl:max-w-[480px] xl:shrink-0 mt-8 xl:mt-0">
       <div className="space-y-3">
         <CustomerSnapshot b={b} />
+        <EventLegacyCard b={b} />
         <CommunicationCard b={b} />
         <TouchpointsCard b={b} />
         <OpsWorkspace b={b} refreshKey={railRefresh} />

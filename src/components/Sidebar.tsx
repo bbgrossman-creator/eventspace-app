@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { BRAND } from "@/lib/brand";
 import { usePathname } from "next/navigation";
+import { loadCapabilities } from "@/lib/capabilities";
 
 const NAV = [
   { href: "/", label: "Daily Ops", icon: "📋" },
@@ -13,6 +14,8 @@ const NAV = [
   { href: "/bookings/new", label: "New Inquiry", icon: "📞" },
   { href: "/drafts", label: "Inquiry Drafts", icon: "📝" },
 ];
+// Appended to NAV only when caps.rolodex — template-driven never sees it.
+const ROLODEX_ITEM = { href: "/rolodex", label: "Rolodex", icon: "🔭" };
 
 // Back office groups — no section title; the divider tells the story.
 const BACKOFFICE_GROUPS: { title: string; icon: string; items: { href: string; label: string; icon: string }[] }[] = [
@@ -54,8 +57,10 @@ export default function Sidebar() {
   };
   const [open, setOpen] = useState<Record<string, boolean>>(initialOpen);
   const [collapsed, setCollapsed] = useState(false);
+  const [showRolodex, setShowRolodex] = useState(false);
   useEffect(() => {
     try { setCollapsed(localStorage.getItem("sidebar_collapsed") === "1"); } catch {}
+    loadCapabilities().then((c) => setShowRolodex(c.caps.rolodex)).catch(() => {});
   }, []);
   const toggleCollapsed = () => {
     setCollapsed((c) => {
@@ -105,7 +110,7 @@ export default function Sidebar() {
       </div>
 
       <nav className={`flex-1 ${collapsed ? "px-2" : "px-4"} space-y-1`}>
-        {NAV.map((n) => {
+        {[...NAV, ...(showRolodex ? [ROLODEX_ITEM] : [])].map((n) => {
           const active = n.href === "/" ? path === "/" : path.startsWith(n.href) && (n.href !== "/bookings" || path === "/bookings" || path.match(/^\/bookings\/(?!new)/));
           return (
             <Link key={n.href} href={n.href} title={collapsed ? n.label : undefined}
