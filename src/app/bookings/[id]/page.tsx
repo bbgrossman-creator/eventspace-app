@@ -8,6 +8,7 @@ import CommunicationCard from "@/components/CommunicationCard";
 import TouchpointsCard from "@/components/TouchpointsCard";
 import CustomerSnapshot from "@/components/CustomerSnapshot";
 import FilesPanel from "@/components/FilesPanel";
+import ComponentsCard from "@/components/ComponentsCard";
 import {
   Booking,
   Status,
@@ -830,6 +831,9 @@ export default function BookingDetail() {
       </div>
 
       {/* Everything attached to the event */}
+      {/* Event Components — renders only when the operating model unlocks it
+          (caps.components_editor). Template-driven sees nothing here. */}
+      <ComponentsCard b={b} />
       <FilesPanel b={b} />
 
       {/* Activity — the audit trail: facts the system recorded. The work

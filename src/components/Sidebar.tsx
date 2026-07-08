@@ -32,6 +32,7 @@ const BACKOFFICE_GROUPS: { title: string; icon: string; items: { href: string; l
   {
     title: "Configuration", icon: "⚙️",
     items: [
+      { href: "/business-model", label: "Business Model", icon: "🧭" },
       { href: "/policies", label: "Policies", icon: "⚙️" },
       { href: "/locations", label: "Locations & Capacity", icon: "🏛️" },
       { href: "/vendors", label: "Vendors", icon: "🏷️" },
