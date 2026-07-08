@@ -11,6 +11,8 @@ import { NextResponse } from "next/server";
 // SAFETY: only sends to the address you pass in. Never sends to customers.
 // ═══════════════════════════════════════════════════════════════════════════
 
+export const dynamic = "force-dynamic";  // never cache — see /api/cron for why
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const to = searchParams.get("to");

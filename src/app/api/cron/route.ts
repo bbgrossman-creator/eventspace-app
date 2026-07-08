@@ -18,6 +18,13 @@ import { menuScheduleReminderDue, reminderCadenceLabel } from "@/lib/menuSchedul
 
 const GRACE_MS = 6 * 3600000;
 
+// CRITICAL: without this, Next.js statically prerenders this GET handler
+// (nothing in it unconditionally touches a dynamic API), so external cron
+// services get a cached response (X-Vercel-Cache: PRERENDER) and the sync
+// never actually runs. Vercel's own cron bypasses the cache; cron-job.org
+// and friends do not.
+export const dynamic = "force-dynamic";
+
 interface PaymentRow { booking_id: string; amount_applied: number; }
 interface ChargeRowDb extends ChargeLike { booking_id: string; }
 

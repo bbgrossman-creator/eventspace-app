@@ -14,6 +14,8 @@ import { fetchCalendarEvents, syncCalendar, syncEligible } from "@/lib/googleCal
 // the shared routine, so manual sync and cron sync are always identical.
 // ═══════════════════════════════════════════════════════════════════════════
 
+export const dynamic = "force-dynamic";  // never cache — see /api/cron for why
+
 export async function POST(req: Request) { return run(req); }
 export async function GET(req: Request) { return run(req); }
 
