@@ -148,10 +148,49 @@ export async function GET(req: Request) {
     }
   } catch { /* non-fatal */ }
 
+  // ── Debrief tasks (Knowledge Architecture step 5) ──
+  // When an event completes, open ONE ignorable task prompting the three
+  // close-out questions. Idempotent: skipped if the booking already has a
+  // debrief or a debrief task. Recency-limited (30 days) so deploying this
+  // doesn't dump tasks for years-old history. knowledge_capture defaults ON;
+  // only an explicit cap_override:knowledge_capture = false/0 disables it.
+  let debrief_tasks = 0;
+  try {
+    const { data: kc } = await db.from("app_settings").select("value")
+      .eq("key", "cap_override:knowledge_capture").maybeSingle();
+    const captureOn = !kc || (kc.value !== "0" && kc.value !== "false");
+    if (captureOn) {
+      const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      const { data: done } = await db.from("bookings")
+        .select("id,invoice_num,contact_name,event_type,event_date")
+        .eq("status", "completed").gte("event_date", cutoff);
+      const recent = (done ?? []) as { id: string; invoice_num: string; contact_name: string; event_type: string | null; event_date: string | null }[];
+      if (recent.length) {
+        const ids = recent.map((x) => x.id);
+        const [{ data: existingTasks }, { data: existingDebriefs }] = await Promise.all([
+          db.from("tasks").select("booking_id").in("booking_id", ids).ilike("title", "Debrief:%"),
+          db.from("event_debriefs").select("booking_id").in("booking_id", ids),
+        ]);
+        const has = new Set<string>();
+        for (const t of (existingTasks ?? []) as { booking_id: string }[]) has.add(t.booking_id);
+        for (const d of (existingDebriefs ?? []) as { booking_id: string }[]) has.add(d.booking_id);
+        for (const ev of recent) {
+          if (has.has(ev.id)) continue;
+          const { error: tErr } = await db.from("tasks").insert({
+            booking_id: ev.id, invoice_num: ev.invoice_num,
+            title: `Debrief: ${ev.contact_name}${ev.event_type ? ` ${ev.event_type}` : ""} — what worked?`,
+            due_date: new Date().toISOString().slice(0, 10), done: false,
+          });
+          if (!tErr) debrief_tasks++;
+        }
+      }
+    }
+  } catch { /* non-fatal — table may not exist until v168 SQL runs */ }
+
   const { data: autoRows } = await db.from("email_automations")
     .select("*").eq("enabled", true).neq("trigger", "action");
   const automations = (autoRows ?? []) as Automation[];
-  if (automations.length === 0) return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, holds_expired, refusal_lapsed, sent: 0, note: "No enabled scheduled automations" });
+  if (automations.length === 0) return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, holds_expired, refusal_lapsed, debrief_tasks, sent: 0, note: "No enabled scheduled automations" });
 
   const { data: bookingRows } = await db.from("bookings").select("*").neq("status", "cancelled");
   const bookings = (bookingRows ?? []) as Booking[];
@@ -256,5 +295,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, holds_expired, refusal_lapsed, automations_checked: automations.length, sent: sent + ladderSent, details });
+  return NextResponse.json({ ran_at: new Date().toISOString(), calendar_sync, holds_expired, refusal_lapsed, debrief_tasks, automations_checked: automations.length, sent: sent + ladderSent, details });
 }

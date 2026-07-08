@@ -9,6 +9,7 @@ import TouchpointsCard from "@/components/TouchpointsCard";
 import CustomerSnapshot from "@/components/CustomerSnapshot";
 import FilesPanel from "@/components/FilesPanel";
 import ComponentsCard from "@/components/ComponentsCard";
+import DebriefCard from "@/components/DebriefCard";
 import {
   Booking,
   Status,
@@ -831,8 +832,10 @@ export default function BookingDetail() {
       </div>
 
       {/* Everything attached to the event */}
-      {/* Event Components — renders only when the operating model unlocks it
-          (caps.components_editor). Template-driven sees nothing here. */}
+      {/* Debrief — core (knowledge_capture); renders only once the event
+          is completed. Event Components — renders only when the operating
+          model unlocks it (caps.components_editor). */}
+      <DebriefCard b={b} />
       <ComponentsCard b={b} />
       <FilesPanel b={b} />
 
