@@ -171,6 +171,28 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
     }
   }, [bookingId]);
 
+  // Task cards link to their booking via the `bookings` list above — but that
+  // list is scoped to ACTIVE bookings (it also feeds the "attach to booking"
+  // dropdown, which must not offer completed events). Debrief tasks always
+  // point at COMPLETED events, so they'd never resolve and never render a link.
+  // Keep a SEPARATE lookup for referenced bookings; the dropdown is untouched.
+  const [linkedBookings, setLinkedBookings] = useState<BookingLite[]>([]);
+  useEffect(() => {
+    if (bookingId) return;
+    const known = new Set([...bookings, ...linkedBookings].map((x) => x.id));
+    const missing = Array.from(new Set(
+      todos.map((t) => t.booking_id).filter((id): id is string => !!id && !known.has(id))
+    ));
+    if (!missing.length) return;
+    supabase.from("bookings").select("id,invoice_num,contact_name,event_date,event_name,event_type")
+      .in("id", missing)
+      .then(({ data }) => {
+        const extra = (data ?? []) as BookingLite[];
+        if (extra.length) setLinkedBookings((prev) => [...prev, ...extra.filter((e) => !prev.some((p) => p.id === e.id))]);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todos, bookingId]);
+
   // Checkbox resolves completion IMMEDIATELY — no gate. The task leaves the
   // queue at once; if it belongs to a booking, a toast offers an optional note
   // (auto-focused) that lands in that booking's Task Log. Daily Ops keeps no
@@ -411,7 +433,10 @@ export default function TodoPanel({ bookingId, bookingInvoice, onOverdueCount, v
                   </div>
                 )}
                 {t.booking_id && !bookingId && (() => {
-                  const bk = bookings.find((b) => b.id === t.booking_id);
+                  // Look in both lists: active bookings AND the separately
+                  // fetched ones this task references (e.g. completed events).
+                  const bk = bookings.find((b) => b.id === t.booking_id)
+                    ?? linkedBookings.find((b) => b.id === t.booking_id);
                   if (!bk) return null;
                   const ev = bk.event_name || bk.event_type;
                   return (

@@ -149,11 +149,17 @@ export async function GET(req: Request) {
   } catch { /* non-fatal */ }
 
   // ── Debrief tasks (Knowledge Architecture step 5) ──
-  // When an event completes, open ONE ignorable task prompting the three
-  // close-out questions. Idempotent: skipped if the booking already has a
-  // debrief or a debrief task. Recency-limited (30 days) so deploying this
-  // doesn't dump tasks for years-old history. knowledge_capture defaults ON;
-  // only an explicit cap_override:knowledge_capture = false/0 disables it.
+  // Opens ONE ignorable task per completed event, prompting the three
+  // close-out questions.
+  //
+  // IDEMPOTENCY LIVES ON THE BOOKING, not the task. Dismissing a task DELETES
+  // it, so "does a Debrief: task exist?" was a check that erased its own
+  // evidence — the task came back every 15 minutes forever. `debrief_prompted_at`
+  // survives dismissal, completion, and deletion alike: asked once, never again.
+  //
+  // Also trickles: at most MAX_NEW per run, so enabling this on a business with
+  // months of completed events doesn't dump 20 tasks into Daily Ops at once.
+  const MAX_NEW_DEBRIEF_TASKS = 3;
   let debrief_tasks = 0;
   try {
     const { data: kc } = await db.from("app_settings").select("value")
@@ -163,29 +169,25 @@ export async function GET(req: Request) {
       const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
       const { data: done } = await db.from("bookings")
         .select("id,invoice_num,contact_name,event_type,event_date")
-        .eq("status", "completed").gte("event_date", cutoff);
+        .eq("status", "completed")
+        .is("debrief_prompted_at", null)      // ← the durable check
+        .gte("event_date", cutoff)
+        .order("event_date", { ascending: false })
+        .limit(MAX_NEW_DEBRIEF_TASKS);
       const recent = (done ?? []) as { id: string; invoice_num: string; contact_name: string; event_type: string | null; event_date: string | null }[];
-      if (recent.length) {
-        const ids = recent.map((x) => x.id);
-        const [{ data: existingTasks }, { data: existingDebriefs }] = await Promise.all([
-          db.from("tasks").select("booking_id").in("booking_id", ids).ilike("title", "Debrief:%"),
-          db.from("event_debriefs").select("booking_id").in("booking_id", ids),
-        ]);
-        const has = new Set<string>();
-        for (const t of (existingTasks ?? []) as { booking_id: string }[]) has.add(t.booking_id);
-        for (const d of (existingDebriefs ?? []) as { booking_id: string }[]) has.add(d.booking_id);
-        for (const ev of recent) {
-          if (has.has(ev.id)) continue;
-          const { error: tErr } = await db.from("tasks").insert({
-            booking_id: ev.id, invoice_num: ev.invoice_num,
-            title: `Debrief: ${ev.contact_name}${ev.event_type ? ` ${ev.event_type}` : ""} — what worked?`,
-            due_date: new Date().toISOString().slice(0, 10), done: false,
-          });
-          if (!tErr) debrief_tasks++;
-        }
+      for (const ev of recent) {
+        const { error: tErr } = await db.from("tasks").insert({
+          booking_id: ev.id, invoice_num: ev.invoice_num,
+          title: `Debrief: ${ev.contact_name}${ev.event_type ? ` ${ev.event_type}` : ""} — what worked?`,
+          due_date: new Date().toISOString().slice(0, 10), done: false,
+        });
+        // Mark prompted even if the task insert failed — better to miss one
+        // prompt than to retry it every 15 minutes forever.
+        await db.from("bookings").update({ debrief_prompted_at: new Date().toISOString() }).eq("id", ev.id);
+        if (!tErr) debrief_tasks++;
       }
     }
-  } catch { /* non-fatal — table may not exist until v168 SQL runs */ }
+  } catch { /* non-fatal — columns may not exist until v174 SQL runs */ }
 
   const { data: autoRows } = await db.from("email_automations")
     .select("*").eq("enabled", true).neq("trigger", "action");
