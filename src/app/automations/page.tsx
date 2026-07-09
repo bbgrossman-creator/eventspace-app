@@ -5,6 +5,7 @@ import {
   Automation, TriggerAnchor, ANCHOR_LABELS, PLACEHOLDERS, timingLabel,
 } from "@/lib/automation";
 import { sendEmail } from "@/lib/sendEmail";
+import PageGuard from "@/components/PageGuard";
 
 const UNITS = [
   { label: "minutes", mins: 1 }, { label: "hours", mins: 60 }, { label: "days", mins: 1440 },
@@ -22,7 +23,7 @@ function splitOffset(mins: number): { n: number; unit: number; dir: "before" | "
   return { n: m, unit: 1, dir };
 }
 
-export default function Automations() {
+function Automations() {
   const [rows, setRows] = useState<Automation[]>([]);
   const [sel, setSel] = useState<Automation | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -221,5 +222,13 @@ export default function Automations() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="communications.view">
+      <Automations />
+    </PageGuard>
   );
 }

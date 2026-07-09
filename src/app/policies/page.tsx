@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { loadPolicies, savePolicy, Policies, ConflictMode, LapseAction } from "@/lib/policies";
+import PageGuard from "@/components/PageGuard";
 
-export default function PoliciesAdmin() {
+function PoliciesAdmin() {
   const [p, setP] = useState<Policies | null>(null);
   const [msg, setMsg] = useState("");
 
@@ -161,5 +162,13 @@ function NumberField({ value, onSave, min, step }: { value: number; onSave: (v: 
     <input className="field !py-1.5 w-32" type="number" min={min} step={step ?? 1} value={v}
       onChange={(e) => setV(e.target.value)}
       onBlur={() => { const n = Number(v); if (!isNaN(n)) onSave(n); }} />
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="config.manage">
+      <PoliciesAdmin />
+    </PageGuard>
   );
 }

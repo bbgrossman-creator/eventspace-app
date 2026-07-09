@@ -3,10 +3,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase, logActivity } from "@/lib/supabase";
 import { MenuTemplate } from "@/lib/menuEngine";
+import PageGuard from "@/components/PageGuard";
 
 interface TemplateRow { id: string; slug: string; name: string; active: boolean; category: string | null; sort_order: number | null; config: MenuTemplate; updated_at: string; }
 
-export default function Templates() {
+function Templates() {
   const [rows, setRows] = useState<TemplateRow[]>([]);
   const [selected, setSelected] = useState<TemplateRow | null>(null);
   const [draft, setDraft] = useState("");
@@ -137,5 +138,13 @@ export default function Templates() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="content.manage">
+      <Templates />
+    </PageGuard>
   );
 }

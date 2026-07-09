@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { titleCase, formatEmail, formatPhone, formatAddress } from "@/lib/format";
+import PageGuard from "@/components/PageGuard";
 
 interface Vendor {
   id: string; name: string; category: string | null;
@@ -16,7 +17,7 @@ interface Vendor {
 
 const BLANK = { name: "", category: "", contact_person: "", phone: "", email: "", address: "", notes: "" };
 
-export default function VendorsAdmin() {
+function VendorsAdmin() {
   const [rows, setRows] = useState<Vendor[]>([]);
   const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
@@ -180,5 +181,13 @@ export default function VendorsAdmin() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="config.manage">
+      <VendorsAdmin />
+    </PageGuard>
   );
 }

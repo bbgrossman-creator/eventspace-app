@@ -5,24 +5,26 @@ import { supabase } from "@/lib/supabase";
 import { BRAND } from "@/lib/brand";
 import { usePathname } from "next/navigation";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
+import { loadSession, Session, Permission, can } from "@/lib/permissions";
 
-// Nav is DATA: each item may declare `cap`, a capability key it requires.
-// No `cap` → always shown. The sidebar filters against loaded capabilities,
-// so the Business Model page is the single source of truth and navigation
-// composes itself. Adding a future module (Inventory, Production Board) is a
-// one-line entry here + one flag in capabilities.ts — never a bespoke showX.
-type NavItem = { href: string; label: string; icon: string; cap?: keyof Capabilities };
+// Nav is DATA. Each item may declare:
+//   cap  — a TENANT capability (does this business have the module?)
+//   perm — a USER permission   (may this person see it?)
+// An item renders only if BOTH pass. No `cap`/`perm` → always shown.
+// Adding a future module is one line here + one flag — never a showX boolean.
+type NavItem = { href: string; label: string; icon: string; cap?: keyof Capabilities; perm?: Permission };
 
 const NAV: NavItem[] = [
-  { href: "/", label: "Daily Ops", icon: "📋" },
-  { href: "/dashboard", label: "Dashboard", icon: "📊" },
-  { href: "/bookings", label: "Bookings", icon: "🗂️" },
-  { href: "/calendar", label: "Calendar", icon: "📅" },
-  { href: "/bookings/new", label: "New Inquiry", icon: "📞" },
-  { href: "/drafts", label: "Inquiry Drafts", icon: "📝" },
-  { href: "/rolodex", label: "Rolodex", icon: "🔭", cap: "rolodex" },
-  // Future, already wired: { href: "/proposals", ..., cap: "proposals" }
-  //                        { href: "/inventory", ..., cap: "inventory" }
+  { href: "/", label: "Daily Ops", icon: "📋", perm: "ops.view" },
+  { href: "/dashboard", label: "Dashboard", icon: "📊", perm: "dashboard.view" },
+  { href: "/bookings", label: "Bookings", icon: "🗂️", perm: "bookings.view" },
+  { href: "/calendar", label: "Calendar", icon: "📅", perm: "calendar.view" },
+  { href: "/bookings/new", label: "New Inquiry", icon: "📞", perm: "inquiries.create" },
+  { href: "/drafts", label: "Inquiry Drafts", icon: "📝", perm: "inquiries.create" },
+  { href: "/rolodex", label: "Rolodex", icon: "🔭", cap: "rolodex", perm: "knowledge.view" },
+  // Future, already wired:
+  // { href: "/proposals", label: "Proposal Studio", icon: "🎨", cap: "proposals", perm: "bookings.edit" }
+  // { href: "/production", label: "Production", icon: "👨‍🍳", cap: "production", perm: "kitchen.view" }
 ];
 
 // Back office groups — no section title; the divider tells the story.
@@ -30,25 +32,26 @@ const BACKOFFICE_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
   {
     title: "Content", icon: "🍽️",
     items: [
-      { href: "/templates", label: "Menu Templates", icon: "🧩" },
-      { href: "/package-guides", label: "Package Guides", icon: "📣" },
+      { href: "/templates", label: "Menu Templates", icon: "🧩", perm: "content.manage" },
+      { href: "/package-guides", label: "Package Guides", icon: "📣", perm: "content.manage" },
     ],
   },
   {
     title: "Communications", icon: "✉️",
     items: [
-      { href: "/automations", label: "Email Automations", icon: "✉️" },
+      { href: "/automations", label: "Email Automations", icon: "✉️", perm: "communications.view" },
     ],
   },
   {
     title: "Configuration", icon: "⚙️",
     items: [
-      { href: "/business-model", label: "Business Model", icon: "🧭" },
-      { href: "/policies", label: "Policies", icon: "⚙️" },
-      { href: "/locations", label: "Locations & Capacity", icon: "🏛️" },
-      { href: "/vendors", label: "Vendors", icon: "🏷️" },
-      { href: "/sop", label: "SOP / Playbook", icon: "📋" },
-      { href: "/staff", label: "Staff & Approvals", icon: "🔑" },
+      { href: "/business-model", label: "Business Model", icon: "🧭", perm: "config.manage" },
+      { href: "/users", label: "Users", icon: "👤", perm: "users.manage" },
+      { href: "/policies", label: "Policies", icon: "⚙️", perm: "config.manage" },
+      { href: "/locations", label: "Locations & Capacity", icon: "🏛️", perm: "config.manage" },
+      { href: "/vendors", label: "Vendors", icon: "🏷️", perm: "config.manage" },
+      { href: "/sop", label: "SOP / Playbook", icon: "📋", perm: "config.manage" },
+      { href: "/staff", label: "Staff & Approvals", icon: "🔑", perm: "staff.manage" },
     ],
   },
 ];
@@ -65,16 +68,24 @@ export default function Sidebar() {
   };
   const [open, setOpen] = useState<Record<string, boolean>>(initialOpen);
   const [collapsed, setCollapsed] = useState(false);
-  // null until loaded; before load we show only always-on items (no cap),
-  // so a capability-gated item never flashes in then vanishes.
   const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     try { setCollapsed(localStorage.getItem("sidebar_collapsed") === "1"); } catch {}
-    loadCapabilities().then((c) => setCaps(c.caps)).catch(() => {});
+    Promise.all([loadCapabilities(), loadSession()])
+      .then(([c, s]) => { setCaps(c.caps); setSession(s); })
+      .catch(() => {})
+      .finally(() => setReady(true));
   }, []);
 
-  // A cap-gated item shows only once caps are loaded AND the flag is true.
-  const allowed = (item: NavItem) => !item.cap || (!!caps && !!caps[item.cap]);
+  // BOTH dimensions must pass: the tenant has the module AND the user may see it.
+  // Before load, show nothing gated — a forbidden item must never flash in.
+  const allowed = (item: NavItem) => {
+    const capOk = !item.cap || (!!caps && !!caps[item.cap]);
+    const permOk = !item.perm || (ready && can(session, item.perm));
+    return capOk && permOk;
+  };
   const navItems = NAV.filter(allowed);
   // Groups filter their items, then empty groups drop their header entirely.
   const groups = BACKOFFICE_GROUPS

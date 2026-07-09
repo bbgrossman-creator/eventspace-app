@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { loadPolicies, savePolicy, Policies } from "@/lib/policies";
+import PageGuard from "@/components/PageGuard";
 
 interface Room { id: string; name: string; guest_capacity: number | null; active: boolean; sort_order: number; }
 
@@ -10,7 +11,7 @@ const CHIP = "inline-flex items-center gap-1 text-xs font-semibold text-navy bg-
 /** Back office: the caterer's physical footprint and production bandwidth —
  *  presented as a management console (resource rows, rule cards), not a
  *  settings form. */
-export default function LocationsPage() {
+function LocationsPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [p, setP] = useState<Policies | null>(null);
   const [msg, setMsg] = useState("");
@@ -218,5 +219,13 @@ export default function LocationsPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="config.manage">
+      <LocationsPage />
+    </PageGuard>
   );
 }

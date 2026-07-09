@@ -13,6 +13,7 @@ import {
   deriveCapabilities, loadCapabilities, Capabilities,
 } from "@/lib/capabilities";
 import { runTier1Backfill, BackfillResult } from "@/lib/componentBackfill";
+import PageGuard from "@/components/PageGuard";
 
 const CAP_LABELS: { key: keyof Capabilities; label: string; desc: string }[] = [
   { key: "knowledge_capture", label: "Knowledge Capture", desc: "Genealogy intake, debrief tasks, backfill — the compounding asset. On for everyone." },
@@ -27,7 +28,7 @@ const CAP_LABELS: { key: keyof Capabilities; label: string; desc: string }[] = [
   { key: "workflow_engine", label: "Workflow Engine", desc: "Custom pipelines (future — Enterprise)." },
 ];
 
-export default function BusinessModelPage() {
+function BusinessModelPage() {
   const [type, setType] = useState<BusinessType>("venue");
   const [model, setModel] = useState<OperatingModel>("template_driven");
   const [loaded, setLoaded] = useState(false);
@@ -129,5 +130,13 @@ export default function BusinessModelPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="config.manage">
+      <BusinessModelPage />
+    </PageGuard>
   );
 }

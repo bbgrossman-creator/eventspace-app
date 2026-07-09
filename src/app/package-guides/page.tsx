@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase, logActivity } from "@/lib/supabase";
+import PageGuard from "@/components/PageGuard";
 
 interface Guide {
   id: string; key: string; name: string; price_label: string | null;
@@ -16,7 +17,7 @@ const FIELDS: { k: keyof Guide; label: string; rows: number }[] = [
   { k: "upsells", label: "Upsell angles", rows: 3 },
 ];
 
-export default function PackageGuides() {
+function PackageGuides() {
   const [rows, setRows] = useState<Guide[]>([]);
   const [sel, setSel] = useState<Guide | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -91,5 +92,13 @@ export default function PackageGuides() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="content.manage">
+      <PackageGuides />
+    </PageGuard>
   );
 }

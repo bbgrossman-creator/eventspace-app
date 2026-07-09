@@ -4,6 +4,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { Booking, fmtDate, fmtMoney, stageFor, parseLocalDate, deriveGuests } from "@/lib/workflow";
 import { bookingFinancials, ChargeLike } from "@/lib/finance";
+import PageGuard from "@/components/PageGuard";
 
 interface PaymentRow {
   booking_id: string; payment_type: string; method: string;
@@ -19,7 +20,7 @@ const STATUS_GROUPS: { label: string; statuses: string[] }[] = [
   { label: "Completed", statuses: ["completed"] },
 ];
 
-export default function Dashboard() {
+function Dashboard() {
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [charges, setCharges] = useState<ChargeRowDb[]>([]);
@@ -740,5 +741,13 @@ function KV({ k, v }: { k: string; v: string }) {
       <td className="py-2 text-slate-600">{k}</td>
       <td className="py-2 text-right font-medium">{v}</td>
     </tr>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="dashboard.view">
+      <Dashboard />
+    </PageGuard>
   );
 }

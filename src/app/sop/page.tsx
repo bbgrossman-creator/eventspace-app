@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { SOP_STAGES, loadSopNotes, saveSopNote } from "@/lib/sop";
+import PageGuard from "@/components/PageGuard";
 
-export default function SopAdmin() {
+function SopAdmin() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [ready, setReady] = useState(false);
   const [savedKey, setSavedKey] = useState("");
@@ -48,5 +49,13 @@ export default function SopAdmin() {
         ))}
       </div>
     </div>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="config.manage">
+      <SopAdmin />
+    </PageGuard>
   );
 }

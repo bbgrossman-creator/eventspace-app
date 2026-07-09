@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import PageGuard from "@/components/PageGuard";
 
 interface Staff { id: string; name: string; pin: string; active: boolean; sort_order: number; }
 
@@ -10,7 +11,7 @@ const MODES: { value: string; label: string; help: string }[] = [
   { value: "pin", label: "Dropdown + PIN", help: "Staff pick their name and enter their PIN. Strongest accountability — verifies who approved." },
 ];
 
-export default function StaffAdmin() {
+function StaffAdmin() {
   const [rows, setRows] = useState<Staff[]>([]);
   const [mode, setMode] = useState("pin");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -117,5 +118,13 @@ export default function StaffAdmin() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function GuardedPage() {
+  return (
+    <PageGuard perm="staff.manage">
+      <StaffAdmin />
+    </PageGuard>
   );
 }
