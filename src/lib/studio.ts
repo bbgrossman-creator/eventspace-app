@@ -188,3 +188,85 @@ export async function diffVersions(versionA: string, versionB: string,
   }
   return { added, removed, changed, totalA, totalB };
 }
+
+// ── Component Palette (v180) — the Rolodex's component dimension as a
+// builder palette. DERIVED, never authored: distinct component titles from
+// real operational events, grouped by domain, with usage counts and the most
+// recent instance's items/photo. Adding from the palette instantiates the
+// MOST RECENT REAL INSTANCE (freshest items + prices, true lineage) — the
+// palette browses the abstraction; every add copies reality.
+export interface PaletteEntry {
+  title: string;
+  domain: string;
+  count: number;                    // times used across real events
+  latestComponentId: string;        // the instance an add will copy
+  latestBookingLabel: string;       // "Goldberg Wedding · May 2026"
+  items: string[];                  // latest instance's item names (preview)
+  coverUrl?: string;
+}
+
+export async function loadComponentPalette(): Promise<PaletteEntry[]> {
+  const { data: cs } = await supabase.from("event_components")
+    .select("id,title,domain,booking_id,created_at")
+    .is("proposal_version_id", null)
+    .order("created_at", { ascending: false }).limit(600);
+  const rows = (cs ?? []) as { id: string; title: string; domain: string; booking_id: string; created_at: string }[];
+  if (!rows.length) return [];
+
+  // Group by normalized title; first row seen per group = latest instance.
+  const groups: Record<string, PaletteEntry & { bookingId: string }> = {};
+  const order: string[] = [];
+  for (const r of rows) {
+    const key = r.title.trim().toLowerCase();
+    if (!key) continue;
+    if (!groups[key]) {
+      groups[key] = { title: r.title.trim(), domain: r.domain, count: 0,
+        latestComponentId: r.id, latestBookingLabel: "", items: [], bookingId: r.booking_id };
+      order.push(key);
+    }
+    groups[key].count++;
+  }
+
+  const latestIds = order.map((k) => groups[k].latestComponentId);
+  const bookingIds = Array.from(new Set(order.map((k) => groups[k].bookingId)));
+  const [{ data: its }, { data: bks }, { data: ph }] = await Promise.all([
+    supabase.from("component_items").select("component_id,name").in("component_id", latestIds).order("position"),
+    supabase.from("bookings").select("id,contact_name,event_type,event_date").in("id", bookingIds),
+    supabase.from("photos").select("file_id,component_id").in("component_id", latestIds).eq("is_cover", true),
+  ]);
+  const bMap: Record<string, string> = {};
+  for (const b of (bks ?? []) as { id: string; contact_name: string; event_type: string | null; event_date: string | null }[]) {
+    const when = b.event_date ? new Date(b.event_date).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "";
+    bMap[b.id] = `${b.contact_name}${b.event_type ? ` ${b.event_type}` : ""}${when ? ` · ${when}` : ""}`;
+  }
+  const itemsBy: Record<string, string[]> = {};
+  for (const i of (its ?? []) as { component_id: string; name: string }[]) {
+    (itemsBy[i.component_id] ??= []).push(i.name);
+  }
+  const phRows = (ph ?? []) as { file_id: string; component_id: string | null }[];
+  const coverBy: Record<string, string> = {};
+  if (phRows.length) {
+    const { data: frs } = await supabase.from("booking_files").select("id,path").in("id", phRows.map((p) => p.file_id));
+    const pathBy: Record<string, string> = {};
+    for (const f of (frs ?? []) as { id: string; path: string }[]) pathBy[f.id] = f.path;
+    await Promise.all(phRows.map(async (p) => {
+      const path = pathBy[p.file_id]; if (!path || !p.component_id) return;
+      const { data: sg } = await supabase.storage.from("booking-files").createSignedUrl(path, 3600);
+      if (sg?.signedUrl) coverBy[p.component_id] = sg.signedUrl;
+    }));
+  }
+
+  const out: PaletteEntry[] = order.map((k) => {
+    const g = groups[k];
+    return {
+      title: g.title, domain: g.domain, count: g.count,
+      latestComponentId: g.latestComponentId,
+      latestBookingLabel: bMap[g.bookingId] ?? "",
+      items: itemsBy[g.latestComponentId] ?? [],
+      coverUrl: coverBy[g.latestComponentId],
+    };
+  });
+  // Most-used first within each domain; caller groups by domain.
+  out.sort((a, z) => a.domain.localeCompare(z.domain) || z.count - a.count || a.title.localeCompare(z.title));
+  return out;
+}

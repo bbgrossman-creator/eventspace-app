@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Booking, fmtDate } from "@/lib/workflow";
 import { SourceComponent, loadSimilarEvents, loadRecentEvents, loadSourceComponents } from "@/lib/studio";
-import RolodexPanel from "@/components/RolodexPanel";
+import ComponentPalette from "@/components/ComponentPalette";
 
 const DOMAIN_ICON: Record<string, string> = {
   food: "🍽", decor: "🎀", flowers: "💐", lighting: "💡", music: "🎵", layout: "🪑",
@@ -111,7 +111,7 @@ export default function SourceEventPane({ b, onAdd, onSeed, busy }: {
           <button key={t}
             className={`flex-1 rounded-md py-1 text-[11px] font-bold transition-colors ${tab === t ? "bg-white text-[#102F56] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
             onClick={() => setTab(t)}>
-            {t === "events" ? "Source Events" : "Components"}
+            {t === "events" ? "Source Events" : "Library"}
           </button>
         ))}
       </div>
@@ -143,9 +143,7 @@ export default function SourceEventPane({ b, onAdd, onSeed, busy }: {
           <p className="text-[10px] text-slate-300 pt-1">Drag a component onto the canvas, or hover and tap ＋. Prices come along and wait for your confirmation.</p>
         </div>
       ) : (
-        <div className="overflow-y-auto min-h-0 pr-0.5">
-          <RolodexPanel embedded hideCopy initialMode="explore" />
-        </div>
+        <ComponentPalette onAdd={onAdd} busy={busy} />
       )}
     </div>
   );
