@@ -66,7 +66,7 @@ export default function ComponentsCard({ b }: { b: Booking }) {
   const load = useCallback(async () => {
     const { data: cs, error } = await supabase.from("event_components")
       .select("id,domain,kind,title,position,copied_from,notes")
-      .eq("booking_id", b.id).order("position");
+      .eq("booking_id", b.id).is("proposal_version_id", null).order("position");
     if (error) { setErr(`Components couldn't load: ${error.message} — run v164 SQL.`); return; }
     setErr("");
     const rows = (cs ?? []) as ComponentRow[];
@@ -183,7 +183,7 @@ export default function ComponentsCard({ b }: { b: Booking }) {
    *  the backfill, includes every past completed template menu. */
   async function openCopy() {
     setCopyOpen(true); setSrcPicked(null); setChecked({}); setCopyQuery("");
-    const { data: compRows, error } = await supabase.from("event_components").select("booking_id");
+    const { data: compRows, error } = await supabase.from("event_components").select("booking_id").is("proposal_version_id", null);
     if (error) { setErr(`Couldn't load sources: ${error.message}`); return; }
     const counts: Record<string, number> = {};
     for (const r of (compRows ?? []) as { booking_id: string }[]) counts[r.booking_id] = (counts[r.booking_id] ?? 0) + 1;
@@ -197,7 +197,8 @@ export default function ComponentsCard({ b }: { b: Booking }) {
   async function pickSource(ev: SrcEvent) {
     setSrcPicked(ev); setChecked({});
     const { data: cs } = await supabase.from("event_components")
-      .select("id,domain,kind,title,position,copied_from,notes").eq("booking_id", ev.id).order("position");
+      .select("id,domain,kind,title,position,copied_from,notes")
+      .eq("booking_id", ev.id).is("proposal_version_id", null).order("position");
     const rows = (cs ?? []) as ComponentRow[];
     const ids = rows.map((c) => c.id);
     const [i, r] = ids.length ? await Promise.all([

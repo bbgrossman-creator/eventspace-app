@@ -28,7 +28,7 @@ export async function copyComponentsTo(
 
   const [{ data: srcRows, error: sErr }, { count }] = await Promise.all([
     supabase.from("event_components").select("id,booking_id,domain,kind,title,notes").in("id", srcComponentIds),
-    supabase.from("event_components").select("id", { count: "exact", head: true }).eq("booking_id", dest.id),
+    supabase.from("event_components").select("id", { count: "exact", head: true }).eq("booking_id", dest.id).is("proposal_version_id", null),
   ]);
   if (sErr) return { ok: false, detail: sErr.message, copied: 0 };
   const sources = (srcRows ?? []) as SrcComp[];

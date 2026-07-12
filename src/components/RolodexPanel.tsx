@@ -87,7 +87,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
     const dHits: DebriefHit[] = [];
     if (term) {
       const [byComp, byItem, byDebrief] = await Promise.all([
-        supabase.from("event_components").select("id,booking_id").or(`title.ilike.${like},kind.ilike.${like}`),
+        supabase.from("event_components").select("id,booking_id").is("proposal_version_id", null).or(`title.ilike.${like},kind.ilike.${like}`),
         supabase.from("component_items").select("component_id").ilike("name", like),
         supabase.from("event_debriefs").select("booking_id,author,worked,didnt_work,would_repeat")
           .or(`worked.ilike.${like},didnt_work.ilike.${like},would_repeat.ilike.${like}`),
@@ -96,7 +96,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
       for (const c of (byComp.data ?? []) as { id: string; booking_id: string }[]) { compIds.add(c.id); bookingIds.add(c.booking_id); }
       const itemCompIds = ((byItem.data ?? []) as { component_id: string }[]).map((x) => x.component_id);
       if (itemCompIds.length) {
-        const { data: cs } = await supabase.from("event_components").select("id,booking_id").in("id", itemCompIds);
+        const { data: cs } = await supabase.from("event_components").select("id,booking_id").is("proposal_version_id", null).in("id", itemCompIds);
         for (const c of (cs ?? []) as { id: string; booking_id: string }[]) { compIds.add(c.id); bookingIds.add(c.booking_id); }
       }
       const t = term.toLowerCase();
@@ -108,7 +108,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
         }
       }
     } else {
-      const { data: cs, error } = await supabase.from("event_components").select("id,booking_id");
+      const { data: cs, error } = await supabase.from("event_components").select("id,booking_id").is("proposal_version_id", null);
       if (error) { setErr(`${error.message} — run v164 SQL.`); setBusy(false); return; }
       for (const c of (cs ?? []) as { id: string; booking_id: string }[]) { compIds.add(c.id); bookingIds.add(c.booking_id); }
     }
@@ -129,7 +129,8 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
 
     // 3. All components of shown events (context around the matches).
     const { data: allComps } = await supabase.from("event_components")
-      .select("id,booking_id,domain,kind,title,copied_from").in("booking_id", shownIds).order("position");
+      .select("id,booking_id,domain,kind,title,copied_from").is("proposal_version_id", null)
+      .in("booking_id", shownIds).order("position");
     const byEvent: Record<string, CompRow[]> = {};
     const shownCompIds: string[] = [];
     for (const c of (allComps ?? []) as CompRow[]) {
@@ -162,7 +163,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
     //    Reuse: components elsewhere whose copied_from is one of this event's.
     const [{ data: copies }, { data: kids }, { data: chgs }] = await Promise.all([
       shownCompIds.length
-        ? supabase.from("event_components").select("copied_from").in("copied_from", shownCompIds)
+        ? supabase.from("event_components").select("copied_from").is("proposal_version_id", null).in("copied_from", shownCompIds)
         : Promise.resolve({ data: [] }),
       supabase.from("bookings").select("source_booking_id").in("source_booking_id", shownIds),
       supabase.from("charges").select("booking_id,description,quantity,unit_price,taxable").in("booking_id", shownIds),
@@ -193,7 +194,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
   useEffect(() => {
     if (!caps?.rolodex) return;
     (async () => {
-      const { data: titles } = await supabase.from("event_components").select("title");
+      const { data: titles } = await supabase.from("event_components").select("title").is("proposal_version_id", null);
       const counts: Record<string, number> = {};
       for (const t of (titles ?? []) as { title: string }[]) {
         const key = t.title.trim();

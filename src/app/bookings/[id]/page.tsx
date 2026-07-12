@@ -10,6 +10,7 @@ import CustomerSnapshot from "@/components/CustomerSnapshot";
 import FilesPanel from "@/components/FilesPanel";
 import ComponentsCard from "@/components/ComponentsCard";
 import DebriefCard from "@/components/DebriefCard";
+import ProposalsCard from "@/components/ProposalsCard";
 import EventLegacyCard from "@/components/EventLegacyCard";
 import {
   Booking,
@@ -837,6 +838,7 @@ export default function BookingDetail() {
           is completed. Event Components — renders only when the operating
           model unlocks it (caps.components_editor). */}
       <DebriefCard b={b} />
+      <ProposalsCard b={b} />
       <ComponentsCard b={b} />
       <FilesPanel b={b} />
 

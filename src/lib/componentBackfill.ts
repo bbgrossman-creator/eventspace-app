@@ -75,7 +75,7 @@ export async function runTier1Backfill(): Promise<BackfillResult> {
   const ids = withMenus.map((b) => b.id);
   const existing = new Set<string>();
   if (ids.length) {
-    const { data: ex } = await supabase.from("event_components").select("booking_id").in("booking_id", ids);
+    const { data: ex } = await supabase.from("event_components").select("booking_id").is("proposal_version_id", null).in("booking_id", ids);
     for (const r of (ex ?? []) as { booking_id: string }[]) existing.add(r.booking_id);
   }
 
