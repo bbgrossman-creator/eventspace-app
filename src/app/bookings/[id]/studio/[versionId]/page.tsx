@@ -1,0 +1,646 @@
+"use client";
+// ═══════════════════════════════════════════════════════════════════════════
+// PROPOSAL STUDIO (v179) — the knowledge-driven proposal builder.
+//
+//   LEFT    Source Event Library — past successful events, similar-first;
+//           expand → drag or click components into the proposal.
+//   CENTER  The canvas — the proposal itself: sections (components) with
+//           priced items, optional upgrades, reorder, add, remove.
+//   RIGHT   Persistent intelligence — Live Quote (Base / With Selected /
+//           Potential Upside), guests, adjustments, warnings, and Price
+//           Memory + SRP for whichever item has focus.
+//
+// Tabs: Build · Compare · Notes · Files. Approved versions are read-only.
+// Deliberately absent: undo arrows (would be fake), Share Link and PDF
+// (v180's customer layer), margin (no cost data exists — revenue only).
+// ═══════════════════════════════════════════════════════════════════════════
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { Booking, fmtDate } from "@/lib/workflow";
+import { loadCapabilities, Capabilities } from "@/lib/capabilities";
+import { Proposal, ProposalVersion, VERSION_FLOW, createVersion } from "@/lib/proposals";
+import {
+  GuestCategory, Adjustment, PricedItem, MemoryPoint, isActive,
+  loadGuestCategories, loadPriceMemory, computeVersionTotals, promoteToCatalog,
+} from "@/lib/pricingEngine";
+import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
+import SourceEventPane from "@/components/SourceEventPane";
+import FilesPanel from "@/components/FilesPanel";
+
+interface CompRow { id: string; title: string; domain: string; position: number; notes: string | null; }
+const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const DOMAINS = ["food", "decor", "flowers", "lighting", "music", "layout", "kids", "staffing", "logistics", "custom"];
+
+export default function StudioPage() {
+  const params = useParams<{ id: string; versionId: string }>();
+  const bookingId = params.id;
+  const versionId = params.versionId;
+
+  const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [b, setB] = useState<Booking | null>(null);
+  const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [version, setVersion] = useState<ProposalVersion | null>(null);
+  const [versions, setVersions] = useState<ProposalVersion[]>([]);
+  const [tab, setTab] = useState<"build" | "compare" | "notes" | "files">("build");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState("");
+
+  // Canvas data
+  const [comps, setComps] = useState<CompRow[]>([]);
+  const [items, setItems] = useState<PricedItem[]>([]);
+  const [cats, setCats] = useState<GuestCategory[]>([]);
+  const [guests, setGuests] = useState<Record<string, number>>({});
+  const [adjs, setAdjs] = useState<Adjustment[]>([]);
+  const [srps, setSrps] = useState<Record<string, { srp: number | null; srp_set_at: string | null }>>({});
+
+  // Focus / intelligence rail
+  const [focusItem, setFocusItem] = useState<string | null>(null);
+  const [memory, setMemory] = useState<Record<string, { points: MemoryPoint[]; range: { low: number; high: number; count: number } | null }>>({});
+  const [dropHot, setDropHot] = useState(false);
+
+  // Compare
+  const [compareWith, setCompareWith] = useState<string>("");
+  const [diff, setDiff] = useState<VersionDiff | null>(null);
+
+  const locked = version?.status === "approved";
+
+  const loadAll = useCallback(async () => {
+    const [{ data: bk }, { data: v }] = await Promise.all([
+      supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle(),
+      supabase.from("proposal_versions").select("*").eq("id", versionId).maybeSingle(),
+    ]);
+    if (!bk || !v) { setErr("Proposal version not found."); return; }
+    setB(bk as Booking);
+    const ver = v as ProposalVersion;
+    setVersion(ver);
+    const [{ data: p }, { data: vs }] = await Promise.all([
+      supabase.from("proposals").select("*").eq("id", ver.proposal_id).maybeSingle(),
+      supabase.from("proposal_versions").select("*").eq("proposal_id", ver.proposal_id).order("version"),
+    ]);
+    setProposal(p as Proposal);
+    setVersions((vs ?? []) as ProposalVersion[]);
+  }, [bookingId, versionId]);
+
+  const loadCanvas = useCallback(async () => {
+    const [categories, { data: g }, { data: a }, { data: c }] = await Promise.all([
+      loadGuestCategories(),
+      supabase.from("version_guests").select("category_id,count").eq("version_id", versionId),
+      supabase.from("version_adjustments").select("*").eq("version_id", versionId).order("position"),
+      supabase.from("event_components").select("id,title,domain,position,notes").eq("proposal_version_id", versionId).order("position"),
+    ]);
+    setCats(categories);
+    const gm: Record<string, number> = {};
+    for (const row of (g ?? []) as { category_id: string; count: number }[]) gm[row.category_id] = row.count;
+    setGuests(gm);
+    setAdjs((a ?? []) as Adjustment[]);
+    const compRows = (c ?? []) as CompRow[];
+    setComps(compRows);
+    if (compRows.length) {
+      const { data: it, error } = await supabase.from("component_items")
+        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected")
+        .in("component_id", compRows.map((x) => x.id)).order("position");
+      if (error) { setErr(`${error.message} — run v178/v179 SQL.`); return; }
+      const rows = (it ?? []) as PricedItem[];
+      setItems(rows);
+      const catIds = Array.from(new Set(rows.map((r) => r.catalog_item_id).filter((x): x is string => !!x)));
+      if (catIds.length) {
+        const { data: ci } = await supabase.from("catalog_items").select("id,srp,srp_set_at").in("id", catIds);
+        const m: Record<string, { srp: number | null; srp_set_at: string | null }> = {};
+        for (const row of (ci ?? []) as { id: string; srp: number | null; srp_set_at: string | null }[]) m[row.id] = row;
+        setSrps(m);
+      }
+    } else setItems([]);
+  }, [versionId]);
+
+  useEffect(() => { loadCapabilities().then((x) => setCaps(x.caps)); }, []);
+  useEffect(() => { loadAll(); loadCanvas(); }, [loadAll, loadCanvas]);
+  useEffect(() => { if (toast) { const t = setTimeout(() => setToast(""), 3500); return () => clearTimeout(t); } }, [toast]);
+
+  const guestCounts = cats.map((c) => ({ category_id: c.id, count: guests[c.id] ?? 0 }));
+  const totals = useMemo(() => computeVersionTotals(items, guestCounts, adjs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, guests, adjs, cats]);
+  const hasOptions = items.some((i) => i.item_role === "optional");
+
+  // ── Mutations ──
+  async function addFromSource(componentIds: string[], sourceLabel: string) {
+    if (!b || locked) return;
+    setBusy(true);
+    const r = await copyIntoVersion(b, versionId, componentIds, sourceLabel);
+    setBusy(false);
+    if (!r.ok) { setErr(r.detail ?? "Copy failed."); return; }
+    setToast(`✓ Added ${r.copied} from ${sourceLabel} — prices carried, awaiting confirmation`);
+    loadCanvas();
+  }
+  async function seedFromEvent(ev: Booking) {
+    if (!b || locked) return;
+    const src = await loadSourceComponents(ev.id);
+    if (!src.length) return;
+    if (!confirm(`Start from ${ev.contact_name}? Adds all ${src.length} of its components to this proposal.`)) return;
+    addFromSource(src.map((c) => c.id), `${ev.contact_name}${ev.event_type ? ` ${ev.event_type}` : ""}`);
+  }
+  async function addSection() {
+    const title = prompt("Section title — e.g. Cocktail Hour, Dinner, Rentals");
+    if (!title?.trim() || !b) return;
+    const { error } = await supabase.from("event_components").insert({
+      booking_id: b.id, proposal_version_id: versionId,
+      domain: "food", title: title.trim(), position: comps.length,
+    });
+    if (error) setErr(error.message); else loadCanvas();
+  }
+  async function patchComp(id: string, patch: Partial<CompRow>) {
+    await supabase.from("event_components").update(patch).eq("id", id);
+    setComps((p) => p.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  }
+  async function deleteComp(c: CompRow) {
+    if (!confirm(`Remove "${c.title}" and its items from this proposal?`)) return;
+    await supabase.from("event_components").delete().eq("id", c.id);
+    loadCanvas();
+  }
+  async function moveComp(c: CompRow, dir: -1 | 1) {
+    const idx = comps.findIndex((x) => x.id === c.id);
+    const other = comps[idx + dir];
+    if (!other) return;
+    await Promise.all([
+      supabase.from("event_components").update({ position: other.position }).eq("id", c.id),
+      supabase.from("event_components").update({ position: c.position }).eq("id", other.id),
+    ]);
+    loadCanvas();
+  }
+  async function reorderTo(dragId: string, targetId: string) {
+    if (dragId === targetId) return;
+    const ordered = comps.filter((c) => c.id !== dragId);
+    const ti = ordered.findIndex((c) => c.id === targetId);
+    const dragged = comps.find((c) => c.id === dragId)!;
+    ordered.splice(ti, 0, dragged);
+    await Promise.all(ordered.map((c, i) => supabase.from("event_components").update({ position: i }).eq("id", c.id)));
+    loadCanvas();
+  }
+  async function addItem(compId: string) {
+    const name = prompt("Item name");
+    if (!name?.trim()) return;
+    const { error } = await supabase.from("component_items").insert({
+      component_id: compId, name: name.trim(), quantity_basis: "per_person",
+      price_confirmed: true, taxable: true,
+      position: items.filter((i) => i.component_id === compId).length,
+    });
+    if (error) setErr(error.message); else loadCanvas();
+  }
+  async function patchItem(id: string, patch: Partial<PricedItem>) {
+    const { error } = await supabase.from("component_items").update(patch).eq("id", id);
+    if (error) { setErr(error.message); return; }
+    setItems((p) => p.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  }
+  async function deleteItem(id: string) {
+    await supabase.from("component_items").delete().eq("id", id);
+    setItems((p) => p.filter((i) => i.id !== id));
+  }
+  async function saveGuests(catId: string, count: number) {
+    setGuests((p) => ({ ...p, [catId]: count }));
+    await supabase.from("version_guests").upsert({ version_id: versionId, category_id: catId, count });
+  }
+  async function focusOn(i: PricedItem) {
+    setFocusItem(focusItem === i.id ? null : i.id);
+    if (!memory[i.id]) {
+      const m = await loadPriceMemory({ name: i.name, catalog_item_id: i.catalog_item_id, component_id: i.component_id });
+      setMemory((p) => ({ ...p, [i.id]: m }));
+    }
+  }
+  async function runCompare(otherId: string) {
+    setCompareWith(otherId);
+    if (!otherId) { setDiff(null); return; }
+    setBusy(true);
+    const totalsFor = async (vid: string) => {
+      const { data: c } = await supabase.from("event_components").select("id").eq("proposal_version_id", vid);
+      const ids = ((c ?? []) as { id: string }[]).map((x) => x.id);
+      if (!ids.length) return 0;
+      const [{ data: it }, { data: g }, { data: a }] = await Promise.all([
+        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected").in("component_id", ids),
+        supabase.from("version_guests").select("category_id,count").eq("version_id", vid),
+        supabase.from("version_adjustments").select("*").eq("version_id", vid),
+      ]);
+      return computeVersionTotals((it ?? []) as PricedItem[], (g ?? []) as { category_id: string; count: number }[], (a ?? []) as Adjustment[]).total;
+    };
+    setDiff(await diffVersions(otherId, versionId, totalsFor));
+    setBusy(false);
+  }
+
+  if (caps && !caps.proposals) {
+    return <main className="max-w-lg mx-auto px-6 py-20 text-center">
+      <div className="text-4xl mb-3">🎨</div>
+      <h1 className="font-display font-bold text-xl mb-2">Proposal Studio</h1>
+      <p className="text-sm text-slate-500">Part of the proposal-driven toolset — enable it under Configuration → Business Model.</p>
+    </main>;
+  }
+  if (!b || !version || !proposal) {
+    return <main className="px-6 py-10"><p className="text-sm text-slate-400">{err || "Opening Studio…"}</p></main>;
+  }
+
+  const flow = VERSION_FLOW.find((f) => f.value === version.status);
+
+  return (
+    <main className="h-[calc(100vh-0px)] flex flex-col bg-[#F6F8FB]">
+      {/* ── Header ── */}
+      <div className="shrink-0 bg-white border-b border-[#E7EDF5] px-5 py-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link href={`/bookings/${b.id}`} className="text-slate-400 hover:text-slate-600 text-sm">←</Link>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="font-display font-bold text-[17px] leading-tight truncate">{proposal.title}</h1>
+              <select className="field !py-0.5 !px-1.5 !text-xs" value={version.id}
+                onChange={(e) => { window.location.href = `/bookings/${b.id}/studio/${e.target.value}`; }}>
+                {versions.map((v) => <option key={v.id} value={v.id}>v{v.version}</option>)}
+              </select>
+              <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ backgroundColor: flow?.color }}>{flow?.label}</span>
+              {locked && <span className="text-[10px] font-semibold text-[#166534]">🔒 read-only</span>}
+            </div>
+            <div className="text-[11px] text-slate-400">
+              {b.contact_name}{b.event_type ? ` · ${b.event_type}` : ""}{b.event_date ? ` · ${fmtDate(b.event_date)}` : ""} · #{b.invoice_num}
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-1 rounded-lg ring-1 ring-[#E7EDF5] bg-[#F6F8FB] p-0.5">
+            {(["build", "compare", "notes", "files"] as const).map((t) => (
+              <button key={t}
+                className={`px-3 py-1 rounded-md text-[12px] font-bold capitalize transition-colors ${tab === t ? "bg-white text-[#102F56] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                onClick={() => setTab(t)}>{t}</button>
+            ))}
+          </div>
+          {!locked && versions.length > 0 && (
+            <button className="btn-primary !py-1.5 !px-3 text-xs" disabled={busy}
+              onClick={async () => {
+                const latest = versions[versions.length - 1];
+                setBusy(true);
+                const r = await createVersion(b, proposal, latest);
+                setBusy(false);
+                if (r.ok && r.id) window.location.href = `/bookings/${b.id}/studio/${r.id}`;
+              }}>＋ New Version</button>
+          )}
+        </div>
+      </div>
+
+      {toast && <div className="shrink-0 bg-[#F0FDF4] border-b border-[#BBF7D0] text-[#166534] text-xs font-semibold px-5 py-1.5">{toast}</div>}
+      {err && <div className="shrink-0 bg-red-50 border-b border-red-200 text-red-700 text-xs px-5 py-1.5">⚠️ {err} <button className="underline" onClick={() => setErr("")}>dismiss</button></div>}
+
+      {/* ── Body ── */}
+      {tab === "build" && (
+        <div className="flex-1 min-h-0 grid grid-cols-[280px_1fr_300px] gap-0">
+          {/* LEFT */}
+          <div className="border-r border-[#E7EDF5] bg-white p-3 min-h-0">
+            <SourceEventPane b={b} onAdd={addFromSource} onSeed={seedFromEvent} busy={busy || !!locked} />
+          </div>
+
+          {/* CENTER — the canvas */}
+          <div className="min-h-0 overflow-y-auto p-5"
+            onDragOver={(e) => { if (e.dataTransfer.types.includes("text/eventcore-component")) { e.preventDefault(); setDropHot(true); } }}
+            onDragLeave={() => setDropHot(false)}
+            onDrop={(e) => {
+              setDropHot(false);
+              const raw = e.dataTransfer.getData("text/eventcore-component");
+              if (!raw) return;
+              e.preventDefault();
+              try { const d = JSON.parse(raw); addFromSource([d.id], d.label); } catch {}
+            }}>
+            <div className="max-w-3xl mx-auto space-y-3">
+              {comps.length === 0 && (
+                <div className={`rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${dropHot ? "border-[#4A9EFF] bg-[#F4F9FF]" : "border-[#D8E2EF] bg-white"}`}>
+                  <div className="text-3xl mb-2">🎨</div>
+                  <p className="text-sm font-semibold text-slate-600">The proposal starts here.</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                    Open a similar event on the left and drag its components in — or use
+                    <b> ⤓ Start from this event</b> to seed the whole thing, then sculpt.
+                  </p>
+                  {!locked && <button className="btn-primary !py-1.5 !px-3 text-xs mt-4" onClick={addSection}>＋ Add a blank section</button>}
+                </div>
+              )}
+              {comps.map((c, idx) => {
+                const its = items.filter((i) => i.component_id === c.id);
+                const secTotal = its.reduce((s, i) => {
+                  if (i.unit_price == null || !isActive(i)) return s;
+                  const allG = guestCounts.reduce((x, g) => x + g.count, 0);
+                  const n = i.quantity_basis === "per_person"
+                    ? (i.applies_to_category_id ? (guests[i.applies_to_category_id] ?? 0) : allG)
+                    : (i.quantity ?? 1);
+                  return s + i.unit_price * n;
+                }, 0);
+                return (
+                  <div key={c.id}
+                    draggable={!locked}
+                    onDragStart={(e) => { e.dataTransfer.setData("text/eventcore-reorder", c.id); e.dataTransfer.effectAllowed = "move"; }}
+                    onDragOver={(e) => { if (e.dataTransfer.types.includes("text/eventcore-reorder")) e.preventDefault(); }}
+                    onDrop={(e) => {
+                      const dragId = e.dataTransfer.getData("text/eventcore-reorder");
+                      if (dragId) { e.preventDefault(); e.stopPropagation(); reorderTo(dragId, c.id); }
+                    }}
+                    className="rounded-xl bg-white ring-1 ring-[#E7EDF5] shadow-sm">
+                    <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-[#F1F5F9]">
+                      <span className="cursor-grab text-slate-300 select-none" title="Drag to reorder">⠿</span>
+                      <span className="text-[11px] font-bold text-slate-300 w-4">{idx + 1}</span>
+                      <input className="font-display font-semibold text-[14px] bg-transparent outline-none flex-1 min-w-0 focus:bg-[#F6F8FB] rounded px-1"
+                        defaultValue={c.title} disabled={!!locked}
+                        onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.title) patchComp(c.id, { title: v }); }} />
+                      <span className="text-[12px] font-semibold text-slate-500">{money(secTotal)}</span>
+                      {!locked && (
+                        <span className="flex items-center gap-1 text-slate-300">
+                          <button className="hover:text-slate-500" title="Move up" onClick={() => moveComp(c, -1)}>↑</button>
+                          <button className="hover:text-slate-500" title="Move down" onClick={() => moveComp(c, 1)}>↓</button>
+                          <button className="hover:text-red-500" title="Remove section" onClick={() => deleteComp(c)}>✕</button>
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-3.5 py-2 space-y-1">
+                      {its.map((i) => {
+                        const active = isActive(i);
+                        const carried = i.unit_price != null && !i.price_confirmed;
+                        return (
+                          <div key={i.id}
+                            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] ring-1 transition-colors ${focusItem === i.id ? "ring-[#4A9EFF] bg-[#F4F9FF]" : carried ? "ring-amber-300 bg-amber-50" : "ring-transparent hover:ring-[#E7EDF5]"} ${!active ? "opacity-60" : ""}`}>
+                            {i.item_role === "optional" && (
+                              <input type="checkbox" className="accent-[#2F80ED]" disabled={!!locked} title="Customer option — include?"
+                                checked={i.selected !== false}
+                                onChange={(e) => patchItem(i.id, { selected: e.target.checked })} />
+                            )}
+                            <button className="font-medium text-left min-w-0 truncate hover:underline" onClick={() => focusOn(i)}>
+                              {i.name}
+                            </button>
+                            {i.item_role === "optional" && <span className="text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-[#EDE9FE] text-[#6D28D9] shrink-0">option</span>}
+                            {carried && <span className="text-[10px] font-semibold text-amber-700 shrink-0">⚠ carried</span>}
+                            <span className="ml-auto flex items-center gap-1.5 shrink-0">
+                              <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
+                                value={i.quantity_basis ?? "flat"}
+                                onChange={(e) => patchItem(i.id, { quantity_basis: e.target.value })}>
+                                <option value="per_person">/person</option>
+                                <option value="flat">flat</option>
+                                <option value="per_table">/table</option>
+                              </select>
+                              {i.quantity_basis === "per_person" ? (
+                                <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
+                                  value={i.applies_to_category_id ?? ""}
+                                  onChange={(e) => patchItem(i.id, { applies_to_category_id: e.target.value || null })}>
+                                  <option value="">all</option>
+                                  {cats.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                </select>
+                              ) : (
+                                <input type="number" min={0} disabled={!!locked} className="field !py-0.5 !px-1 !text-[10px] w-12"
+                                  value={i.quantity ?? 1}
+                                  onChange={(e) => patchItem(i.id, { quantity: parseFloat(e.target.value || "1") })} />
+                              )}
+                              <span className="text-slate-400">$</span>
+                              <input type="number" step="0.01" min={0} disabled={!!locked}
+                                className="field !py-0.5 !px-1 !text-[11px] w-[70px]"
+                                value={i.unit_price ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value === "" ? null : parseFloat(e.target.value);
+                                  patchItem(i.id, { unit_price: val, price_confirmed: true });
+                                }} />
+                              {carried && !locked && (
+                                <button className="text-[10px] font-bold text-amber-700 underline"
+                                  onClick={() => patchItem(i.id, { price_confirmed: true })}>ok</button>
+                              )}
+                              {!locked && (
+                                <>
+                                  <button className={`text-[10px] ${i.item_role === "optional" ? "text-[#6D28D9]" : "text-slate-300 hover:text-[#6D28D9]"}`}
+                                    title={i.item_role === "optional" ? "Make included" : "Make optional upgrade"}
+                                    onClick={() => patchItem(i.id, i.item_role === "optional" ? { item_role: "included", selected: true } : { item_role: "optional", selected: false })}>
+                                    ☆
+                                  </button>
+                                  <button className="text-slate-300 hover:text-red-500 text-[11px]" onClick={() => deleteItem(i.id)}>✕</button>
+                                </>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {!locked && (
+                        <button className="text-[11px] text-slate-400 hover:text-[#2F80ED] font-medium pl-2 py-0.5"
+                          onClick={() => addItem(c.id)}>＋ item</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {comps.length > 0 && !locked && (
+                <div className={`rounded-xl border-2 border-dashed py-3 text-center text-[12px] transition-colors ${dropHot ? "border-[#4A9EFF] bg-[#F4F9FF] text-[#2F80ED]" : "border-[#D8E2EF] text-slate-400"}`}>
+                  Drop a component here — or <button className="font-semibold text-[#2F80ED] hover:underline" onClick={addSection}>＋ add a blank section</button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT — persistent intelligence */}
+          <div className="border-l border-[#E7EDF5] bg-white min-h-0 overflow-y-auto p-4 space-y-4">
+            {/* Live Quote */}
+            <div className="rounded-xl ring-1 ring-[#E7EDF5] p-3.5" style={{ background: "linear-gradient(180deg,#FFFFFF, #F8FBFF)" }}>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Live Quote</div>
+              {hasOptions ? (
+                <div className="space-y-1 text-[13px]">
+                  <div className="flex justify-between"><span className="text-slate-500">Base</span><b>{money(totals.baseSubtotal)}</b></div>
+                  <div className="flex justify-between"><span className="text-slate-500">With selected options</span><b>{money(totals.itemsSubtotal)}</b></div>
+                  {totals.upside > 0 && (
+                    <div className="flex justify-between text-[#15803D]"><span>Potential upside</span><b>+{money(totals.upside)}</b></div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex justify-between text-[13px]"><span className="text-slate-500">Items</span><b>{money(totals.itemsSubtotal)}</b></div>
+              )}
+              <div className="border-t border-[#EDF2F9] mt-2 pt-2 space-y-1 text-[12px]">
+                {adjs.map((a) => (
+                  <div key={a.id} className="flex justify-between text-slate-500">
+                    <span>{a.label}{a.kind === "percent" ? ` (${a.value}%)` : ""}</span>
+                    <span>{money(a.kind === "percent" ? (totals.itemsSubtotal * a.value) / 100 : a.value)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-slate-500"><span>Tax</span><span>{money(totals.tax)}</span></div>
+                <div className="flex justify-between font-display font-bold text-[16px] text-[#102F56] pt-1">
+                  <span>Total</span><span>{money(totals.total)}</span>
+                </div>
+              </div>
+              {(totals.unconfirmed > 0 || totals.unpriced > 0) && (
+                <div className="mt-2 space-y-0.5">
+                  {totals.unconfirmed > 0 && <p className="text-[11px] font-semibold text-amber-700">⚠ {totals.unconfirmed} carried price{totals.unconfirmed === 1 ? "" : "s"} unconfirmed</p>}
+                  {totals.unpriced > 0 && <p className="text-[11px] text-slate-400">{totals.unpriced} item{totals.unpriced === 1 ? "" : "s"} unpriced</p>}
+                </div>
+              )}
+            </div>
+
+            {/* Guests */}
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Guests</div>
+              <div className="flex flex-wrap gap-2">
+                {cats.map((c) => (
+                  <label key={c.id} className="flex items-center gap-1 text-[12px]">
+                    {c.name}
+                    <input type="number" min={0} disabled={!!locked} className="field !py-0.5 !px-1.5 !text-xs w-16"
+                      value={guests[c.id] ?? 0}
+                      onChange={(e) => saveGuests(c.id, Math.max(0, parseInt(e.target.value || "0", 10)))} />
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Adjustments */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Adjustments</span>
+                {!locked && (
+                  <button className="text-[11px] text-[#2F80ED] hover:underline"
+                    onClick={async () => {
+                      const { data } = await supabase.from("version_adjustments")
+                        .insert({ version_id: versionId, label: "Service Charge", kind: "percent", value: 18, position: adjs.length })
+                        .select("*").single();
+                      if (data) setAdjs((p) => [...p, data as Adjustment]);
+                    }}>＋ add</button>
+                )}
+              </div>
+              {adjs.length === 0 && <p className="text-[11px] text-slate-400">Delivery, setup, gratuity, admin fee — all live here.</p>}
+              <div className="space-y-1">
+                {adjs.map((a) => (
+                  <div key={a.id} className="flex items-center gap-1 text-[11px]">
+                    <input className="field !py-0.5 !px-1 !text-[11px] flex-1 min-w-0" disabled={!!locked} defaultValue={a.label}
+                      onBlur={async (e) => { await supabase.from("version_adjustments").update({ label: e.target.value }).eq("id", a.id); setAdjs((p) => p.map((x) => x.id === a.id ? { ...x, label: e.target.value } : x)); }} />
+                    <select className="field !py-0.5 !px-0.5 !text-[10px]" disabled={!!locked} value={a.kind}
+                      onChange={async (e) => { const kind = e.target.value as "percent" | "flat"; await supabase.from("version_adjustments").update({ kind }).eq("id", a.id); setAdjs((p) => p.map((x) => x.id === a.id ? { ...x, kind } : x)); }}>
+                      <option value="percent">%</option><option value="flat">$</option>
+                    </select>
+                    <input type="number" step="0.01" className="field !py-0.5 !px-1 !text-[11px] w-16" disabled={!!locked} value={a.value}
+                      onChange={async (e) => { const value = parseFloat(e.target.value || "0"); await supabase.from("version_adjustments").update({ value }).eq("id", a.id); setAdjs((p) => p.map((x) => x.id === a.id ? { ...x, value } : x)); }} />
+                    {!locked && <button className="text-slate-300 hover:text-red-500" onClick={async () => { await supabase.from("version_adjustments").delete().eq("id", a.id); setAdjs((p) => p.filter((x) => x.id !== a.id)); }}>✕</button>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Price intelligence for the focused item */}
+            {focusItem && (() => {
+              const i = items.find((x) => x.id === focusItem);
+              if (!i) return null;
+              const srp = i.catalog_item_id ? srps[i.catalog_item_id] : null;
+              const mem = memory[i.id];
+              return (
+                <div className="rounded-xl ring-1 ring-[#E7EDF5] p-3.5 bg-[#FDFDFF]">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Price Memory</div>
+                  <div className="text-[13px] font-semibold mb-1.5">{i.name}</div>
+                  <div className="space-y-1 text-[11px] text-slate-600">
+                    {srp?.srp != null && (
+                      <p>Suggested <b>{money(srp.srp)}</b>{srp.srp_set_at ? <span className="text-slate-400"> · set {new Date(srp.srp_set_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })}</span> : null}
+                        {!locked && <button className="ml-1.5 text-[#2F80ED] underline" onClick={() => patchItem(i.id, { unit_price: srp.srp, price_confirmed: true })}>use</button>}
+                      </p>
+                    )}
+                    {!mem && <p className="text-slate-400">Loading…</p>}
+                    {mem && mem.points.length === 0 && <p className="text-slate-400">No sold history yet — this decision becomes the memory.</p>}
+                    {mem?.points.map((pt, idx) => (
+                      <p key={idx}>
+                        {pt.match === "lineage" ? "↺" : pt.match === "catalog" ? "📖" : "≈"} <b>{money(pt.unit_price)}</b>{pt.quantity_basis === "per_person" ? "/pp" : ""} — {pt.customer}
+                        {pt.date ? ` · ${new Date(pt.date).toLocaleDateString(undefined, { month: "short", year: "numeric" })}` : ""}{pt.guests ? ` · ${pt.guests} g` : ""}
+                        {pt.match === "name" && <span className="text-slate-400"> (same name)</span>}
+                        {!locked && <button className="ml-1 text-[#2F80ED] underline" onClick={() => patchItem(i.id, { unit_price: pt.unit_price, price_confirmed: true })}>use</button>}
+                      </p>
+                    ))}
+                    {mem?.range && <p className="text-slate-400">Range (12mo): {money(mem.range.low)}–{money(mem.range.high)} · {mem.range.count} sales</p>}
+                    {!locked && (
+                      <div className="pt-1 space-y-1">
+                        <input className="field !py-0.5 !px-1.5 !text-[11px] w-full" placeholder="pricing reason (optional)"
+                          value={i.pricing_reason ?? ""}
+                          onChange={(e) => patchItem(i.id, { pricing_reason: e.target.value || null })} />
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-1 text-[10px] text-slate-500">
+                            <input type="checkbox" className="accent-[#4A9EFF]" checked={!!i.taxable}
+                              onChange={(e) => patchItem(i.id, { taxable: e.target.checked })} /> taxable
+                          </label>
+                          {i.unit_price != null && (
+                            <button className="text-[10px] text-[#2F80ED] underline ml-auto"
+                              onClick={async () => {
+                                const c = comps.find((x) => x.id === i.component_id);
+                                const r = await promoteToCatalog(i, c?.domain ?? "food");
+                                if (!r.ok) setErr(r.detail ?? ""); else { setToast("✓ Saved as standard price"); loadCanvas(); }
+                              }}>save as standard price</button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+            {!focusItem && <p className="text-[11px] text-slate-300">Click any item name to see its suggested price and sold history here.</p>}
+          </div>
+        </div>
+      )}
+
+      {tab === "compare" && (
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-sm font-semibold">Compare v{version.version} against</span>
+              <select className="field !py-1 !text-xs" value={compareWith} onChange={(e) => runCompare(e.target.value)}>
+                <option value="">— pick a version —</option>
+                {versions.filter((v) => v.id !== version.id).map((v) => (
+                  <option key={v.id} value={v.id}>v{v.version} ({VERSION_FLOW.find((f) => f.value === v.status)?.label})</option>
+                ))}
+              </select>
+              {busy && <span className="text-xs text-slate-400">computing…</span>}
+            </div>
+            {diff && (
+              <div className="space-y-3">
+                <div className="card p-4 flex items-center gap-6">
+                  <div><div className="text-[10px] font-bold uppercase text-slate-400">Older</div><div className="font-display font-bold">{money(diff.totalA)}</div></div>
+                  <div className="text-2xl text-slate-300">→</div>
+                  <div><div className="text-[10px] font-bold uppercase text-slate-400">This version</div><div className="font-display font-bold">{money(diff.totalB)}</div></div>
+                  <div className={`ml-auto font-display font-bold text-lg ${diff.totalB - diff.totalA >= 0 ? "text-[#15803D]" : "text-red-600"}`}>
+                    {diff.totalB - diff.totalA >= 0 ? "+" : ""}{money(diff.totalB - diff.totalA)}
+                  </div>
+                </div>
+                {diff.added.length > 0 && (
+                  <div className="card p-4">
+                    <div className="text-[10px] font-bold uppercase text-[#15803D] mb-1">Added</div>
+                    {diff.added.map((x, i) => <p key={i} className="text-[13px]">+ {x.title}</p>)}
+                  </div>
+                )}
+                {diff.removed.length > 0 && (
+                  <div className="card p-4">
+                    <div className="text-[10px] font-bold uppercase text-red-600 mb-1">Removed</div>
+                    {diff.removed.map((x, i) => <p key={i} className="text-[13px]">− {x.title}</p>)}
+                  </div>
+                )}
+                {diff.changed.length > 0 && (
+                  <div className="card p-4">
+                    <div className="text-[10px] font-bold uppercase text-[#2F80ED] mb-1">Changed</div>
+                    {diff.changed.map((x, i) => <p key={i} className="text-[13px]"><b>{x.title}</b>: <span className="text-slate-500">{x.detail}</span></p>)}
+                  </div>
+                )}
+                {diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0 && (
+                  <p className="text-sm text-slate-400">No structural differences — totals may still differ via guests or adjustments.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === "notes" && (
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+          <div className="max-w-2xl mx-auto">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Internal notes — v{version.version}</div>
+            <textarea className="field w-full !bg-white" rows={12} disabled={!!locked}
+              defaultValue={version.notes ?? ""}
+              placeholder="Working notes for this version — never shown to the customer."
+              onBlur={async (e) => {
+                await supabase.from("proposal_versions").update({ notes: e.target.value || null }).eq("id", version.id);
+                setToast("✓ Notes saved");
+              }} />
+          </div>
+        </div>
+      )}
+
+      {tab === "files" && (
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+          <div className="max-w-2xl mx-auto">
+            <FilesPanel b={b} />
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}

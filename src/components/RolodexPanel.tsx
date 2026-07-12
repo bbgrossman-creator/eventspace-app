@@ -43,8 +43,11 @@ const clean = (q: string) => q.replace(/[,()%]/g, " ").trim();
 
 export interface RolodexDest { id: string; invoice_num: string; contact_name: string; }
 
-export default function RolodexPanel({ embedded = false, fixedDest = null, initialMode = "explore" }: {
+export default function RolodexPanel({ embedded = false, fixedDest = null, initialMode = "explore", hideCopy = false }: {
   embedded?: boolean; fixedDest?: RolodexDest | null; initialMode?: "explore" | "copy";
+  /** Studio's Components tab: browse/search only — its copy semantics target
+   *  OPERATIONAL components, which inside a proposal context would confuse. */
+  hideCopy?: boolean;
 }) {
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [q, setQ] = useState("");
@@ -274,7 +277,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
             any of it themselves.
           </p>
         )}
-        <div className="flex rounded-full ring-1 ring-[#E7EDF5] bg-white p-0.5 ml-auto">
+        <div className={`flex rounded-full ring-1 ring-[#E7EDF5] bg-white p-0.5 ml-auto ${hideCopy ? "hidden" : ""}`}>
           {(["explore", "copy"] as const).map((m) => (
             <button key={m}
               className={`px-3.5 py-1 rounded-full text-xs font-semibold transition-colors ${mode === m ? "text-white" : "text-slate-500 hover:text-slate-700"}`}

@@ -20,7 +20,7 @@ import {
 interface CompRow { id: string; title: string; domain: string; }
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function VersionPricing({ b, v }: { b: Booking; v: ProposalVersion }) {
+export default function VersionPricing({ b, v, refreshKey = 0 }: { b: Booking; v: ProposalVersion; refreshKey?: number }) {
   const locked = v.status === "approved";
   const [cats, setCats] = useState<GuestCategory[]>([]);
   const [guests, setGuests] = useState<Record<string, number>>({});   // category_id → count
@@ -64,7 +64,7 @@ export default function VersionPricing({ b, v }: { b: Booking; v: ProposalVersio
       }
     } else setItems([]);
   }, [v.id]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   const guestCounts = cats.map((c) => ({ category_id: c.id, count: guests[c.id] ?? 0 }));
   const totals: VersionTotals = computeVersionTotals(items, guestCounts, adjs);

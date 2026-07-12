@@ -173,6 +173,8 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                             <span className="text-[11px] text-slate-400 italic">changes go in a new version →</span>
                           )}
                         </span>
+                        <a href={`/bookings/${b.id}/studio/${v.id}`}
+                          className="text-[11px] font-semibold text-accent-ink hover:underline">🎨 Studio ↗</a>
                         <button className="text-[11px] text-slate-400 underline"
                           onClick={() => setPricingOpen((x) => ({ ...x, [v.id]: !x[v.id] }))}>
                           {pricingOpen[v.id] ? "hide pricing" : "pricing"}

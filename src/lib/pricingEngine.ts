@@ -33,7 +33,12 @@ export interface PricedItem {
   unit_price: number | null; applies_to_category_id: string | null;
   catalog_item_id: string | null; price_confirmed: boolean;
   pricing_reason: string | null; taxable?: boolean;
+  /** 'included' = normal line; 'optional' = upgrade. Optional + !selected
+   *  contributes to Potential Upside only — never totals, invoices, memory. */
+  item_role?: "included" | "optional";
+  selected?: boolean;
 }
+export const isActive = (i: PricedItem) => i.item_role !== "optional" || i.selected !== false;
 export interface CatalogItem {
   id: string; name: string; domain: string; quantity_basis: string | null;
   srp: number | null; srp_set_at: string | null; unit_cost: number | null; active: boolean;
@@ -84,13 +89,14 @@ export async function loadPriceMemory(item: {
 }): Promise<PriceMemory> {
   // Candidate sold items: same catalog id OR exact name (ilike, exact string).
   let q = supabase.from("component_items")
-    .select("unit_price,quantity_basis,component_id,catalog_item_id,name")
+    .select("unit_price,quantity_basis,component_id,catalog_item_id,name,item_role,selected")
     .not("unit_price", "is", null);
   q = item.catalog_item_id
     ? q.or(`catalog_item_id.eq.${item.catalog_item_id},name.ilike.${item.name.replace(/[,%()]/g, " ").trim()}`)
     : q.ilike("name", item.name.replace(/[,%()]/g, " ").trim());
   const { data: rows } = await q.limit(200);
-  const items = (rows ?? []) as { unit_price: number; quantity_basis: string | null; component_id: string; catalog_item_id: string | null; name: string }[];
+  const items = ((rows ?? []) as { unit_price: number; quantity_basis: string | null; component_id: string; catalog_item_id: string | null; name: string; item_role?: string; selected?: boolean }[])
+    .filter((i) => i.item_role !== "optional" || i.selected !== false); // unchosen = never sold
   if (!items.length) return { points: [], range: null };
 
   // Resolve their components → keep only SOLD ones: operational, or in an approved version.
@@ -147,7 +153,9 @@ export async function loadPriceMemory(item: {
 
 // ── Totals ──
 export interface VersionTotals {
-  itemsSubtotal: number;
+  itemsSubtotal: number;      // included + SELECTED options
+  baseSubtotal: number;       // included only ("Base")
+  upside: number;             // unselected options ("Potential Upside")
   adjustmentsTotal: number;
   taxable: number;        // taxable base (items marked taxable + taxable adjustments)
   tax: number;
@@ -165,14 +173,16 @@ export function computeVersionTotals(
   const countFor = (categoryId: string | null) =>
     categoryId === null ? allGuests : (guests.find((g) => g.category_id === categoryId)?.count ?? 0);
 
-  let itemsSubtotal = 0, taxableBase = 0, unconfirmed = 0, unpriced = 0;
+  let itemsSubtotal = 0, baseSubtotal = 0, upside = 0, taxableBase = 0, unconfirmed = 0, unpriced = 0;
   for (const i of items) {
     if (i.unit_price == null) { unpriced++; continue; }
-    if (!i.price_confirmed) unconfirmed++;
     const line =
       i.quantity_basis === "per_person" ? i.unit_price * countFor(i.applies_to_category_id)
       : i.unit_price * (i.quantity ?? 1);
+    if (!isActive(i)) { upside += line; continue; }   // unselected option: upside only
+    if (!i.price_confirmed) unconfirmed++;
     itemsSubtotal += line;
+    if (i.item_role !== "optional") baseSubtotal += line;
     if (i.taxable) taxableBase += line;
   }
 
@@ -188,6 +198,8 @@ export function computeVersionTotals(
   const tax = r2(taxableBase * PRICING.TAX_RATE);
   return {
     itemsSubtotal: r2(itemsSubtotal),
+    baseSubtotal: r2(baseSubtotal),
+    upside: r2(upside),
     adjustmentsTotal: r2(adjustmentsTotal),
     taxable: r2(taxableBase),
     tax,
@@ -238,6 +250,7 @@ export async function planGeneration(
   const add: GenerationPlan["add"] = [];
   for (const i of items) {
     if (i.unit_price == null) continue;
+    if (!isActive(i)) continue;   // unchosen options are never sold
     const qty = i.quantity_basis === "per_person" ? countFor(i.applies_to_category_id) : (i.quantity ?? 1);
     if (qty <= 0) continue;
     add.push({

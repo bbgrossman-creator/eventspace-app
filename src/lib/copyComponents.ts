@@ -10,6 +10,12 @@ export interface CopyOptions {
   pricing: boolean;
   notes: boolean;
   requirements: boolean;
+  /** When set, copies land INSIDE this proposal version instead of the
+   *  destination's operational set. Cross-event provenance is real here
+   *  (copied_from = source component — this IS reuse), and carried prices
+   *  arrive price_confirmed=false per pricing doctrine §3: they travel,
+   *  amber, until a salesperson waves each one through. */
+  proposalVersionId?: string;
 }
 
 export interface CopyOutcome { ok: boolean; detail?: string; copied: number; }
@@ -28,7 +34,9 @@ export async function copyComponentsTo(
 
   const [{ data: srcRows, error: sErr }, { count }] = await Promise.all([
     supabase.from("event_components").select("id,booking_id,domain,kind,title,notes").in("id", srcComponentIds),
-    supabase.from("event_components").select("id", { count: "exact", head: true }).eq("booking_id", dest.id).is("proposal_version_id", null),
+    opts.proposalVersionId
+      ? supabase.from("event_components").select("id", { count: "exact", head: true }).eq("proposal_version_id", opts.proposalVersionId)
+      : supabase.from("event_components").select("id", { count: "exact", head: true }).eq("booking_id", dest.id).is("proposal_version_id", null),
   ]);
   if (sErr) return { ok: false, detail: sErr.message, copied: 0 };
   const sources = (srcRows ?? []) as SrcComp[];
@@ -46,6 +54,7 @@ export async function copyComponentsTo(
     const { data: nc, error: cErr } = await supabase.from("event_components").insert({
       booking_id: dest.id, domain: src.domain, kind: src.kind, title: src.title,
       position: pos++, copied_from: src.id,
+      proposal_version_id: opts.proposalVersionId ?? null,
       notes: opts.notes ? src.notes : null,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "unknown"}`, copied };
@@ -58,6 +67,7 @@ export async function copyComponentsTo(
         quantity: opts.quantities ? i.quantity : null,
         quantity_basis: opts.quantities ? i.quantity_basis : null,
         unit_price: opts.pricing ? i.unit_price : null,
+        price_confirmed: opts.proposalVersionId && opts.pricing && i.unit_price != null ? false : true,
         position: idx,
       })));
       if (iErr) return { ok: false, detail: `"${src.title}" items: ${iErr.message}`, copied };
@@ -71,6 +81,6 @@ export async function copyComponentsTo(
     copied++;
   }
   await logActivity(dest.id, dest.invoice_num, "Components Copied",
-    `↺ ${copied} component${copied === 1 ? "" : "s"}${sourceLabel ? ` from ${sourceLabel}` : ""} via Rolodex${opts.pricing ? " incl. pricing" : ""}`);
+    `↺ ${copied} component${copied === 1 ? "" : "s"}${sourceLabel ? ` from ${sourceLabel}` : ""}${opts.proposalVersionId ? " into proposal" : " via Rolodex"}${opts.pricing ? " incl. pricing" : ""}`);
   return { ok: true, copied };
 }
