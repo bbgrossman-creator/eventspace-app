@@ -135,12 +135,12 @@ async function copyComponentsBetween(
   bookingId: string, fromVersionId: string | null, toVersionId: string,
 ): Promise<Outcome> {
   let q = supabase.from("event_components")
-    .select("id,domain,kind,title,position,copied_from,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description")
+    .select("id,domain,kind,title,position,copied_from,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description")
     .eq("booking_id", bookingId).order("position");
   q = fromVersionId ? q.eq("proposal_version_id", fromVersionId) : q.is("proposal_version_id", null);
   const { data: srcRows, error } = await q;
   if (error) return { ok: false, detail: error.message };
-  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null }[];
+  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null; group_label?: string | null; group_position?: number; group_description?: string | null }[];
   if (!sources.length) return { ok: true };
 
   const ids = sources.map((s) => s.id);
@@ -162,6 +162,10 @@ async function copyComponentsBetween(
       package_taxable: src.package_taxable ?? true,
       package_cost: src.package_cost ?? null,
       customer_description: src.customer_description ?? null,
+      // Groups are inherited structure — the proven arrangement travels.
+      group_label: src.group_label ?? null,
+      group_position: src.group_position ?? 0,
+      group_description: src.group_description ?? null,
       // carried package prices arrive unconfirmed, same rule as items
       package_price_confirmed: src.package_price == null,
     }).select("id").single();

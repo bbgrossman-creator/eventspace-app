@@ -99,14 +99,14 @@ export async function copyIntoVersion(
     .select("id", { count: "exact", head: true }).eq("proposal_version_id", versionId);
   let pos = count ?? 0;
   const { data: srcRows, error } = await supabase.from("event_components")
-    .select("id,domain,kind,title,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description").in("id", srcComponentIds);
+    .select("id,domain,kind,title,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description").in("id", srcComponentIds);
   if (error) return { ok: false, detail: error.message, copied: 0 };
   const [{ data: its }, { data: rqs }] = await Promise.all([
     supabase.from("component_items").select("*").in("component_id", srcComponentIds).order("position"),
     supabase.from("component_requirements").select("component_id,name,category,notes").in("component_id", srcComponentIds),
   ]);
   let copied = 0;
-  for (const src of (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null }[]) {
+  for (const src of (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null; group_label?: string | null; group_position?: number; group_description?: string | null }[]) {
     const { data: nc, error: cErr } = await supabase.from("event_components").insert({
       booking_id: booking.id, proposal_version_id: versionId,
       domain: src.domain, kind: src.kind, title: src.title, notes: src.notes,
@@ -118,6 +118,9 @@ export async function copyIntoVersion(
       package_taxable: src.package_taxable ?? true,
       package_cost: src.package_cost ?? null,
       customer_description: src.customer_description ?? null,
+      group_label: src.group_label ?? null,
+      group_position: src.group_position ?? 0,
+      group_description: src.group_description ?? null,
       package_price_confirmed: src.package_price == null,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "?"}`, copied };

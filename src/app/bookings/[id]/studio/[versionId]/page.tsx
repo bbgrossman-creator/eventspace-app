@@ -34,6 +34,7 @@ import FilesPanel from "@/components/FilesPanel";
 interface CompRow {
   id: string; title: string; domain: string; position: number; notes: string | null;
   section_type_id: string | null;
+  group_label: string | null; group_position: number; group_description: string | null;
   pricing_mode: string; package_price: number | null; package_basis: string;
   package_taxable: boolean; package_price_confirmed: boolean; package_cost: number | null;
   customer_description: string | null;
@@ -101,7 +102,7 @@ export default function StudioPage() {
       loadGuestCategories(),
       supabase.from("version_guests").select("category_id,count").eq("version_id", versionId),
       supabase.from("version_adjustments").select("*").eq("version_id", versionId).order("position"),
-      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description").eq("proposal_version_id", versionId).order("position"),
+      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description").eq("proposal_version_id", versionId).order("position"),
       loadSectionTypes().catch(() => [] as SectionType[]),
       supabase.from("version_sections").select("section_type_id,position").eq("version_id", versionId).order("position"),
     ]);
@@ -307,6 +308,28 @@ export default function StudioPage() {
     await supabase.from("event_components").update({ section_type_id: sectionTypeId }).eq("id", compId);
     loadCanvas();
   }
+  // ── Component groups (bands) ── matching is trimmed + case-insensitive.
+  const normLabel = (l: string | null | undefined) => (l ?? "").trim().toLowerCase();
+  async function assignGroup(compId: string, rawLabel: string) {
+    const label = rawLabel.trim();
+    // Inherit the band's existing position (min among members) so the newcomer
+    // lands in the right band, not at position 0.
+    const members = comps.filter((c) => normLabel(c.group_label) === label.toLowerCase() && label);
+    const pos = members.length ? Math.min(...members.map((m) => m.group_position)) : comps.length;
+    await supabase.from("event_components").update({ group_label: label || null, group_position: pos }).eq("id", compId);
+    loadCanvas();
+  }
+  async function renameBand(oldLabel: string, section: string | null, newLabel: string) {
+    // Rename every member sharing (section + normalized label).
+    const targets = comps.filter((c) => (c.section_type_id ?? "") === (section ?? "") && normLabel(c.group_label) === oldLabel.toLowerCase());
+    for (const c of targets) await supabase.from("event_components").update({ group_label: newLabel.trim() || null }).eq("id", c.id);
+    loadCanvas();
+  }
+  async function setBandDescription(members: CompRow[], desc: string) {
+    // First-non-empty is the band's value; edits SYNC all members.
+    for (const c of members) await supabase.from("event_components").update({ group_description: desc || null }).eq("id", c.id);
+    loadCanvas();
+  }
 
   if (caps && !caps.proposals) {
     return <main className="max-w-lg mx-auto px-6 py-20 text-center">
@@ -435,7 +458,47 @@ export default function StudioPage() {
                     </div>
                   )}
                   <div className="space-y-2">
-              {g.comps.map((c) => {
+              {(() => {
+                const norm = (l: string | null) => (l ?? "").trim().toLowerCase();
+                const bandKeys: string[] = [];
+                const bandMeta: Record<string, { label: string; desc: string; minPos: number; comps: CompRow[] }> = {};
+                for (const c of g.comps) {
+                  const k = norm(c.group_label);
+                  if (!k) { const bk = `__bare__${c.id}`; bandKeys.push(bk); bandMeta[bk] = { label: "", desc: "", minPos: c.position + 100000, comps: [c] }; continue; }
+                  if (!bandMeta[k]) { bandMeta[k] = { label: (c.group_label ?? "").trim(), desc: "", minPos: c.group_position, comps: [] }; bandKeys.push(k); }
+                  bandMeta[k].comps.push(c);
+                  bandMeta[k].minPos = Math.min(bandMeta[k].minPos, c.group_position);
+                  if (!bandMeta[k].desc && c.group_description) bandMeta[k].desc = c.group_description;
+                }
+                const orderedKeys = bandKeys.sort((a, z) => bandMeta[a].minPos - bandMeta[z].minPos);
+                return orderedKeys.map((bk) => {
+                  const band = bandMeta[bk];
+                  const isBand = !bk.startsWith("__bare__");
+                  const bandTotal = band.comps.reduce((sum, cc) => {
+                    if (cc.pricing_mode === "package") return sum + (cc.package_price != null ? (cc.package_basis === "per_person" ? cc.package_price * totalGuests : cc.package_price) : 0);
+                    return sum + items.filter((i) => i.component_id === cc.id).reduce((t, i) => {
+                      if (i.unit_price == null || !isActive(i)) return t;
+                      const n = i.quantity_basis === "per_person" ? (i.applies_to_category_id ? (guests[i.applies_to_category_id] ?? 0) : totalGuests) : (i.quantity ?? 1);
+                      return t + i.unit_price * n;
+                    }, 0);
+                  }, 0);
+                  return (
+                  <div key={bk} className={isBand ? "rounded-lg bg-[#F8FAFD] ring-1 ring-[#E7EDF5] p-2" : ""}>
+                    {isBand && (
+                      <div className="flex items-center gap-2 px-1 pb-1.5">
+                        <span className="text-[11px]">◱</span>
+                        <input className="font-display font-semibold text-[12px] bg-transparent outline-none flex-1 min-w-0 focus:bg-white rounded px-1 text-[#334155]"
+                          defaultValue={band.label} disabled={!!locked}
+                          onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== band.label) renameBand(band.label, g.sectionTypeId, v); }} />
+                        <span className="text-[11px] font-semibold text-slate-400">{money(bandTotal)}</span>
+                        {!locked && (
+                          <button className="text-slate-300 hover:text-red-500 text-[11px]" title="Ungroup this band"
+                            onClick={() => { for (const cc of band.comps) assignGroup(cc.id, ""); }}>⊘</button>
+                        )}
+                      </div>
+                    )}
+                    <div className="space-y-2">
+              {band.comps.map((c) => {
                 const isPkg = c.pricing_mode === "package";
                 const its = isPkg ? [] : items.filter((i) => i.component_id === c.id);
                 const pkgTotal = isPkg && c.package_price != null
@@ -485,6 +548,14 @@ export default function StudioPage() {
                       )}
                       {!locked && (
                         <span className="flex items-center gap-1 text-slate-300">
+                          <button className={`text-[9px] font-semibold uppercase tracking-wide ${c.group_label ? "text-[#6D28D9]" : "text-slate-300 hover:text-[#6D28D9]"}`}
+                            title={c.group_label ? `In band "${c.group_label}" — click to change` : "Group into a band (e.g. Stationary Display)"}
+                            onClick={() => {
+                              const existing = Array.from(new Set(comps.filter((x) => (x.section_type_id ?? "") === (c.section_type_id ?? "") && x.group_label).map((x) => (x.group_label ?? "").trim())));
+                              const hint = existing.length ? `\nExisting bands here: ${existing.join(", ")}` : "";
+                              const v = prompt(`Band name for "${c.title}" (blank to ungroup):${hint}`, c.group_label ?? "");
+                              if (v !== null) assignGroup(c.id, v);
+                            }}>◱{c.group_label ? "" : "+"}</button>
                           <select className="field !py-0 !px-0.5 !text-[9px] max-w-[90px] text-slate-400" title="Move to section"
                             value={c.section_type_id ?? ""}
                             onChange={(e) => setCompSection(c.id, e.target.value || null)}>
@@ -615,6 +686,11 @@ export default function StudioPage() {
                   </div>
                 );
               })}
+                    </div>
+                  </div>
+                  );
+                });
+              })()}
                   </div>
                   {!locked && (
                     <button className="text-[11px] text-slate-400 hover:text-[#2F80ED] font-medium pl-1.5 pt-1.5"
