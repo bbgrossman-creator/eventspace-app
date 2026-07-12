@@ -134,6 +134,11 @@ export default function StudioPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [items, guests, adjs, cats]);
   const hasOptions = items.some((i) => i.item_role === "optional");
+  const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
+  // "$0.00" would be a lie of precision: per-person items aren't zero, they're
+  // uncalculable until a guest count exists. Say so instead of showing $0.
+  const needsGuests = totalGuests === 0 &&
+    items.some((i) => i.quantity_basis === "per_person" && i.unit_price != null && isActive(i));
 
   // ── Mutations ──
   async function addFromSource(componentIds: string[], sourceLabel: string) {
@@ -376,6 +381,11 @@ export default function StudioPage() {
               try { const d = JSON.parse(raw); addFromSource([d.id], d.label); } catch {}
             }}>
             <div className="max-w-3xl mx-auto space-y-3">
+              {needsGuests && (
+                <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 text-amber-800 text-[12px] px-3 py-2">
+                  👥 This proposal has per-person pricing — enter the guest count on the right to calculate totals.
+                </div>
+              )}
               {comps.length === 0 && (
                 <div className={`rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${dropHot ? "border-[#4A9EFF] bg-[#F4F9FF]" : "border-[#D8E2EF] bg-white"}`}>
                   <div className="text-3xl mb-2">🎨</div>
@@ -442,7 +452,9 @@ export default function StudioPage() {
                       <input className="font-display font-semibold text-[14px] bg-transparent outline-none flex-1 min-w-0 focus:bg-[#F6F8FB] rounded px-1"
                         defaultValue={c.title} disabled={!!locked}
                         onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.title) patchComp(c.id, { title: v }); }} />
-                      <span className="text-[12px] font-semibold text-slate-500">{money(secTotal)}</span>
+                      {secTotal === 0 && its.some((i) => i.quantity_basis === "per_person" && i.unit_price != null && isActive(i)) && totalGuests === 0
+                        ? <span className="text-[10px] font-semibold text-amber-600">needs guest count</span>
+                        : <span className="text-[12px] font-semibold text-slate-500">{money(secTotal)}</span>}
                       {!locked && (
                         <span className="flex items-center gap-1 text-slate-300">
                           <select className="field !py-0 !px-0.5 !text-[9px] max-w-[90px] text-slate-400" title="Move to section"
@@ -486,7 +498,7 @@ export default function StudioPage() {
                                 <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
                                   value={i.applies_to_category_id ?? ""}
                                   onChange={(e) => patchItem(i.id, { applies_to_category_id: e.target.value || null })}>
-                                  <option value="">all</option>
+                                  <option value="">All guests</option>
                                   {cats.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                                 </select>
                               ) : (
@@ -581,6 +593,9 @@ export default function StudioPage() {
                   <span>Total</span><span>{money(totals.total)}</span>
                 </div>
               </div>
+              {needsGuests && (
+                <p className="mt-2 text-[11px] font-semibold text-amber-700">👥 Guest count is 0 — per-person items aren&apos;t counted yet. Enter counts below.</p>
+              )}
               {(totals.unconfirmed > 0 || totals.unpriced > 0) && (
                 <div className="mt-2 space-y-0.5">
                   {totals.unconfirmed > 0 && <p className="text-[11px] font-semibold text-amber-700">⚠ {totals.unconfirmed} carried price{totals.unconfirmed === 1 ? "" : "s"} unconfirmed</p>}
