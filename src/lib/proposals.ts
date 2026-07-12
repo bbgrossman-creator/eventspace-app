@@ -68,6 +68,16 @@ export async function createProposal(
     const copied = await copyComponentsBetween(booking.id, null, v.id);
     if (!copied.ok) return copied;
   }
+  // Seed v1 guest counts: booking's estimate lands in the first category
+  // (typically Adults); the version owns the numbers from here on.
+  const { data: cats } = await supabase.from("guest_categories")
+    .select("id").eq("active", true).order("position").limit(1);
+  const firstCat = ((cats ?? []) as { id: string }[])[0];
+  const { data: bk } = await supabase.from("bookings").select("est_guests").eq("id", booking.id).maybeSingle();
+  const est = (bk as { est_guests: number | null } | null)?.est_guests ?? 0;
+  if (firstCat && est > 0) {
+    await supabase.from("version_guests").insert({ version_id: v.id, category_id: firstCat.id, count: est });
+  }
   await logActivity(booking.id, booking.invoice_num, "Proposal Created",
     `🎨 "${title.trim() || "Proposal"}" v1${seedFromOperational ? " seeded from event components" : ""}`);
   return { ok: true, id: p.id };
@@ -89,6 +99,15 @@ export async function createVersion(
   if (vErr || !v) return { ok: false, detail: vErr?.message ?? "version insert failed" };
   const copied = await copyComponentsBetween(booking.id, fromVersion.id, v.id);
   if (!copied.ok) return copied;
+  // Guests + adjustments travel version→version (each version owns its own).
+  const [{ data: g }, { data: adj }] = await Promise.all([
+    supabase.from("version_guests").select("category_id,count").eq("version_id", fromVersion.id),
+    supabase.from("version_adjustments").select("label,kind,value,taxable,position").eq("version_id", fromVersion.id),
+  ]);
+  const gRows = (g ?? []) as { category_id: string; count: number }[];
+  if (gRows.length) await supabase.from("version_guests").insert(gRows.map((x) => ({ ...x, version_id: v.id })));
+  const aRows = (adj ?? []) as { label: string; kind: string; value: number; taxable: boolean; position: number }[];
+  if (aRows.length) await supabase.from("version_adjustments").insert(aRows.map((x) => ({ ...x, version_id: v.id })));
   await logActivity(booking.id, booking.invoice_num, "Proposal Version Created",
     `🎨 ${proposal.title} v${nextN} (from v${fromVersion.version})`);
   return { ok: true, id: v.id };
@@ -123,13 +142,22 @@ async function copyComponentsBetween(
       notes: src.notes,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "unknown"}` };
-    const its = ((items.data ?? []) as { component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null }[])
+    const its = ((items.data ?? []) as { component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null; taxable?: boolean | null; catalog_item_id?: string | null; applies_to_category_id?: string | null }[])
       .filter((i) => i.component_id === src.id);
     if (its.length) {
       const { error: iErr } = await supabase.from("component_items").insert(its.map((i, idx) => ({
         component_id: nc.id, name: i.name, description: i.description,
         quantity: i.quantity, quantity_basis: i.quantity_basis,
-        unit_price: i.unit_price,   // within-proposal copies keep pricing (v178's domain)
+        // v178 §3: prices TRAVEL on copy — but arrive UNCONFIRMED, rendered
+        // amber until a salesperson accepts or edits them. A proposal can't
+        // reach Sent wearing last May's numbers without each being waved
+        // through. (price_confirmed only meaningful when a price exists.)
+        unit_price: i.unit_price,
+        price_confirmed: i.unit_price == null ? true : false,
+        taxable: i.taxable ?? true,
+        catalog_item_id: i.catalog_item_id ?? null,
+        applies_to_category_id: i.applies_to_category_id ?? null,
+        pricing_reason: null,        // reasons are per-decision, never copied
         position: idx,
       })));
       if (iErr) return { ok: false, detail: `"${src.title}" items: ${iErr.message}` };

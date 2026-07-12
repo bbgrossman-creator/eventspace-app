@@ -34,6 +34,7 @@ const BACKOFFICE_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
     items: [
       { href: "/templates", label: "Menu Templates", icon: "🧩", perm: "content.manage" },
       { href: "/package-guides", label: "Package Guides", icon: "📣", perm: "content.manage" },
+      { href: "/price-book", label: "Price Book", icon: "📖", cap: "proposals", perm: "content.manage" },
     ],
   },
   {

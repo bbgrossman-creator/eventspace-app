@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Booking } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
+import VersionPricing from "@/components/VersionPricing";
 import {
   Proposal, ProposalVersion, VersionStatus,
   VERSION_FLOW, PROPOSAL_STATUS_LABEL,
@@ -28,6 +29,7 @@ export default function ProposalsCard({ b }: { b: Booking }) {
   const [nTitle, setNTitle] = useState("");
   const [nSeed, setNSeed] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [pricingOpen, setPricingOpen] = useState<Record<string, boolean>>({});
 
   useEffect(() => { loadCapabilities().then((c) => setCaps(c.caps)); }, []);
 
@@ -171,9 +173,16 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                             <span className="text-[11px] text-slate-400 italic">changes go in a new version →</span>
                           )}
                         </span>
+                        <button className="text-[11px] text-slate-400 underline"
+                          onClick={() => setPricingOpen((x) => ({ ...x, [v.id]: !x[v.id] }))}>
+                          {pricingOpen[v.id] ? "hide pricing" : "pricing"}
+                        </button>
                       </div>
                     );
                   })}
+                  {vs.filter((v) => pricingOpen[v.id]).map((v) => (
+                    <VersionPricing key={`pp-${v.id}`} b={b} v={v} />
+                  ))}
                 </div>
               )}
             </div>
