@@ -172,7 +172,7 @@ export default function SourceEventPane({ b, currentProposalId, onAdd, onSeed, b
             {props?.length === 0 && (
               <p className="text-[12px] text-slate-400">
                 No other proposals yet. As you build proposals across events — won, sent, or even
-                unsent drafts — they become borrowable here.
+                unsent drafts — you can build from any of them here.
               </p>
             )}
             {(() => {
@@ -227,7 +227,7 @@ export default function SourceEventPane({ b, currentProposalId, onAdd, onSeed, b
                         {pv && pv.length > 0 && (
                           <button disabled={busy} className="text-[11px] font-semibold text-[#2F80ED] hover:underline pl-1"
                             onClick={() => onAdd(pv.map((c) => c.id), `${ps.bookingLabel} proposal (v${ps.latest.version})`)}>
-                            ⤓ Borrow whole proposal ({pv.length} components)
+                            ⤓ Use this proposal ({pv.length} components)
                           </button>
                         )}
                         {ps.older.length > 0 && (
@@ -245,7 +245,7 @@ export default function SourceEventPane({ b, currentProposalId, onAdd, onSeed, b
                                       const c = await loadVersionComponents(v.id);
                                       if (c.length) onAdd(c.map((x) => x.id), `${ps.bookingLabel} proposal (v${v.version})`);
                                     }}>
-                                    ⤓ v{v.version} · {v.status} — borrow all {v.created_at ? `(${new Date(v.created_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })})` : ""}
+                                    ⤓ v{v.version} · {v.status} — use all {v.created_at ? `(${new Date(v.created_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })})` : ""}
                                   </button>
                                 ))}
                               </div>
@@ -269,7 +269,7 @@ export default function SourceEventPane({ b, currentProposalId, onAdd, onSeed, b
                       {showLost && <div className="mt-1.5 space-y-1.5 reveal">{rows(lost)}</div>}
                     </div>
                   )}
-                  {props.length > 0 && <p className="text-[10px] text-slate-300 pt-1">Borrowed components arrive amber — even recent proposals are historical pricing, not current truth.</p>}
+                  {props.length > 0 && <p className="text-[10px] text-slate-300 pt-1">Added components arrive amber — even recent proposals are historical pricing, not current truth.</p>}
                 </>
               );
             })()}

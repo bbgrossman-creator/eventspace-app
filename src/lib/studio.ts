@@ -134,6 +134,9 @@ export async function copyIntoVersion(
         taxable: (i.taxable as boolean | null) ?? true,
         catalog_item_id: (i.catalog_item_id as string | null) ?? null,
         applies_to_category_id: (i.applies_to_category_id as string | null) ?? null,
+        served_with: (i.served_with as string | null) ?? null,
+        item_role: (i.item_role as string | null) ?? "included",
+        selected: (i.selected as boolean | null) ?? true,
         position: idx,
       })));
       if (iErr) return { ok: false, detail: `"${src.title}" items: ${iErr.message}`, copied };

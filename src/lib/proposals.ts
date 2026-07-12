@@ -171,7 +171,7 @@ async function copyComponentsBetween(
       package_price_confirmed: src.package_price == null,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "unknown"}` };
-    const its = ((items.data ?? []) as { component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null; taxable?: boolean | null; catalog_item_id?: string | null; applies_to_category_id?: string | null }[])
+    const its = ((items.data ?? []) as { component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null; taxable?: boolean | null; catalog_item_id?: string | null; applies_to_category_id?: string | null; served_with?: string | null; item_role?: string | null; selected?: boolean | null }[])
       .filter((i) => i.component_id === src.id);
     if (its.length) {
       const { error: iErr } = await supabase.from("component_items").insert(its.map((i, idx) => ({
@@ -186,6 +186,9 @@ async function copyComponentsBetween(
         taxable: i.taxable ?? true,
         catalog_item_id: i.catalog_item_id ?? null,
         applies_to_category_id: i.applies_to_category_id ?? null,
+        served_with: i.served_with ?? null,          // accompaniment travels with the item
+        item_role: i.item_role ?? "included",
+        selected: i.selected ?? true,
         pricing_reason: null,        // reasons are per-decision, never copied
         position: idx,
       })));

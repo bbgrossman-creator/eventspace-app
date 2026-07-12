@@ -117,7 +117,7 @@ export default function StudioPage() {
     setComps(compRows);
     if (compRows.length) {
       const { data: it, error } = await supabase.from("component_items")
-        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected")
+        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,served_with")
         .in("component_id", compRows.map((x) => x.id)).order("position");
       if (error) { setErr(`${error.message} — run v178/v179 SQL.`); return; }
       const rows = (it ?? []) as PricedItem[];
@@ -240,7 +240,7 @@ export default function StudioPage() {
       const ids = ((c ?? []) as { id: string }[]).map((x) => x.id);
       if (!ids.length) return 0;
       const [{ data: it }, { data: g }, { data: a }] = await Promise.all([
-        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected").in("component_id", ids),
+        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,served_with").in("component_id", ids),
         supabase.from("version_guests").select("category_id,count").eq("version_id", vid),
         supabase.from("version_adjustments").select("*").eq("version_id", vid),
       ]);
@@ -381,6 +381,11 @@ export default function StudioPage() {
                 const r = await promoteToBlueprint(b, version, proposal.title, name, b.event_type ?? null);
                 if (!r.ok) setErr(r.detail ?? ""); else setToast(`📐 "${name.trim()}" saved as a blueprint`);
               }}>📐 Save as Blueprint</button>
+          )}
+          {comps.length > 0 && (
+            <a href={`/bookings/${b.id}/studio/${version.id}/preview`} target="_blank" rel="noopener noreferrer"
+              className="text-xs font-semibold text-slate-500 hover:text-[#102F56] ring-1 ring-[#E7EDF5] rounded-lg px-2.5 py-1.5 transition-colors"
+              title="See the customer-facing view">👁 Preview</a>
           )}
           {!locked && versions.length > 0 && (
             <button className="btn-primary !py-1.5 !px-3 text-xs" disabled={busy}
@@ -651,6 +656,7 @@ export default function StudioPage() {
                             )}
                             <button className="font-medium text-left min-w-0 truncate hover:underline" onClick={() => focusOn(i)}>
                               {i.name}
+                              {i.served_with && <span className="block text-[10px] italic text-slate-400 font-normal">served with {i.served_with}</span>}
                             </button>
                             {i.item_role === "optional" && <span className="text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-[#EDE9FE] text-[#6D28D9] shrink-0">option</span>}
                             {carried && <span className="text-[10px] font-semibold text-amber-700 shrink-0">⚠ carried</span>}
@@ -854,6 +860,9 @@ export default function StudioPage() {
                     {mem?.range && <p className="text-slate-400">Range (12mo): {money(mem.range.low)}–{money(mem.range.high)} · {mem.range.count} sales</p>}
                     {!locked && (
                       <div className="pt-1 space-y-1">
+                        <input className="field !py-0.5 !px-1.5 !text-[11px] w-full" placeholder="served with… (accompaniment — shown to customer & kitchen, e.g. Whole-grain Dijon)"
+                          value={i.served_with ?? ""}
+                          onChange={(e) => patchItem(i.id, { served_with: e.target.value || null })} />
                         <input className="field !py-0.5 !px-1.5 !text-[11px] w-full" placeholder="pricing reason (optional)"
                           value={i.pricing_reason ?? ""}
                           onChange={(e) => patchItem(i.id, { pricing_reason: e.target.value || null })} />
@@ -934,15 +943,44 @@ export default function StudioPage() {
 
       {tab === "notes" && (
         <div className="flex-1 min-h-0 overflow-y-auto p-6">
-          <div className="max-w-2xl mx-auto">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Internal notes — v{version.version}</div>
-            <textarea className="field w-full !bg-white" rows={12} disabled={!!locked}
-              defaultValue={version.notes ?? ""}
-              placeholder="Working notes for this version — never shown to the customer."
-              onBlur={async (e) => {
-                await supabase.from("proposal_versions").update({ notes: e.target.value || null }).eq("id", version.id);
-                setToast("✓ Notes saved");
-              }} />
+          <div className="max-w-2xl mx-auto space-y-6">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Internal notes — v{version.version}</div>
+              <textarea className="field w-full !bg-white" rows={8} disabled={!!locked}
+                defaultValue={version.notes ?? ""}
+                placeholder="Working notes for this version — never shown to the customer."
+                onBlur={async (e) => {
+                  await supabase.from("proposal_versions").update({ notes: e.target.value || null }).eq("id", version.id);
+                  setToast("✓ Notes saved");
+                }} />
+            </div>
+
+            <div className="border-t border-slate-100 pt-5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Customer presentation</div>
+              <label className="flex items-center gap-2 text-[12px] text-slate-600 mb-3">
+                Price visibility
+                <select className="field !py-1 !text-xs" disabled={!!locked}
+                  defaultValue={(version as { price_visibility?: string }).price_visibility ?? "full"}
+                  onChange={async (e) => {
+                    await supabase.from("proposal_versions").update({ price_visibility: e.target.value }).eq("id", version.id);
+                    setToast("✓ Preview updated — reopen to see");
+                  }}>
+                  <option value="full">Full — every line priced</option>
+                  <option value="sections">Sections — subtotals only</option>
+                  <option value="hidden">Hidden — no prices</option>
+                </select>
+              </label>
+              <textarea className="field w-full !bg-white mb-2" rows={3} disabled={!!locked}
+                defaultValue={(version as { customer_intro?: string | null }).customer_intro ?? ""}
+                placeholder="Opening note to the customer (appears at the top of the proposal — cover-letter voice)."
+                onBlur={async (e) => { await supabase.from("proposal_versions").update({ customer_intro: e.target.value || null }).eq("id", version.id); setToast("✓ Saved"); }} />
+              <textarea className="field w-full !bg-white" rows={3} disabled={!!locked}
+                defaultValue={(version as { customer_closing?: string | null }).customer_closing ?? ""}
+                placeholder="Closing note (appears at the bottom — thank-you, next steps)."
+                onBlur={async (e) => { await supabase.from("proposal_versions").update({ customer_closing: e.target.value || null }).eq("id", version.id); setToast("✓ Saved"); }} />
+              <a href={`/bookings/${b.id}/studio/${version.id}/preview`} target="_blank" rel="noopener noreferrer"
+                className="inline-block mt-3 text-[12px] font-semibold text-accent-ink hover:underline">👁 Open customer preview →</a>
+            </div>
           </div>
         </div>
       )}

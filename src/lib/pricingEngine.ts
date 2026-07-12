@@ -37,6 +37,7 @@ export interface PricedItem {
    *  contributes to Potential Upside only — never totals, invoices, memory. */
   item_role?: "included" | "optional";
   selected?: boolean;
+  served_with?: string | null;
 }
 export const isActive = (i: PricedItem) => i.item_role !== "optional" || i.selected !== false;
 
