@@ -135,12 +135,12 @@ async function copyComponentsBetween(
   bookingId: string, fromVersionId: string | null, toVersionId: string,
 ): Promise<Outcome> {
   let q = supabase.from("event_components")
-    .select("id,domain,kind,title,position,copied_from,notes,section_type_id")
+    .select("id,domain,kind,title,position,copied_from,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description")
     .eq("booking_id", bookingId).order("position");
   q = fromVersionId ? q.eq("proposal_version_id", fromVersionId) : q.is("proposal_version_id", null);
   const { data: srcRows, error } = await q;
   if (error) return { ok: false, detail: error.message };
-  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null }[];
+  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null }[];
   if (!sources.length) return { ok: true };
 
   const ids = sources.map((s) => s.id);
@@ -156,6 +156,14 @@ async function copyComponentsBetween(
       copied_from: src.copied_from,   // ← passthrough, NOT src.id
       notes: src.notes,
       section_type_id: src.section_type_id ?? null,   // section knowledge travels
+      pricing_mode: src.pricing_mode ?? "itemized",
+      package_price: src.package_price ?? null,
+      package_basis: src.package_basis ?? "flat",
+      package_taxable: src.package_taxable ?? true,
+      package_cost: src.package_cost ?? null,
+      customer_description: src.customer_description ?? null,
+      // carried package prices arrive unconfirmed, same rule as items
+      package_price_confirmed: src.package_price == null,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "unknown"}` };
     const its = ((items.data ?? []) as { component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null; taxable?: boolean | null; catalog_item_id?: string | null; applies_to_category_id?: string | null }[])

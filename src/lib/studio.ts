@@ -99,19 +99,26 @@ export async function copyIntoVersion(
     .select("id", { count: "exact", head: true }).eq("proposal_version_id", versionId);
   let pos = count ?? 0;
   const { data: srcRows, error } = await supabase.from("event_components")
-    .select("id,domain,kind,title,notes,section_type_id").in("id", srcComponentIds);
+    .select("id,domain,kind,title,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description").in("id", srcComponentIds);
   if (error) return { ok: false, detail: error.message, copied: 0 };
   const [{ data: its }, { data: rqs }] = await Promise.all([
     supabase.from("component_items").select("*").in("component_id", srcComponentIds).order("position"),
     supabase.from("component_requirements").select("component_id,name,category,notes").in("component_id", srcComponentIds),
   ]);
   let copied = 0;
-  for (const src of (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; notes: string | null; section_type_id?: string | null }[]) {
+  for (const src of (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null }[]) {
     const { data: nc, error: cErr } = await supabase.from("event_components").insert({
       booking_id: booking.id, proposal_version_id: versionId,
       domain: src.domain, kind: src.kind, title: src.title, notes: src.notes,
       position: pos++, copied_from: src.id,
       section_type_id: src.section_type_id ?? null,
+      pricing_mode: src.pricing_mode ?? "itemized",
+      package_price: src.package_price ?? null,
+      package_basis: src.package_basis ?? "flat",
+      package_taxable: src.package_taxable ?? true,
+      package_cost: src.package_cost ?? null,
+      customer_description: src.customer_description ?? null,
+      package_price_confirmed: src.package_price == null,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "?"}`, copied };
     const rows = ((its ?? []) as Record<string, unknown>[]).filter((i) => i.component_id === src.id);
@@ -152,9 +159,11 @@ export async function diffVersions(versionA: string, versionB: string,
   totalsFor: (versionId: string) => Promise<number>): Promise<VersionDiff> {
   async function snapshot(vid: string) {
     const { data: cs } = await supabase.from("event_components")
-      .select("id,title").eq("proposal_version_id", vid).order("position");
-    const comps = (cs ?? []) as { id: string; title: string }[];
+      .select("id,title,pricing_mode,package_price").eq("proposal_version_id", vid).order("position");
+    const comps = (cs ?? []) as { id: string; title: string; pricing_mode?: string; package_price?: number | null }[];
     const map: Record<string, DiffItem[]> = {};
+    const pkg: Record<string, number | null | undefined> = {};
+    for (const c of comps) if (c.pricing_mode === "package") pkg[c.title] = c.package_price;
     if (comps.length) {
       const { data: its } = await supabase.from("component_items")
         .select("component_id,name,unit_price,quantity,item_role,selected")
@@ -164,11 +173,12 @@ export async function diffVersions(versionA: string, versionB: string,
           .filter((i) => i.component_id === c.id);
       }
     }
-    return map;
+    return { map, pkg };
   }
-  const [a, b, totalA, totalB] = await Promise.all([
+  const [snapA, snapB, totalA, totalB] = await Promise.all([
     snapshot(versionA), snapshot(versionB), totalsFor(versionA), totalsFor(versionB),
   ]);
+  const a = snapA.map, b = snapB.map;
   const added: VersionDiff["added"] = [], removed: VersionDiff["removed"] = [], changed: VersionDiff["changed"] = [];
   for (const t of Object.keys(b)) if (!(t in a)) added.push({ title: t });
   for (const t of Object.keys(a)) if (!(t in b)) removed.push({ title: t });
@@ -185,6 +195,9 @@ export async function diffVersions(versionA: string, versionB: string,
       else if ((x.selected !== false) !== (y.selected !== false)) details.push(`${n}: ${y.selected === false ? "deselected" : "selected"}`);
     }
     for (const n of Object.keys(aBy)) if (!(n in bBy)) details.push(`− ${n}`);
+    if (snapA.pkg[t] !== undefined || snapB.pkg[t] !== undefined) {
+      if (snapA.pkg[t] !== snapB.pkg[t]) details.push(`Package: $${snapA.pkg[t] ?? "—"} → $${snapB.pkg[t] ?? "—"}`);
+    }
     if (details.length) changed.push({ title: t, detail: details.join(" · ") });
   }
   return { added, removed, changed, totalA, totalB };

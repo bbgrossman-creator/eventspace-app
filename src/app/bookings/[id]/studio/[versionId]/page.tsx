@@ -22,7 +22,7 @@ import { Booking, fmtDate } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { Proposal, ProposalVersion, VERSION_FLOW, createVersion } from "@/lib/proposals";
 import {
-  GuestCategory, Adjustment, PricedItem, MemoryPoint, isActive,
+  GuestCategory, Adjustment, PricedItem, MemoryPoint, PackageLine, isActive,
   loadGuestCategories, loadPriceMemory, computeVersionTotals, promoteToCatalog,
 } from "@/lib/pricingEngine";
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
@@ -31,7 +31,13 @@ import { promoteToBlueprint } from "@/lib/blueprints";
 import SourceEventPane from "@/components/SourceEventPane";
 import FilesPanel from "@/components/FilesPanel";
 
-interface CompRow { id: string; title: string; domain: string; position: number; notes: string | null; section_type_id: string | null; }
+interface CompRow {
+  id: string; title: string; domain: string; position: number; notes: string | null;
+  section_type_id: string | null;
+  pricing_mode: string; package_price: number | null; package_basis: string;
+  package_taxable: boolean; package_price_confirmed: boolean; package_cost: number | null;
+  customer_description: string | null;
+}
 interface CanvasGroup { sectionTypeId: string | null; name: string; comps: CompRow[]; }
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DOMAINS = ["food", "decor", "flowers", "lighting", "music", "layout", "kids", "staffing", "logistics", "custom"];
@@ -95,7 +101,7 @@ export default function StudioPage() {
       loadGuestCategories(),
       supabase.from("version_guests").select("category_id,count").eq("version_id", versionId),
       supabase.from("version_adjustments").select("*").eq("version_id", versionId).order("position"),
-      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id").eq("proposal_version_id", versionId).order("position"),
+      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description").eq("proposal_version_id", versionId).order("position"),
       loadSectionTypes().catch(() => [] as SectionType[]),
       supabase.from("version_sections").select("section_type_id,position").eq("version_id", versionId).order("position"),
     ]);
@@ -130,15 +136,23 @@ export default function StudioPage() {
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(""), 3500); return () => clearTimeout(t); } }, [toast]);
 
   const guestCounts = cats.map((c) => ({ category_id: c.id, count: guests[c.id] ?? 0 }));
-  const totals = useMemo(() => computeVersionTotals(items, guestCounts, adjs),
+  // Package-mode components contribute ONE line; their leftover items are
+  // hidden and never counted ("no fake precision").
+  const itemizedIds = new Set(comps.filter((c) => c.pricing_mode !== "package").map((c) => c.id));
+  const activeItems = items.filter((i) => itemizedIds.has(i.component_id));
+  const packageLines: PackageLine[] = comps.filter((c) => c.pricing_mode === "package")
+    .map((c) => ({ title: c.title, package_price: c.package_price, package_basis: c.package_basis,
+      package_taxable: c.package_taxable, package_price_confirmed: c.package_price_confirmed }));
+  const totals = useMemo(() => computeVersionTotals(activeItems, guestCounts, adjs, packageLines),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, guests, adjs, cats]);
+    [items, comps, guests, adjs, cats]);
   const hasOptions = items.some((i) => i.item_role === "optional");
   const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
   // "$0.00" would be a lie of precision: per-person items aren't zero, they're
   // uncalculable until a guest count exists. Say so instead of showing $0.
-  const needsGuests = totalGuests === 0 &&
-    items.some((i) => i.quantity_basis === "per_person" && i.unit_price != null && isActive(i));
+  const needsGuests = totalGuests === 0 && (
+    activeItems.some((i) => i.quantity_basis === "per_person" && i.unit_price != null && isActive(i)) ||
+    packageLines.some((pk) => pk.package_basis === "per_person" && pk.package_price != null));
 
   // ── Mutations ──
   async function addFromSource(componentIds: string[], sourceLabel: string) {
@@ -422,8 +436,11 @@ export default function StudioPage() {
                   )}
                   <div className="space-y-2">
               {g.comps.map((c) => {
-                const its = items.filter((i) => i.component_id === c.id);
-                const secTotal = its.reduce((s, i) => {
+                const isPkg = c.pricing_mode === "package";
+                const its = isPkg ? [] : items.filter((i) => i.component_id === c.id);
+                const pkgTotal = isPkg && c.package_price != null
+                  ? (c.package_basis === "per_person" ? c.package_price * totalGuests : c.package_price) : 0;
+                const secTotal = isPkg ? pkgTotal : its.reduce((s, i) => {
                   if (i.unit_price == null || !isActive(i)) return s;
                   const allG = guestCounts.reduce((x, g) => x + g.count, 0);
                   const n = i.quantity_basis === "per_person"
@@ -452,9 +469,20 @@ export default function StudioPage() {
                       <input className="font-display font-semibold text-[14px] bg-transparent outline-none flex-1 min-w-0 focus:bg-[#F6F8FB] rounded px-1"
                         defaultValue={c.title} disabled={!!locked}
                         onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.title) patchComp(c.id, { title: v }); }} />
-                      {secTotal === 0 && its.some((i) => i.quantity_basis === "per_person" && i.unit_price != null && isActive(i)) && totalGuests === 0
+                      {isPkg && <span className="text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-[#FEF3C7] text-[#92400E]">package</span>}
+                      {isPkg && c.package_price != null && !c.package_price_confirmed && <span className="text-[10px] font-semibold text-amber-700">⚠ carried</span>}
+                      {secTotal === 0 && totalGuests === 0 && (isPkg ? c.package_basis === "per_person" && c.package_price != null : its.some((i) => i.quantity_basis === "per_person" && i.unit_price != null && isActive(i)))
                         ? <span className="text-[10px] font-semibold text-amber-600">needs guest count</span>
                         : <span className="text-[12px] font-semibold text-slate-500">{money(secTotal)}</span>}
+                      {!locked && (
+                        <button className="text-[9px] font-semibold text-slate-300 hover:text-[#2F80ED] uppercase tracking-wide"
+                          title={isPkg ? "Switch to itemized (items return)" : "Switch to package (one price, items hidden & not counted)"}
+                          onClick={() => {
+                            if (!isPkg && items.some((i) => i.component_id === c.id) &&
+                              !confirm("Package mode sells this as ONE unit — its items will be hidden and not counted. Switch?")) return;
+                            patchComp(c.id, { pricing_mode: isPkg ? "itemized" : "package" });
+                          }}>⇄ {isPkg ? "itemize" : "package"}</button>
+                      )}
                       {!locked && (
                         <span className="flex items-center gap-1 text-slate-300">
                           <select className="field !py-0 !px-0.5 !text-[9px] max-w-[90px] text-slate-400" title="Move to section"
@@ -469,6 +497,52 @@ export default function StudioPage() {
                         </span>
                       )}
                     </div>
+                    {isPkg && (
+                      <div className="px-3.5 py-2.5 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap text-[12px]">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sell price</span>
+                          <span className="text-slate-400">$</span>
+                          <input type="number" step="0.01" min={0} disabled={!!locked}
+                            className="field !py-0.5 !px-1 !text-[12px] w-24"
+                            value={c.package_price ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value === "" ? null : parseFloat(e.target.value);
+                              patchComp(c.id, { package_price: val, package_price_confirmed: true });
+                            }} />
+                          <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
+                            value={c.package_basis}
+                            onChange={(e) => patchComp(c.id, { package_basis: e.target.value })}>
+                            <option value="flat">flat</option>
+                            <option value="per_person">/person</option>
+                          </select>
+                          <label className="flex items-center gap-0.5 text-[10px] text-slate-500">
+                            <input type="checkbox" className="accent-[#4A9EFF]" disabled={!!locked}
+                              checked={c.package_taxable} onChange={(e) => patchComp(c.id, { package_taxable: e.target.checked })} />tax
+                          </label>
+                          {!locked && c.package_price != null && !c.package_price_confirmed && (
+                            <button className="text-[10px] font-bold text-amber-700 underline"
+                              onClick={() => patchComp(c.id, { package_price_confirmed: true })}>ok</button>
+                          )}
+                          <span className="ml-auto flex items-center gap-1 text-[10px] text-slate-400">
+                            cost $
+                            <input type="number" step="0.01" min={0} disabled={!!locked}
+                              className="field !py-0.5 !px-1 !text-[10px] w-16" placeholder="opt."
+                              title="Internal cost (optional, dormant) — feeds margin when the purchasing module exists; never shown to customers, never changes the sell price"
+                              value={c.package_cost ?? ""}
+                              onChange={(e) => patchComp(c.id, { package_cost: e.target.value === "" ? null : parseFloat(e.target.value) })} />
+                          </span>
+                        </div>
+                        <textarea className="field w-full !py-1 !text-[12px] !bg-[#FBFCFE]" rows={2} disabled={!!locked}
+                          placeholder="Customer description — what the guest receives (marketing copy, shown on the proposal)"
+                          defaultValue={c.customer_description ?? ""}
+                          onBlur={(e) => patchComp(c.id, { customer_description: e.target.value || null })} />
+                        <textarea className="field w-full !py-1 !text-[11px] !bg-[#F6F8FB]" rows={2} disabled={!!locked}
+                          placeholder="Internal / production notes — vendor, order details, purchasing reminders (never shown to the customer)"
+                          defaultValue={c.notes ?? ""}
+                          onBlur={(e) => patchComp(c.id, { notes: e.target.value || null })} />
+                      </div>
+                    )}
+                    {!isPkg && (
                     <div className="px-3.5 py-2 space-y-1">
                       {its.map((i) => {
                         const active = isActive(i);
@@ -537,6 +611,7 @@ export default function StudioPage() {
                           onClick={() => addItem(c.id)}>＋ item</button>
                       )}
                     </div>
+                    )}
                   </div>
                 );
               })}

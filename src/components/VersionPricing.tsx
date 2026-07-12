@@ -12,12 +12,16 @@ import { supabase } from "@/lib/supabase";
 import { Booking } from "@/lib/workflow";
 import { ProposalVersion } from "@/lib/proposals";
 import {
-  GuestCategory, Adjustment, PricedItem, VersionTotals, MemoryPoint,
+  GuestCategory, Adjustment, PricedItem, PackageLine, VersionTotals, MemoryPoint,
   loadGuestCategories, loadPriceMemory, computeVersionTotals,
   promoteToCatalog, planGeneration, executeGeneration, GenerationPlan,
 } from "@/lib/pricingEngine";
 
-interface CompRow { id: string; title: string; domain: string; }
+interface CompRow {
+  id: string; title: string; domain: string;
+  pricing_mode?: string; package_price?: number | null; package_basis?: string | null;
+  package_taxable?: boolean | null; package_price_confirmed?: boolean | null;
+}
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function VersionPricing({ b, v, refreshKey = 0 }: { b: Booking; v: ProposalVersion; refreshKey?: number }) {
@@ -39,7 +43,7 @@ export default function VersionPricing({ b, v, refreshKey = 0 }: { b: Booking; v
       loadGuestCategories(),
       supabase.from("version_guests").select("category_id,count").eq("version_id", v.id),
       supabase.from("version_adjustments").select("*").eq("version_id", v.id).order("position"),
-      supabase.from("event_components").select("id,title,domain").eq("proposal_version_id", v.id).order("position"),
+      supabase.from("event_components").select("id,title,domain,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed").eq("proposal_version_id", v.id).order("position"),
     ]);
     setCats(categories);
     const gm: Record<string, number> = {};
@@ -67,7 +71,12 @@ export default function VersionPricing({ b, v, refreshKey = 0 }: { b: Booking; v
   useEffect(() => { load(); }, [load, refreshKey]);
 
   const guestCounts = cats.map((c) => ({ category_id: c.id, count: guests[c.id] ?? 0 }));
-  const totals: VersionTotals = computeVersionTotals(items, guestCounts, adjs);
+  const itemizedIds = new Set(comps.filter((c) => c.pricing_mode !== "package").map((c) => c.id));
+  const activeItems = items.filter((i) => itemizedIds.has(i.component_id));
+  const pkgLines: PackageLine[] = comps.filter((c) => c.pricing_mode === "package")
+    .map((c) => ({ title: c.title, package_price: c.package_price ?? null, package_basis: c.package_basis ?? "flat",
+      package_taxable: c.package_taxable, package_price_confirmed: c.package_price_confirmed }));
+  const totals: VersionTotals = computeVersionTotals(activeItems, guestCounts, adjs, pkgLines);
 
   async function saveGuests(catId: string, count: number) {
     setGuests((p) => ({ ...p, [catId]: count }));
@@ -103,7 +112,7 @@ export default function VersionPricing({ b, v, refreshKey = 0 }: { b: Booking; v
   }
   async function preparePlan() {
     setBusy(true);
-    setPlan(await planGeneration(b.id, v.id, items, comps, guestCounts, adjs));
+    setPlan(await planGeneration(b.id, v.id, activeItems, comps, guestCounts, adjs, pkgLines));
     setBusy(false);
   }
   async function generate() {
@@ -138,9 +147,19 @@ export default function VersionPricing({ b, v, refreshKey = 0 }: { b: Booking; v
       {/* Items, grouped by component */}
       {comps.map((c) => (
         <div key={c.id}>
-          <div className="text-[11px] font-semibold text-slate-500 mb-1">{c.title}</div>
+          <div className="text-[11px] font-semibold text-slate-500 mb-1">
+            {c.title}
+            {c.pricing_mode === "package" && (
+              <span className="ml-1.5 text-[9px] font-bold uppercase rounded-full px-1.5 py-0.5 bg-[#FEF3C7] text-[#92400E]">
+                package {c.package_price != null ? `· $${c.package_price}${c.package_basis === "per_person" ? "/pp" : ""}` : "· unpriced"}
+              </span>
+            )}
+          </div>
+          {c.pricing_mode === "package" && (
+            <p className="text-[10px] text-slate-400 mb-1">Priced as one unit — edit in the Studio.</p>
+          )}
           <div className="space-y-1">
-            {items.filter((i) => i.component_id === c.id).map((i) => {
+            {(c.pricing_mode === "package" ? [] : items.filter((i) => i.component_id === c.id)).map((i) => {
               const srp = i.catalog_item_id ? srps[i.catalog_item_id] : null;
               const mem = memory[i.id];
               const open = openItem === i.id;

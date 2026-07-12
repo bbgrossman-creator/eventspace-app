@@ -39,6 +39,17 @@ export interface PricedItem {
   selected?: boolean;
 }
 export const isActive = (i: PricedItem) => i.item_role !== "optional" || i.selected !== false;
+
+/** A package-mode component contributes one line. Callers must pass only
+ *  items belonging to ITEMIZED components (a package's leftover items are
+ *  hidden and never counted), plus the packages themselves here. */
+export interface PackageLine {
+  title: string;
+  package_price: number | null;
+  package_basis: string | null;          // flat | per_person
+  package_taxable?: boolean | null;
+  package_price_confirmed?: boolean | null;
+}
 export interface CatalogItem {
   id: string; name: string; domain: string; quantity_basis: string | null;
   srp: number | null; srp_set_at: string | null; unit_cost: number | null; active: boolean;
@@ -168,6 +179,7 @@ export function computeVersionTotals(
   items: PricedItem[],
   guests: VersionGuestCount[],
   adjustments: Adjustment[],
+  packages: PackageLine[] = [],
 ): VersionTotals {
   const allGuests = guests.reduce((s, g) => s + g.count, 0);
   const countFor = (categoryId: string | null) =>
@@ -184,6 +196,15 @@ export function computeVersionTotals(
     itemsSubtotal += line;
     if (i.item_role !== "optional") baseSubtotal += line;
     if (i.taxable) taxableBase += line;
+  }
+
+  const allCount = guests.reduce((s2, g) => s2 + g.count, 0);
+  for (const pk of packages) {
+    if (pk.package_price == null) { unpriced++; continue; }
+    if (pk.package_price_confirmed === false) unconfirmed++;
+    const line = pk.package_basis === "per_person" ? pk.package_price * allCount : pk.package_price;
+    itemsSubtotal += line; baseSubtotal += line;
+    if (pk.package_taxable !== false) taxableBase += line;
   }
 
   // Percent adjustments: against ITEMS SUBTOTAL only — never compounding.
@@ -240,6 +261,7 @@ export async function planGeneration(
   bookingId: string, versionId: string,
   items: PricedItem[], comps: { id: string; title: string }[],
   guests: VersionGuestCount[], adjustments: Adjustment[],
+  packages: PackageLine[] = [],
 ): Promise<GenerationPlan> {
   const allGuests = guests.reduce((s, g) => s + g.count, 0);
   const countFor = (cid: string | null) =>
@@ -256,6 +278,18 @@ export async function planGeneration(
     add.push({
       description: `${i.name}${titleOf[i.component_id] ? ` — ${titleOf[i.component_id]}` : ""}`,
       quantity: qty, unit_price: i.unit_price, taxable: !!i.taxable,
+    });
+  }
+  const allCount = guests.reduce((s2, g) => s2 + g.count, 0);
+  for (const pk of packages) {
+    if (pk.package_price == null) continue;
+    const perPerson = pk.package_basis === "per_person";
+    if (perPerson && allCount <= 0) continue;
+    add.push({
+      description: pk.title,
+      quantity: perPerson ? allCount : 1,
+      unit_price: pk.package_price,
+      taxable: pk.package_taxable !== false,
     });
   }
   let itemsSubtotal = 0;
