@@ -56,6 +56,7 @@ export async function createProposal(
   booking: { id: string; invoice_num: string },
   title: string,
   seedFromOperational: boolean,
+  fromBlueprint?: { sourceVersionId: string; name: string },
 ): Promise<Outcome> {
   const { data: p, error: pErr } = await supabase.from("proposals")
     .insert({ booking_id: booking.id, title: title.trim() || "Proposal" })
@@ -71,7 +72,13 @@ export async function createProposal(
     const scaffold = await scaffoldFor((bt as { event_type: string | null } | null)?.event_type ?? null);
     await seedVersionSections(v.id, scaffold);
   } catch { /* pre-v181 DB — proposals still work, unsectioned */ }
-  if (seedFromOperational) {
+  if (fromBlueprint) {
+    // Blueprint seed: instantiate the source version's components (lineage,
+    // sections, amber prices) via the studio copy machinery.
+    const { applyBlueprintSeed } = await import("./blueprints");
+    const r = await applyBlueprintSeed(booking, v.id, fromBlueprint.sourceVersionId, fromBlueprint.name);
+    if (!r.ok) return { ok: false, detail: r.detail };
+  } else if (seedFromOperational) {
     const copied = await copyComponentsBetween(booking.id, null, v.id);
     if (!copied.ok) return copied;
   }

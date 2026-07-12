@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import { Booking } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import VersionPricing from "@/components/VersionPricing";
+import { Blueprint, listBlueprints } from "@/lib/blueprints";
 import {
   Proposal, ProposalVersion, VersionStatus,
   VERSION_FLOW, PROPOSAL_STATUS_LABEL,
@@ -28,6 +29,8 @@ export default function ProposalsCard({ b }: { b: Booking }) {
   const [adding, setAdding] = useState(false);
   const [nTitle, setNTitle] = useState("");
   const [nSeed, setNSeed] = useState(true);
+  const [bps, setBps] = useState<Blueprint[]>([]);
+  const [nBlueprint, setNBlueprint] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [pricingOpen, setPricingOpen] = useState<Record<string, boolean>>({});
 
@@ -55,7 +58,9 @@ export default function ProposalsCard({ b }: { b: Booking }) {
       setCompCounts(counts);
     } else setCompCounts({});
   }, [b.id]);
-  useEffect(() => { if (caps?.proposals) load(); }, [caps, load]);
+  useEffect(() => {
+    if (caps?.proposals) { load(); listBlueprints().then(setBps).catch(() => {}); }
+  }, [caps, load]);
 
   if (!caps?.proposals) return null;
 
@@ -88,13 +93,26 @@ export default function ProposalsCard({ b }: { b: Booking }) {
           <input className="field !py-1.5 !text-xs !bg-white w-full" autoFocus
             placeholder='Proposal title — e.g. "Summer Wedding — Option A"'
             value={nTitle} onChange={(e) => setNTitle(e.target.value)} />
-          <label className="flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
-            <input type="checkbox" className="accent-[#4A9EFF]" checked={nSeed} onChange={(e) => setNSeed(e.target.checked)} />
+          {bps.length > 0 && (
+            <select className="field !py-1 !text-xs !bg-white w-full" value={nBlueprint}
+              onChange={(e) => setNBlueprint(e.target.value)}>
+              <option value="">Start from a blueprint? (optional)</option>
+              {bps.map((x) => <option key={x.id} value={x.id}>📐 {x.name}{x.event_type ? ` · ${x.event_type}` : ""}</option>)}
+            </select>
+          )}
+          <label className={`flex items-center gap-2 text-[11px] cursor-pointer ${nBlueprint ? "text-slate-300" : "text-slate-600"}`}>
+            <input type="checkbox" className="accent-[#4A9EFF]" checked={nSeed && !nBlueprint} disabled={!!nBlueprint}
+              onChange={(e) => setNSeed(e.target.checked)} />
             Start v1 from this event&apos;s current components
           </label>
           <div className="flex gap-2">
             <button className="btn-primary !py-1 !px-2.5 text-xs" disabled={busy}
-              onClick={() => run(() => createProposal(b, nTitle, nSeed)).then(() => { setNTitle(""); setAdding(false); })}>
+              onClick={() => {
+                const bp = bps.find((x) => x.id === nBlueprint);
+                run(() => createProposal(b, nTitle, nSeed && !bp,
+                  bp?.source_version_id ? { sourceVersionId: bp.source_version_id, name: bp.name } : undefined,
+                )).then(() => { setNTitle(""); setNBlueprint(""); setAdding(false); });
+              }}>
               Create
             </button>
             <button className="text-xs text-slate-400 underline" onClick={() => setAdding(false)}>cancel</button>

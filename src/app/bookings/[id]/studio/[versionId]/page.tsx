@@ -27,6 +27,7 @@ import {
 } from "@/lib/pricingEngine";
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
 import { SectionType, loadSectionTypes } from "@/lib/sections";
+import { promoteToBlueprint } from "@/lib/blueprints";
 import SourceEventPane from "@/components/SourceEventPane";
 import FilesPanel from "@/components/FilesPanel";
 
@@ -328,6 +329,17 @@ export default function StudioPage() {
                 onClick={() => setTab(t)}>{t}</button>
             ))}
           </div>
+          {comps.length > 0 && (
+            <button className="text-xs font-semibold text-slate-500 hover:text-[#102F56] ring-1 ring-[#E7EDF5] rounded-lg px-2.5 py-1.5 transition-colors" disabled={busy}
+              title="Promote this version to a reusable blueprint"
+              onClick={async () => {
+                const name = prompt('Blueprint name — e.g. "Elegant Wedding", "Backyard BBQ"',
+                  b.event_type ? `${b.event_type} — ${proposal.title}` : proposal.title);
+                if (!name?.trim()) return;
+                const r = await promoteToBlueprint(b, version, proposal.title, name, b.event_type ?? null);
+                if (!r.ok) setErr(r.detail ?? ""); else setToast(`📐 "${name.trim()}" saved as a blueprint`);
+              }}>📐 Save as Blueprint</button>
+          )}
           {!locked && versions.length > 0 && (
             <button className="btn-primary !py-1.5 !px-3 text-xs" disabled={busy}
               onClick={async () => {
