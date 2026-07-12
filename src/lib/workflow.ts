@@ -1,70 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // WORKFLOW ENGINE — port of CONFIG.gs STATUS / WORKFLOW_STAGES / priority logic
+//
+// v176: the pipeline DEFINITION moved to workflows.ts, keyed by operating
+// model. The exports below are references to the venue entry — the same
+// objects, not copies — so every existing import site behaves identically and
+// the venue pipeline cannot drift (there is no second copy to drift).
 // ═══════════════════════════════════════════════════════════════════════════
+import { VENUE_WORKFLOW } from "./workflows";
+import type { Status, StageInfo } from "./workflows";
 
-export type Status =
-  | "lead"
-  | "lead_lost"
-  | "on_hold"
-  | "waitlisted"
-  | "conflict"
-  | "hold_expired"
-  | "schedule_menu_discussion"
-  | "send_menu_form"
-  | "menu_completed"
-  | "send_est_invoice"
-  | "confirm_guest_count"
-  | "send_final_invoice"
-  | "collect_payment"
-  | "paid_awaiting_event"
-  | "completed"
-  | "cancelled";
+export type { Status, StageInfo } from "./workflows";
+export { VENUE_WORKFLOW, CATERER_WORKFLOW, WORKFLOWS, getWorkflow } from "./workflows";
+export type { WorkflowDef, CatererStatus } from "./workflows";
 
-export interface StageInfo {
-  status: Status;
-  label: string;        // human-readable status
-  action: string;       // the next thing to do
-  icon: string;
-  color: string;        // card tint
-  textColor: string;
-  stageIndex: number;   // position on the timeline, -1 = off-track
-}
+/** IDENTITY, not a copy: === VENUE_WORKFLOW.stages. */
+export const STAGES: Record<Status, StageInfo> = VENUE_WORKFLOW.stages;
 
-export const STAGES: Record<Status, StageInfo> = {
-  lead:           { status: "lead",           label: "Lead — Sales Opportunity",   action: "Schedule Next Touchpoint", icon: "🌱", color: "#D1FAE5", textColor: "#065F46", stageIndex: -1 },
-  lead_lost:      { status: "lead_lost",      label: "Lead — Lost",                action: "Reopen Lead",              icon: "🚫", color: "#F1F5F9", textColor: "#64748B", stageIndex: -1 },
-  on_hold:        { status: "on_hold",        label: "On Hold — Collect Deposit",  action: "Collect Deposit",          icon: "💰", color: "#FEF3C7", textColor: "#92400E", stageIndex: 0 },
-  conflict:       { status: "conflict",       label: "Conflict — Review Required", action: "Review Conflict",          icon: "⚠️", color: "#FEE2E2", textColor: "#991B1B", stageIndex: 0 },
-  waitlisted:     { status: "waitlisted",     label: "Waitlisted — Awaiting Holder", action: "Awaiting Holder Decision", icon: "⏳", color: "#FEF3C7", textColor: "#92400E", stageIndex: 0 },
-  hold_expired:   { status: "hold_expired",   label: "Hold Expired",               action: "Rebook or Delete",         icon: "🔄", color: "#FECACA", textColor: "#991B1B", stageIndex: 0 },
-  schedule_menu_discussion: { status: "schedule_menu_discussion", label: "Booked — Schedule Menu Call", action: "Schedule Menu Discussion", icon: "📞", color: "#FCE7F3", textColor: "#9D174D", stageIndex: 1 },
-  send_menu_form: { status: "send_menu_form", label: "Booked — Menu Pending",      action: "Complete Menu",            icon: "📋", color: "#DCFCE7", textColor: "#166534", stageIndex: 2 },
-  menu_completed: { status: "menu_completed", label: "Booked — Menu Completed",    action: "Send Est. Invoice",        icon: "📧", color: "#DCFCE7", textColor: "#166534", stageIndex: 3 },
-  send_est_invoice: { status: "send_est_invoice", label: "Booked — Send Est. Invoice", action: "Send Est. Invoice",    icon: "📧", color: "#DBEAFE", textColor: "#1E40AF", stageIndex: 3 },
-  confirm_guest_count: { status: "confirm_guest_count", label: "Booked — Confirm Count & Menu", action: "Confirm Count & Menu", icon: "👥", color: "#FCE7F3", textColor: "#9D174D", stageIndex: 4 },
-  send_final_invoice: { status: "send_final_invoice", label: "Booked — Send Final Invoice", action: "Send Final Invoice", icon: "📨", color: "#D1FAE5", textColor: "#065F46", stageIndex: 5 },
-  collect_payment: { status: "collect_payment", label: "Booked — Collect Payment", action: "Collect Payment",          icon: "💵", color: "#D1FAE5", textColor: "#065F46", stageIndex: 6 },
-  paid_awaiting_event: { status: "paid_awaiting_event", label: "Paid in Full — Awaiting Event", action: "Awaiting Event", icon: "✅", color: "#FEF9C3", textColor: "#854D0E", stageIndex: 6 },
-  completed:      { status: "completed",      label: "Completed",                  action: "Complete",                 icon: "☑️", color: "#E0F2FE", textColor: "#0C4A6E", stageIndex: 7 },
-  cancelled:      { status: "cancelled",      label: "Cancelled",                  action: "Cancelled",                icon: "❌", color: "#E5E7EB", textColor: "#374151", stageIndex: -1 },
-};
-
-export const TIMELINE_MILESTONES = [
-  "Hold", "Menu Call", "Menu", "Estimate", "Confirm Count", "Final Invoice", "Payment", "Complete",
-];
+export const TIMELINE_MILESTONES = VENUE_WORKFLOW.timelineMilestones;
 
 // The canonical status that each timeline stage maps to, for click-to-navigate.
 // (stageIndex → the Status a user lands on when they click that milestone.)
-export const STAGE_TO_STATUS: Status[] = [
-  "on_hold",                  // 0 Hold — collect the deposit (back here = un-book)
-  "schedule_menu_discussion", // 1 Menu Call
-  "send_menu_form",           // 2 Menu
-  "send_est_invoice",         // 3 Estimate
-  "confirm_guest_count",      // 4 Confirm Count
-  "send_final_invoice",       // 5 Final Invoice
-  "collect_payment",          // 6 Payment
-  "completed",                // 7 Complete
-];
+export const STAGE_TO_STATUS: Status[] = VENUE_WORKFLOW.stageToStatus;
 
 /** Has a menu actually been completed? Used to guard the invoice steps so a
  *  booking can't advance past "Menu" with nothing selected. */
