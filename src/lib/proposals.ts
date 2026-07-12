@@ -17,6 +17,7 @@
 // Reuse counts measure cross-event reuse, not editing churn.
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase, logActivity } from "./supabase";
+import { scaffoldFor, seedVersionSections, copyVersionSections } from "./sections";
 
 export type ProposalStatus = "open" | "won" | "lost" | "archived";
 export type VersionStatus = "draft" | "internal_review" | "sent" | "revision_requested" | "approved";
@@ -64,6 +65,12 @@ export async function createProposal(
     .insert({ proposal_id: p.id, version: 1 }).select("id").single();
   if (vErr || !v) return { ok: false, detail: vErr?.message ?? "version insert failed" };
 
+  // Scaffold: the event type's section headers land on v1 (labels only).
+  try {
+    const { data: bt } = await supabase.from("bookings").select("event_type").eq("id", booking.id).maybeSingle();
+    const scaffold = await scaffoldFor((bt as { event_type: string | null } | null)?.event_type ?? null);
+    await seedVersionSections(v.id, scaffold);
+  } catch { /* pre-v181 DB — proposals still work, unsectioned */ }
   if (seedFromOperational) {
     const copied = await copyComponentsBetween(booking.id, null, v.id);
     if (!copied.ok) return copied;
@@ -99,6 +106,7 @@ export async function createVersion(
   if (vErr || !v) return { ok: false, detail: vErr?.message ?? "version insert failed" };
   const copied = await copyComponentsBetween(booking.id, fromVersion.id, v.id);
   if (!copied.ok) return copied;
+  try { await copyVersionSections(fromVersion.id, v.id); } catch { /* pre-v181 DB */ }
   // Guests + adjustments travel version→version (each version owns its own).
   const [{ data: g }, { data: adj }] = await Promise.all([
     supabase.from("version_guests").select("category_id,count").eq("version_id", fromVersion.id),
@@ -120,12 +128,12 @@ async function copyComponentsBetween(
   bookingId: string, fromVersionId: string | null, toVersionId: string,
 ): Promise<Outcome> {
   let q = supabase.from("event_components")
-    .select("id,domain,kind,title,position,copied_from,notes")
+    .select("id,domain,kind,title,position,copied_from,notes,section_type_id")
     .eq("booking_id", bookingId).order("position");
   q = fromVersionId ? q.eq("proposal_version_id", fromVersionId) : q.is("proposal_version_id", null);
   const { data: srcRows, error } = await q;
   if (error) return { ok: false, detail: error.message };
-  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null }[];
+  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null }[];
   if (!sources.length) return { ok: true };
 
   const ids = sources.map((s) => s.id);
@@ -140,6 +148,7 @@ async function copyComponentsBetween(
       domain: src.domain, kind: src.kind, title: src.title, position: src.position,
       copied_from: src.copied_from,   // ← passthrough, NOT src.id
       notes: src.notes,
+      section_type_id: src.section_type_id ?? null,   // section knowledge travels
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "unknown"}` };
     const its = ((items.data ?? []) as { component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null; taxable?: boolean | null; catalog_item_id?: string | null; applies_to_category_id?: string | null }[])

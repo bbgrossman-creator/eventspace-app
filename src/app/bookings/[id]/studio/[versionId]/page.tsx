@@ -26,10 +26,12 @@ import {
   loadGuestCategories, loadPriceMemory, computeVersionTotals, promoteToCatalog,
 } from "@/lib/pricingEngine";
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
+import { SectionType, loadSectionTypes } from "@/lib/sections";
 import SourceEventPane from "@/components/SourceEventPane";
 import FilesPanel from "@/components/FilesPanel";
 
-interface CompRow { id: string; title: string; domain: string; position: number; notes: string | null; }
+interface CompRow { id: string; title: string; domain: string; position: number; notes: string | null; section_type_id: string | null; }
+interface CanvasGroup { sectionTypeId: string | null; name: string; comps: CompRow[]; }
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DOMAINS = ["food", "decor", "flowers", "lighting", "music", "layout", "kids", "staffing", "logistics", "custom"];
 
@@ -50,6 +52,9 @@ export default function StudioPage() {
 
   // Canvas data
   const [comps, setComps] = useState<CompRow[]>([]);
+  const [sectionTypes, setSectionTypes] = useState<SectionType[]>([]);
+  const [vSections, setVSections] = useState<{ section_type_id: string; position: number }[]>([]);
+  const [sectionPicker, setSectionPicker] = useState(false);
   const [items, setItems] = useState<PricedItem[]>([]);
   const [cats, setCats] = useState<GuestCategory[]>([]);
   const [guests, setGuests] = useState<Record<string, number>>({});
@@ -85,12 +90,16 @@ export default function StudioPage() {
   }, [bookingId, versionId]);
 
   const loadCanvas = useCallback(async () => {
-    const [categories, { data: g }, { data: a }, { data: c }] = await Promise.all([
+    const [categories, { data: g }, { data: a }, { data: c }, types, { data: vsec }] = await Promise.all([
       loadGuestCategories(),
       supabase.from("version_guests").select("category_id,count").eq("version_id", versionId),
       supabase.from("version_adjustments").select("*").eq("version_id", versionId).order("position"),
-      supabase.from("event_components").select("id,title,domain,position,notes").eq("proposal_version_id", versionId).order("position"),
+      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id").eq("proposal_version_id", versionId).order("position"),
+      loadSectionTypes().catch(() => [] as SectionType[]),
+      supabase.from("version_sections").select("section_type_id,position").eq("version_id", versionId).order("position"),
     ]);
+    setSectionTypes(types);
+    setVSections((vsec ?? []) as { section_type_id: string; position: number }[]);
     setCats(categories);
     const gm: Record<string, number> = {};
     for (const row of (g ?? []) as { category_id: string; count: number }[]) gm[row.category_id] = row.count;
@@ -142,15 +151,6 @@ export default function StudioPage() {
     if (!confirm(`Start from ${ev.contact_name}? Adds all ${src.length} of its components to this proposal.`)) return;
     addFromSource(src.map((c) => c.id), `${ev.contact_name}${ev.event_type ? ` ${ev.event_type}` : ""}`);
   }
-  async function addSection() {
-    const title = prompt("Section title — e.g. Cocktail Hour, Dinner, Rentals");
-    if (!title?.trim() || !b) return;
-    const { error } = await supabase.from("event_components").insert({
-      booking_id: b.id, proposal_version_id: versionId,
-      domain: "food", title: title.trim(), position: comps.length,
-    });
-    if (error) setErr(error.message); else loadCanvas();
-  }
   async function patchComp(id: string, patch: Partial<CompRow>) {
     await supabase.from("event_components").update(patch).eq("id", id);
     setComps((p) => p.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -161,8 +161,9 @@ export default function StudioPage() {
     loadCanvas();
   }
   async function moveComp(c: CompRow, dir: -1 | 1) {
-    const idx = comps.findIndex((x) => x.id === c.id);
-    const other = comps[idx + dir];
+    const siblings = comps.filter((x) => x.section_type_id === c.section_type_id);
+    const idx = siblings.findIndex((x) => x.id === c.id);
+    const other = siblings[idx + dir];
     if (!other) return;
     await Promise.all([
       supabase.from("event_components").update({ position: other.position }).eq("id", c.id),
@@ -226,6 +227,65 @@ export default function StudioPage() {
     };
     setDiff(await diffVersions(otherId, versionId, totalsFor));
     setBusy(false);
+  }
+
+  // ── The Proposal Language: canvas groups = version's sections (ordered),
+  //    then any extra sections components reference, then Unsectioned. ──
+  const nameOf: Record<string, string> = {};
+  for (const t of sectionTypes) nameOf[t.id] = t.name;
+  const groups: CanvasGroup[] = [];
+  const seen = new Set<string>();
+  for (const vs of vSections) {
+    if (!nameOf[vs.section_type_id]) continue;
+    seen.add(vs.section_type_id);
+    groups.push({ sectionTypeId: vs.section_type_id, name: nameOf[vs.section_type_id],
+      comps: comps.filter((c) => c.section_type_id === vs.section_type_id) });
+  }
+  for (const c of comps) {
+    if (c.section_type_id && !seen.has(c.section_type_id) && nameOf[c.section_type_id]) {
+      seen.add(c.section_type_id);
+      groups.push({ sectionTypeId: c.section_type_id, name: nameOf[c.section_type_id],
+        comps: comps.filter((x) => x.section_type_id === c.section_type_id) });
+    }
+  }
+  const unsectioned = comps.filter((c) => !c.section_type_id || !nameOf[c.section_type_id]);
+  if (unsectioned.length) groups.push({ sectionTypeId: null, name: "More", comps: unsectioned });
+
+  async function addSectionType(sid: string) {
+    await supabase.from("version_sections").upsert({ version_id: versionId, section_type_id: sid, position: vSections.length });
+    setSectionPicker(false); loadCanvas();
+  }
+  async function removeSection(g: CanvasGroup) {
+    if (!g.sectionTypeId) return;
+    if (g.comps.length && !confirm(`Remove "${g.name}" and its ${g.comps.length} component(s) from this proposal?`)) return;
+    for (const c of g.comps) await supabase.from("event_components").delete().eq("id", c.id);
+    await supabase.from("version_sections").delete().eq("version_id", versionId).eq("section_type_id", g.sectionTypeId);
+    loadCanvas();
+  }
+  async function moveSection(g: CanvasGroup, dir: -1 | 1) {
+    if (!g.sectionTypeId) return;
+    const ordered = vSections.filter((v) => nameOf[v.section_type_id]);
+    const idx = ordered.findIndex((v) => v.section_type_id === g.sectionTypeId);
+    const other = ordered[idx + dir];
+    if (!other) return;
+    await Promise.all([
+      supabase.from("version_sections").update({ position: other.position }).eq("version_id", versionId).eq("section_type_id", g.sectionTypeId),
+      supabase.from("version_sections").update({ position: ordered[idx].position }).eq("version_id", versionId).eq("section_type_id", other.section_type_id),
+    ]);
+    loadCanvas();
+  }
+  async function addComponentIn(sectionTypeId: string | null) {
+    const title = prompt("Component title — e.g. Sushi Station, Uplighting");
+    if (!title?.trim() || !b) return;
+    const { error } = await supabase.from("event_components").insert({
+      booking_id: b.id, proposal_version_id: versionId, domain: "food",
+      title: title.trim(), position: comps.length, section_type_id: sectionTypeId,
+    });
+    if (error) setErr(error.message); else loadCanvas();
+  }
+  async function setCompSection(compId: string, sectionTypeId: string | null) {
+    await supabase.from("event_components").update({ section_type_id: sectionTypeId }).eq("id", compId);
+    loadCanvas();
   }
 
   if (caps && !caps.proposals) {
@@ -312,10 +372,34 @@ export default function StudioPage() {
                     Open a similar event on the left and drag its components in — or use
                     <b> ⤓ Start from this event</b> to seed the whole thing, then sculpt.
                   </p>
-                  {!locked && <button className="btn-primary !py-1.5 !px-3 text-xs mt-4" onClick={addSection}>＋ Add a blank section</button>}
+                  {!locked && <button className="btn-primary !py-1.5 !px-3 text-xs mt-4" onClick={() => setSectionPicker(true)}>＋ Add a section</button>}
                 </div>
               )}
-              {comps.map((c, idx) => {
+              {groups.map((g) => (
+                <div key={g.sectionTypeId ?? "none"} className="rounded-2xl ring-1 ring-[#DCE6F2] bg-[#FBFCFE] p-2.5">
+                  <div className="flex items-center gap-2 px-1 pb-1.5">
+                    <span className="font-display font-bold text-[13px] tracking-wide text-[#102F56] uppercase">{g.name}</span>
+                    <span className="text-[10px] text-slate-400">{g.comps.length || "empty"}</span>
+                    {!locked && g.sectionTypeId && (
+                      <span className="ml-auto flex items-center gap-1 text-slate-300">
+                        <button className="hover:text-slate-500" title="Section up" onClick={() => moveSection(g, -1)}>↑</button>
+                        <button className="hover:text-slate-500" title="Section down" onClick={() => moveSection(g, 1)}>↓</button>
+                        <button className="hover:text-red-500" title="Remove section" onClick={() => removeSection(g)}>✕</button>
+                      </span>
+                    )}
+                  </div>
+                  {g.comps.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-[#D8E2EF] py-2.5 text-center text-[11px] text-slate-300"
+                      onDragOver={(e) => { if (e.dataTransfer.types.includes("text/eventcore-reorder")) e.preventDefault(); }}
+                      onDrop={(e) => {
+                        const dragId = e.dataTransfer.getData("text/eventcore-reorder");
+                        if (dragId) { e.preventDefault(); e.stopPropagation(); setCompSection(dragId, g.sectionTypeId); }
+                      }}>
+                      nothing here yet — drop a component or ＋ below
+                    </div>
+                  )}
+                  <div className="space-y-2">
+              {g.comps.map((c) => {
                 const its = items.filter((i) => i.component_id === c.id);
                 const secTotal = its.reduce((s, i) => {
                   if (i.unit_price == null || !isActive(i)) return s;
@@ -332,18 +416,29 @@ export default function StudioPage() {
                     onDragOver={(e) => { if (e.dataTransfer.types.includes("text/eventcore-reorder")) e.preventDefault(); }}
                     onDrop={(e) => {
                       const dragId = e.dataTransfer.getData("text/eventcore-reorder");
-                      if (dragId) { e.preventDefault(); e.stopPropagation(); reorderTo(dragId, c.id); }
+                      if (dragId) {
+                        e.preventDefault(); e.stopPropagation();
+                        // dropping into another section MOVES the component there
+                        const dragged = comps.find((x) => x.id === dragId);
+                        if (dragged && dragged.section_type_id !== c.section_type_id) setCompSection(dragId, c.section_type_id);
+                        else reorderTo(dragId, c.id);
+                      }
                     }}
                     className="rounded-xl bg-white ring-1 ring-[#E7EDF5] shadow-sm">
                     <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-[#F1F5F9]">
-                      <span className="cursor-grab text-slate-300 select-none" title="Drag to reorder">⠿</span>
-                      <span className="text-[11px] font-bold text-slate-300 w-4">{idx + 1}</span>
+                      <span className="cursor-grab text-slate-300 select-none" title="Drag to reorder or into another section">⠿</span>
                       <input className="font-display font-semibold text-[14px] bg-transparent outline-none flex-1 min-w-0 focus:bg-[#F6F8FB] rounded px-1"
                         defaultValue={c.title} disabled={!!locked}
                         onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.title) patchComp(c.id, { title: v }); }} />
                       <span className="text-[12px] font-semibold text-slate-500">{money(secTotal)}</span>
                       {!locked && (
                         <span className="flex items-center gap-1 text-slate-300">
+                          <select className="field !py-0 !px-0.5 !text-[9px] max-w-[90px] text-slate-400" title="Move to section"
+                            value={c.section_type_id ?? ""}
+                            onChange={(e) => setCompSection(c.id, e.target.value || null)}>
+                            <option value="">— section —</option>
+                            {sectionTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
                           <button className="hover:text-slate-500" title="Move up" onClick={() => moveComp(c, -1)}>↑</button>
                           <button className="hover:text-slate-500" title="Move down" onClick={() => moveComp(c, 1)}>↓</button>
                           <button className="hover:text-red-500" title="Remove section" onClick={() => deleteComp(c)}>✕</button>
@@ -421,9 +516,26 @@ export default function StudioPage() {
                   </div>
                 );
               })}
-              {comps.length > 0 && !locked && (
+                  </div>
+                  {!locked && (
+                    <button className="text-[11px] text-slate-400 hover:text-[#2F80ED] font-medium pl-1.5 pt-1.5"
+                      onClick={() => addComponentIn(g.sectionTypeId)}>＋ component</button>
+                  )}
+                </div>
+              ))}
+              {comps.length + groups.length > 0 && !locked && (
                 <div className={`rounded-xl border-2 border-dashed py-3 text-center text-[12px] transition-colors ${dropHot ? "border-[#4A9EFF] bg-[#F4F9FF] text-[#2F80ED]" : "border-[#D8E2EF] text-slate-400"}`}>
-                  Drop a component here — or <button className="font-semibold text-[#2F80ED] hover:underline" onClick={addSection}>＋ add a blank section</button>
+                  Drop a component here — or{" "}
+                  {sectionPicker ? (
+                    <select className="field !py-0.5 !text-[11px]" autoFocus
+                      onChange={(e) => { if (e.target.value === "__new") { const n = prompt("New section name"); if (n?.trim()) { supabase.from("section_types").insert({ name: n.trim(), position: sectionTypes.length }).select("id").single().then(({ data }) => { if (data) addSectionType((data as { id: string }).id); }); } } else if (e.target.value) addSectionType(e.target.value); }}>
+                      <option value="">pick a section…</option>
+                      {sectionTypes.filter((t) => !seen.has(t.id)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      <option value="__new">＋ new section type…</option>
+                    </select>
+                  ) : (
+                    <button className="font-semibold text-[#2F80ED] hover:underline" onClick={() => setSectionPicker(true)}>＋ add a section</button>
+                  )}
                 </div>
               )}
             </div>

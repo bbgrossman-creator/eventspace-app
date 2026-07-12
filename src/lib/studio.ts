@@ -99,18 +99,19 @@ export async function copyIntoVersion(
     .select("id", { count: "exact", head: true }).eq("proposal_version_id", versionId);
   let pos = count ?? 0;
   const { data: srcRows, error } = await supabase.from("event_components")
-    .select("id,domain,kind,title,notes").in("id", srcComponentIds);
+    .select("id,domain,kind,title,notes,section_type_id").in("id", srcComponentIds);
   if (error) return { ok: false, detail: error.message, copied: 0 };
   const [{ data: its }, { data: rqs }] = await Promise.all([
     supabase.from("component_items").select("*").in("component_id", srcComponentIds).order("position"),
     supabase.from("component_requirements").select("component_id,name,category,notes").in("component_id", srcComponentIds),
   ]);
   let copied = 0;
-  for (const src of (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; notes: string | null }[]) {
+  for (const src of (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; notes: string | null; section_type_id?: string | null }[]) {
     const { data: nc, error: cErr } = await supabase.from("event_components").insert({
       booking_id: booking.id, proposal_version_id: versionId,
       domain: src.domain, kind: src.kind, title: src.title, notes: src.notes,
       position: pos++, copied_from: src.id,
+      section_type_id: src.section_type_id ?? null,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "?"}`, copied };
     const rows = ((its ?? []) as Record<string, unknown>[]).filter((i) => i.component_id === src.id);

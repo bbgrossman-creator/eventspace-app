@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
 import { PaletteEntry, loadComponentPalette } from "@/lib/studio";
+import { loadPlacementStats } from "@/lib/sections";
 
 const DOMAIN_META: Record<string, { icon: string; label: string }> = {
   food: { icon: "🍽", label: "Food" }, decor: { icon: "🎀", label: "Décor" },
@@ -30,7 +31,11 @@ export default function ComponentPalette({ onAdd, busy }: {
   const [openDomain, setOpenDomain] = useState<string | null>("food");
   const [openEntry, setOpenEntry] = useState<string | null>(null);
 
-  useEffect(() => { loadComponentPalette().then(setEntries); }, []);
+  const [placement, setPlacement] = useState<Record<string, { sectionName: string; count: number }>>({});
+  useEffect(() => {
+    loadComponentPalette().then(setEntries);
+    loadPlacementStats().then(setPlacement).catch(() => {});
+  }, []);
 
   const filtered = useMemo(() => {
     if (!entries) return [];
@@ -91,6 +96,7 @@ export default function ComponentPalette({ onAdd, busy }: {
                             <div className="text-[12px] font-medium truncate">{e.title}</div>
                             <div className="text-[10px] text-slate-400 truncate">
                               used ×{e.count}{e.items.length ? ` · ${e.items.length} items` : ""}
+                              {placement[e.title.toLowerCase()] ? ` · usually ${placement[e.title.toLowerCase()].sectionName} ×${placement[e.title.toLowerCase()].count}` : ""}
                             </div>
                           </button>
                           <button disabled={busy} title={`Add — copies the latest real instance (${e.latestBookingLabel})`}
