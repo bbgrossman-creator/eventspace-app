@@ -17,7 +17,9 @@ import {
   Proposal, ProposalVersion, VersionStatus,
   VERSION_FLOW, PROPOSAL_STATUS_LABEL,
   createProposal, createVersion, setVersionStatus, setProposalStatus,
+  archiveVersion, restoreVersion, deleteVersionPermanently, deleteBlockers,
 } from "@/lib/proposals";
+import { loadSession, Session } from "@/lib/permissions";
 
 export default function ProposalsCard({ b }: { b: Booking }) {
   const [caps, setCaps] = useState<Capabilities | null>(null);
@@ -33,8 +35,14 @@ export default function ProposalsCard({ b }: { b: Booking }) {
   const [nBlueprint, setNBlueprint] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [pricingOpen, setPricingOpen] = useState<Record<string, boolean>>({});
+  const [session, setSession] = useState<Session | null>(null);
+  const [showArchived, setShowArchived] = useState<Record<string, boolean>>({});
+  const [showAllVersions, setShowAllVersions] = useState<Record<string, boolean>>({});
 
-  useEffect(() => { loadCapabilities().then((c) => setCaps(c.caps)); }, []);
+  useEffect(() => {
+    loadCapabilities().then((c) => setCaps(c.caps));
+    loadSession().then(setSession).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     const { data: ps, error } = await supabase.from("proposals")
@@ -71,10 +79,28 @@ export default function ProposalsCard({ b }: { b: Booking }) {
     setBusy(false); load();
   }
 
+  const activeVs = (p: Proposal) => versions.filter((v) => v.proposal_id === p.id && !v.archived_at);
+  const archivedVs = (p: Proposal) => versions.filter((v) => v.proposal_id === p.id && v.archived_at);
   const latestOf = (p: Proposal) => {
-    const vs = versions.filter((v) => v.proposal_id === p.id);
+    const vs = activeVs(p);
     return vs.length ? vs[vs.length - 1] : null;
   };
+  const isAdmin = session?.role === "admin";
+
+  async function doArchive(p: Proposal, v: ProposalVersion) {
+    const reason = prompt("Archiving retracts this version from proposal history and excludes it from pricing memory, reuse counts, and knowledge signals. It does NOT delete it — find it under Show Archived.\n\nReason (optional):", "");
+    if (reason === null) return;
+    run(() => archiveVersion(b, v, reason));
+  }
+  async function doDelete(p: Proposal, v: ProposalVersion) {
+    const guard = await deleteBlockers(v, p);
+    if (!guard.canDelete) {
+      alert(`This version cannot be permanently deleted because it is referenced by:\n\n• ${guard.reasons.join("\n• ")}\n\nArchive or restore it instead.`);
+      return;
+    }
+    if (!confirm(`Delete v${v.version} permanently? This cannot be undone. It will be removed from proposal history, pricing memory, comparisons, and reporting.`)) return;
+    run(() => deleteVersionPermanently(b, v, p));
+  }
 
   return (
     <div className="card p-5 mb-5">
@@ -126,8 +152,12 @@ export default function ProposalsCard({ b }: { b: Booking }) {
 
       <div className="space-y-3">
         {proposals.map((p) => {
-          const vs = versions.filter((v) => v.proposal_id === p.id);
+          const vs = activeVs(p);
+          const archived = archivedVs(p);
           const latest = latestOf(p);
+          const showAll = !!showAllVersions[p.id];
+          const collapsed = vs.length > 4 && !showAll;
+          const shownVs = collapsed ? vs.slice(-1) : vs;
           const ps = PROPOSAL_STATUS_LABEL[p.status];
           const open = !!expanded[p.id];
           return (
@@ -161,7 +191,13 @@ export default function ProposalsCard({ b }: { b: Booking }) {
 
               {open && (
                 <div className="mt-2 space-y-1.5">
-                  {vs.map((v) => {
+                  {collapsed && (
+                    <button className="text-[11px] text-slate-400 hover:text-accent-ink underline"
+                      onClick={() => setShowAllVersions((x) => ({ ...x, [p.id]: true }))}>
+                      ▼ Show version history ({vs.length})
+                    </button>
+                  )}
+                  {shownVs.map((v) => {
                     const flow = VERSION_FLOW.find((f) => f.value === v.status)!;
                     const isWinner = p.won_version_id === v.id;
                     const nextSteps: VersionStatus[] =
@@ -197,12 +233,46 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                           onClick={() => setPricingOpen((x) => ({ ...x, [v.id]: !x[v.id] }))}>
                           {pricingOpen[v.id] ? "hide pricing" : "pricing"}
                         </button>
+                        <button className="text-[11px] text-slate-300 hover:text-amber-600" title="Archive this version"
+                          disabled={busy} onClick={() => doArchive(p, v)}>🗄</button>
                       </div>
                     );
                   })}
                   {vs.filter((v) => pricingOpen[v.id]).map((v) => (
                     <VersionPricing key={`pp-${v.id}`} b={b} v={v} />
                   ))}
+
+                  {archived.length > 0 && (
+                    <div className="pt-1">
+                      <button className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                        onClick={() => setShowArchived((x) => ({ ...x, [p.id]: !x[p.id] }))}>
+                        {showArchived[p.id] ? "Hide" : "Show"} archived ({archived.length})
+                      </button>
+                      {showArchived[p.id] && (
+                        <div className="mt-1.5 space-y-1 reveal">
+                          {archived.map((v) => (
+                            <div key={v.id} className="flex items-center gap-2 flex-wrap rounded px-2 py-1.5 bg-[#FAFAF9] ring-1 ring-[#EDE9E4]">
+                              <span className="text-[12px] font-semibold w-8 text-slate-400">v{v.version}</span>
+                              <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 bg-[#F5F5F4] text-[#78716C]">🗄 archived</span>
+                              <span className="text-[11px] text-slate-400">
+                                {v.archived_at ? new Date(v.archived_at).toLocaleDateString() : ""}
+                                {v.archived_reason ? ` · ${v.archived_reason}` : ""}
+                              </span>
+                              <span className="ml-auto flex gap-2">
+                                <button className="text-[11px] text-accent-ink hover:underline" disabled={busy}
+                                  onClick={() => run(() => restoreVersion(b, v))}>restore</button>
+                                {isAdmin && (
+                                  <button className="text-[11px] text-red-400 hover:text-red-600 hover:underline" disabled={busy}
+                                    onClick={() => doDelete(p, v)}>delete permanently</button>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                          {!isAdmin && <p className="text-[10px] text-slate-300 pl-1">Permanent deletion is admin-only.</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -8,7 +8,7 @@ import CommunicationCard from "@/components/CommunicationCard";
 import TouchpointsCard from "@/components/TouchpointsCard";
 import CustomerSnapshot from "@/components/CustomerSnapshot";
 import FilesPanel from "@/components/FilesPanel";
-import ComponentsCard from "@/components/ComponentsCard";
+import KnowledgeCard from "@/components/KnowledgeCard";
 import DebriefCard from "@/components/DebriefCard";
 import ProposalsCard from "@/components/ProposalsCard";
 import EventLegacyCard from "@/components/EventLegacyCard";
@@ -839,7 +839,7 @@ export default function BookingDetail() {
           model unlocks it (caps.components_editor). */}
       <DebriefCard b={b} />
       <ProposalsCard b={b} />
-      <ComponentsCard b={b} />
+      <KnowledgeCard b={b} />
       <FilesPanel b={b} />
 
       {/* Activity — the audit trail: facts the system recorded. The work

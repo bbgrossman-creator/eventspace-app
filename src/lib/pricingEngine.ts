@@ -89,9 +89,12 @@ async function ancestryOf(componentId: string | null, maxDepth = 6): Promise<Set
   return seen;
 }
 
-/** Approved-version item ids (for the sold-only rule). */
+/** Approved-version item ids (for the sold-only rule). Archived versions are
+ *  RETRACTED from commercial knowledge — excluded here so their prices never
+ *  enter memory, ranges, or last-sold. A simple filter, never a rewrite. */
 async function approvedVersionIds(): Promise<string[]> {
-  const { data } = await supabase.from("proposal_versions").select("id").eq("status", "approved");
+  const { data } = await supabase.from("proposal_versions").select("id")
+    .eq("status", "approved").is("archived_at", null);
   return ((data ?? []) as { id: string }[]).map((r) => r.id);
 }
 

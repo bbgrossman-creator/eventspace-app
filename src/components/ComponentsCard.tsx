@@ -32,7 +32,7 @@ const DOMAIN_ICON: Record<string, string> = {
   logistics: "📦", staffing: "👥", custom: "•",
 };
 
-export default function ComponentsCard({ b }: { b: Booking }) {
+export default function ComponentsCard({ b, embedded = false }: { b: Booking; embedded?: boolean }) {
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [comps, setComps] = useState<ComponentRow[]>([]);
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -253,9 +253,9 @@ export default function ComponentsCard({ b }: { b: Booking }) {
   }
 
   return (
-    <div className="card p-5 mb-5">
+    <div className={embedded ? "" : "card p-5 mb-5"}>
       <div className="flex items-center justify-between gap-3 mb-1">
-        <h2 className="font-display font-semibold text-[15px]">🧩 Event Components</h2>
+        <h2 className={`font-display font-semibold text-[15px] ${embedded ? "hidden" : ""}`}>🧩 Event Components</h2>
         <div className="flex items-center gap-3">
           {caps.component_copy && (
             <button className="text-xs font-medium text-accent-ink hover:text-[#102F56] transition-colors"

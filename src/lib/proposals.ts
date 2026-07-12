@@ -32,6 +32,7 @@ export interface ProposalVersion {
   status: VersionStatus; notes: string | null;
   sent_at: string | null; approved_at: string | null; approved_by: string | null;
   created_at: string;
+  archived_at?: string | null; archived_reason?: string | null;
 }
 
 export const VERSION_FLOW: { value: VersionStatus; label: string; color: string }[] = [
@@ -237,5 +238,64 @@ export async function setProposalStatus(
   if (error) return { ok: false, detail: error.message };
   await logActivity(booking.id, booking.invoice_num, "Proposal Status",
     `${status === "lost" ? "🚫" : status === "archived" ? "🗄" : "↩️"} ${proposal.title} → ${status}`);
+  return { ok: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v186 — Archive & delete. Archive retracts from knowledge (reversible);
+// permanent delete is admin-only, blocked when the version is referenced.
+// ═══════════════════════════════════════════════════════════════════════════
+export interface DeleteGuard { canDelete: boolean; reasons: string[]; }
+
+/** Why a version may NOT be hard-deleted: blueprint source, generated invoice
+ *  lines, or being the won version of its proposal. */
+export async function deleteBlockers(v: ProposalVersion, proposal: Proposal): Promise<DeleteGuard> {
+  const reasons: string[] = [];
+  const [{ data: bp }, { data: ch }] = await Promise.all([
+    supabase.from("blueprints").select("name").eq("source_version_id", v.id).eq("active", true),
+    supabase.from("charges").select("id", { count: "exact", head: true }).eq("source_proposal_version_id", v.id),
+  ]);
+  for (const b of (bp ?? []) as { name: string }[]) reasons.push(`Blueprint: "${b.name}"`);
+  if ((ch as unknown as { count?: number })?.count) reasons.push("Has generated invoice lines");
+  if (proposal.won_version_id === v.id) reasons.push("Accepted (won) version of this proposal");
+  return { canDelete: reasons.length === 0, reasons };
+}
+
+export async function archiveVersion(
+  booking: { id: string; invoice_num: string },
+  v: ProposalVersion, reason: string,
+): Promise<Outcome> {
+  const { error } = await supabase.from("proposal_versions")
+    .update({ archived_at: new Date().toISOString(), archived_reason: reason || null }).eq("id", v.id);
+  if (error) return { ok: false, detail: error.message };
+  await logActivity(booking.id, booking.invoice_num, "Proposal Version Archived",
+    `🗄 v${v.version} archived — retracted from pricing memory & knowledge${reason ? ` (${reason})` : ""}`);
+  return { ok: true };
+}
+
+export async function restoreVersion(
+  booking: { id: string; invoice_num: string }, v: ProposalVersion,
+): Promise<Outcome> {
+  const { error } = await supabase.from("proposal_versions")
+    .update({ archived_at: null, archived_reason: null }).eq("id", v.id);
+  if (error) return { ok: false, detail: error.message };
+  await logActivity(booking.id, booking.invoice_num, "Proposal Version Restored",
+    `♻️ v${v.version} restored — eligible for knowledge again`);
+  return { ok: true };
+}
+
+/** Admin-only hard delete. Caller must confirm role AND pass deleteBlockers. */
+export async function deleteVersionPermanently(
+  booking: { id: string; invoice_num: string },
+  v: ProposalVersion, proposal: Proposal,
+): Promise<Outcome> {
+  const guard = await deleteBlockers(v, proposal);
+  if (!guard.canDelete) return { ok: false, detail: `Cannot delete — referenced by: ${guard.reasons.join("; ")}` };
+  // Components of this version cascade via FK (proposal_version_id on delete
+  // cascade); version_guests / version_sections / version_adjustments too.
+  const { error } = await supabase.from("proposal_versions").delete().eq("id", v.id);
+  if (error) return { ok: false, detail: error.message };
+  await logActivity(booking.id, booking.invoice_num, "Proposal Version Deleted",
+    `🗑 v${v.version} permanently deleted`);
   return { ok: true };
 }
