@@ -287,3 +287,99 @@ export async function loadComponentPalette(): Promise<PaletteEntry[]> {
   out.sort((a, z) => a.domain.localeCompare(z.domain) || z.count - a.count || a.title.localeCompare(z.title));
   return out;
 }
+
+// ── Proposal Sources (v187) — borrow from prior commercial thinking ──
+// The fourth knowledge source: past proposals (won, sent, draft, lost),
+// distinct from Events (operational reality). Closes the loop where v186
+// made proposal history authoritative but not yet reusable.
+//
+// Rules: exclude the CURRENT proposal's entire version chain (copying v1→v3
+// of the same proposal blurs lineage — New Version handles that). Exclude
+// archived versions (retracted from knowledge = not borrowable). Default to
+// each proposal's latest non-archived version, expandable to older. Tiered
+// ordering by commercial evidence: won → sent → draft → lost.
+export interface ProposalSourceVersion {
+  id: string; version: number; status: string; created_at: string;
+}
+export interface ProposalSource {
+  proposalId: string;
+  title: string;
+  bookingLabel: string;          // "Goldberg Wedding" (the opportunity)
+  bookingId: string;
+  proposalStatus: string;        // open | won | lost | archived
+  booked: boolean;               // the booking is a real booked event
+  tier: number;                  // 0 won · 1 sent · 2 draft · 3 lost (sort key)
+  tierLabel: string;             // "Won" | "Sent" | "Draft" | "Lost"
+  latest: ProposalSourceVersion;
+  older: ProposalSourceVersion[];
+}
+
+export async function loadProposalSources(currentProposalId: string): Promise<ProposalSource[]> {
+  // All proposals except archived-status and the current one.
+  const { data: ps } = await supabase.from("proposals")
+    .select("id,booking_id,title,status,won_version_id")
+    .neq("status", "archived").neq("id", currentProposalId);
+  const props = (ps ?? []) as { id: string; booking_id: string; title: string; status: string; won_version_id: string | null }[];
+  if (!props.length) return [];
+
+  const { data: vs } = await supabase.from("proposal_versions")
+    .select("id,proposal_id,version,status,created_at,archived_at")
+    .in("proposal_id", props.map((p) => p.id)).is("archived_at", null).order("version");
+  const versions = (vs ?? []) as { id: string; proposal_id: string; version: number; status: string; created_at: string }[];
+
+  const bookingIds = Array.from(new Set(props.map((p) => p.booking_id)));
+  const { data: bks } = await supabase.from("bookings").select("id,contact_name,event_type,status").in("id", bookingIds);
+  const bMap: Record<string, { contact_name: string; event_type: string | null; status: string }> = {};
+  for (const b of (bks ?? []) as { id: string; contact_name: string; event_type: string | null; status: string }[]) {
+    bMap[b.id] = b;
+  }
+
+  const out: ProposalSource[] = [];
+  for (const p of props) {
+    const vChain = versions.filter((v) => v.proposal_id === p.id).sort((a, z) => a.version - z.version);
+    if (!vChain.length) continue;                       // nothing non-archived to borrow
+    const latest = vChain[vChain.length - 1];
+    const older = vChain.slice(0, -1).reverse();        // newest-first under the fold
+    const bk = bMap[p.booking_id];
+    const booked = bk?.status === "booked" || bk?.status === "completed" || p.status === "won";
+
+    // Tier by strongest commercial evidence of the LATEST version.
+    let tier = 2, tierLabel = "Draft";
+    if (p.status === "won" || latest.status === "approved") { tier = 0; tierLabel = "Won"; }
+    else if (p.status === "lost") { tier = 3; tierLabel = "Lost"; }
+    else if (latest.status === "sent" || latest.status === "revision_requested") { tier = 1; tierLabel = "Sent"; }
+    else { tier = 2; tierLabel = latest.status === "internal_review" ? "In review" : "Draft"; }
+
+    out.push({
+      proposalId: p.id, title: p.title,
+      bookingLabel: bk?.contact_name ?? "Event", bookingId: p.booking_id,
+      proposalStatus: p.status, booked, tier, tierLabel,
+      latest: { id: latest.id, version: latest.version, status: latest.status, created_at: latest.created_at },
+      older: older.map((v) => ({ id: v.id, version: v.version, status: v.status, created_at: v.created_at })),
+    });
+  }
+  // Tier, then newest latest-version first within tier.
+  out.sort((a, z) => a.tier - z.tier || (z.latest.created_at ?? "").localeCompare(a.latest.created_at ?? ""));
+  return out;
+}
+
+/** Components of a specific proposal version, for the source preview. */
+export async function loadVersionComponents(versionId: string): Promise<{ id: string; title: string; sectionLabel: string | null; itemCount: number }[]> {
+  const { data: cs } = await supabase.from("event_components")
+    .select("id,title,section_type_id").eq("proposal_version_id", versionId).order("position");
+  const comps = (cs ?? []) as { id: string; title: string; section_type_id: string | null }[];
+  if (!comps.length) return [];
+  const [{ data: its }, { data: sts }] = await Promise.all([
+    supabase.from("component_items").select("component_id").in("component_id", comps.map((c) => c.id)),
+    supabase.from("section_types").select("id,name"),
+  ]);
+  const counts: Record<string, number> = {};
+  for (const i of (its ?? []) as { component_id: string }[]) counts[i.component_id] = (counts[i.component_id] ?? 0) + 1;
+  const secName: Record<string, string> = {};
+  for (const sec of (sts ?? []) as { id: string; name: string }[]) secName[sec.id] = sec.name;
+  return comps.map((c) => ({
+    id: c.id, title: c.title,
+    sectionLabel: c.section_type_id ? (secName[c.section_type_id] ?? null) : null,
+    itemCount: counts[c.id] ?? 0,
+  }));
+}

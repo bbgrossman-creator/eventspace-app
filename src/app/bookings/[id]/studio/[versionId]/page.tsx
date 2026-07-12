@@ -403,7 +403,7 @@ export default function StudioPage() {
         <div className="flex-1 min-h-0 grid grid-cols-[280px_1fr_300px] gap-0">
           {/* LEFT */}
           <div className="border-r border-[#E7EDF5] bg-white p-3 min-h-0">
-            <SourceEventPane b={b} onAdd={addFromSource} onSeed={seedFromEvent} busy={busy || !!locked} />
+            <SourceEventPane b={b} currentProposalId={proposal.id} onAdd={addFromSource} onSeed={seedFromEvent} busy={busy || !!locked} />
           </div>
 
           {/* CENTER — the canvas */}
@@ -547,24 +547,47 @@ export default function StudioPage() {
                           }}>⇄ {isPkg ? "itemize" : "package"}</button>
                       )}
                       {!locked && (
-                        <span className="flex items-center gap-1 text-slate-300">
-                          <button className={`text-[9px] font-semibold uppercase tracking-wide ${c.group_label ? "text-[#6D28D9]" : "text-slate-300 hover:text-[#6D28D9]"}`}
-                            title={c.group_label ? `In band "${c.group_label}" — click to change` : "Group into a band (e.g. Stationary Display)"}
-                            onClick={() => {
-                              const existing = Array.from(new Set(comps.filter((x) => (x.section_type_id ?? "") === (c.section_type_id ?? "") && x.group_label).map((x) => (x.group_label ?? "").trim())));
-                              const hint = existing.length ? `\nExisting bands here: ${existing.join(", ")}` : "";
-                              const v = prompt(`Band name for "${c.title}" (blank to ungroup):${hint}`, c.group_label ?? "");
-                              if (v !== null) assignGroup(c.id, v);
-                            }}>◱{c.group_label ? "" : "+"}</button>
-                          <select className="field !py-0 !px-0.5 !text-[9px] max-w-[90px] text-slate-400" title="Move to section"
-                            value={c.section_type_id ?? ""}
-                            onChange={(e) => setCompSection(c.id, e.target.value || null)}>
-                            <option value="">— section —</option>
-                            {sectionTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </select>
+                        <span className="flex items-center gap-1.5 text-slate-300">
+                          <label className="flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                            <span className="text-slate-300">§</span>
+                            <select className="field !py-0.5 !px-1 !text-[10px] max-w-[110px]" title="Section — where in the event"
+                              value={c.section_type_id ?? ""}
+                              onChange={(e) => setCompSection(c.id, e.target.value || null)}>
+                              <option value="">— section —</option>
+                              {sectionTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                          </label>
+                          <label className={`flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide ${c.group_label ? "text-[#6D28D9]" : "text-slate-400"}`}>
+                            <span>◱</span>
+                            <select className={`field !py-0.5 !px-1 !text-[10px] max-w-[130px] ${c.group_label ? "!text-[#6D28D9] !border-[#DDD6FE]" : ""}`}
+                              title="Band — group components into a display (e.g. Stationary Display)"
+                              value={c.group_label ? `existing:${(c.group_label).trim()}` : ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "") { assignGroup(c.id, ""); return; }
+                                if (val === "__new") {
+                                  const name = prompt(`New band name for "${c.title}" — e.g. Stationary Display, Chef Stations`, "");
+                                  if (name && name.trim()) assignGroup(c.id, name.trim());
+                                  return;
+                                }
+                                if (val.startsWith("existing:")) assignGroup(c.id, val.slice("existing:".length));
+                              }}>
+                              <option value="">— no band —</option>
+                              {(() => {
+                                // Existing bands in THIS component's section (dedup, case-insensitive).
+                                const here = Array.from(new Set(
+                                  comps.filter((x) => (x.section_type_id ?? "") === (c.section_type_id ?? "") && x.group_label)
+                                    .map((x) => (x.group_label ?? "").trim())
+                                    .filter((l) => l.toLowerCase() !== (c.group_label ?? "").trim().toLowerCase())));
+                                return here.map((label) => <option key={label} value={`existing:${label}`}>{label}</option>);
+                              })()}
+                              {c.group_label && <option value={`existing:${(c.group_label).trim()}`}>{(c.group_label).trim()} ✓</option>}
+                              <option value="__new">＋ New band…</option>
+                            </select>
+                          </label>
                           <button className="hover:text-slate-500" title="Move up" onClick={() => moveComp(c, -1)}>↑</button>
                           <button className="hover:text-slate-500" title="Move down" onClick={() => moveComp(c, 1)}>↓</button>
-                          <button className="hover:text-red-500" title="Remove section" onClick={() => deleteComp(c)}>✕</button>
+                          <button className="hover:text-red-500" title="Remove component" onClick={() => deleteComp(c)}>✕</button>
                         </span>
                       )}
                     </div>
