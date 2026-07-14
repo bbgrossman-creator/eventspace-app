@@ -38,6 +38,9 @@ export interface PricedItem {
   item_role?: "included" | "optional";
   selected?: boolean;
   served_with?: string | null;
+  /** Customer-facing visibility. false = internal-only (kept for cost/ops/
+   *  purchasing, never rendered on the proposal). Default true. */
+  show_on_proposal?: boolean;
 }
 export const isActive = (i: PricedItem) => i.item_role !== "optional" || i.selected !== false;
 

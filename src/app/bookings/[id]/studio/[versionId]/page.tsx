@@ -38,6 +38,7 @@ interface CompRow {
   pricing_mode: string; package_price: number | null; package_basis: string;
   package_taxable: boolean; package_price_confirmed: boolean; package_cost: number | null;
   customer_description: string | null;
+  proposal_display: string | null;
 }
 interface CanvasGroup { sectionTypeId: string | null; name: string; comps: CompRow[]; }
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -102,7 +103,7 @@ export default function StudioPage() {
       loadGuestCategories(),
       supabase.from("version_guests").select("category_id,count").eq("version_id", versionId),
       supabase.from("version_adjustments").select("*").eq("version_id", versionId).order("position"),
-      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description").eq("proposal_version_id", versionId).order("position"),
+      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description,proposal_display").eq("proposal_version_id", versionId).order("position"),
       loadSectionTypes().catch(() => [] as SectionType[]),
       supabase.from("version_sections").select("section_type_id,position").eq("version_id", versionId).order("position"),
     ]);
@@ -117,7 +118,7 @@ export default function StudioPage() {
     setComps(compRows);
     if (compRows.length) {
       const { data: it, error } = await supabase.from("component_items")
-        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,served_with")
+        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,served_with,show_on_proposal")
         .in("component_id", compRows.map((x) => x.id)).order("position");
       if (error) { setErr(`${error.message} — run v178/v179 SQL.`); return; }
       const rows = (it ?? []) as PricedItem[];
@@ -240,7 +241,7 @@ export default function StudioPage() {
       const ids = ((c ?? []) as { id: string }[]).map((x) => x.id);
       if (!ids.length) return 0;
       const [{ data: it }, { data: g }, { data: a }] = await Promise.all([
-        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,served_with").in("component_id", ids),
+        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,served_with,show_on_proposal").in("component_id", ids),
         supabase.from("version_guests").select("category_id,count").eq("version_id", vid),
         supabase.from("version_adjustments").select("*").eq("version_id", vid),
       ]);
@@ -631,6 +632,17 @@ export default function StudioPage() {
                               onChange={(e) => patchComp(c.id, { package_cost: e.target.value === "" ? null : parseFloat(e.target.value) })} />
                           </span>
                         </div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Proposal detail</span>
+                          <select className="field !py-0.5 !px-1.5 !text-[11px]" disabled={!!locked}
+                            title="How much of this component the customer sees on the proposal"
+                            value={c.proposal_display ?? (isPkg ? "description" : "items")}
+                            onChange={(e) => patchComp(c.id, { proposal_display: e.target.value })}>
+                            <option value="title_only">Title only</option>
+                            <option value="description">Title + description</option>
+                            <option value="items">Title + visible items</option>
+                          </select>
+                        </div>
                         <textarea className="field w-full !py-1 !text-[12px] !bg-[#FBFCFE]" rows={2} disabled={!!locked}
                           placeholder="Customer description — what the guest receives (marketing copy, shown on the proposal)"
                           defaultValue={c.customer_description ?? ""}
@@ -657,6 +669,13 @@ export default function StudioPage() {
                             <button className="font-medium text-left min-w-0 truncate hover:underline" onClick={() => focusOn(i)}>
                               {i.name}
                               {i.served_with && <span className="block text-[10px] italic text-slate-400 font-normal">served with {i.served_with}</span>}
+                            </button>
+                            <button
+                              className={`shrink-0 text-[13px] leading-none ${i.show_on_proposal === false ? "text-slate-300 hover:text-slate-500" : "text-[#2F80ED] hover:text-[#1b5fc0]"}`}
+                              disabled={!!locked}
+                              title={i.show_on_proposal === false ? "Internal only — hidden from the customer proposal. Click to show." : "Shown on the customer proposal. Click to make internal-only."}
+                              onClick={() => patchItem(i.id, { show_on_proposal: i.show_on_proposal === false })}>
+                              {i.show_on_proposal === false ? "🚫" : "👁"}
                             </button>
                             {i.item_role === "optional" && <span className="text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-[#EDE9FE] text-[#6D28D9] shrink-0">option</span>}
                             {carried && <span className="text-[10px] font-semibold text-amber-700 shrink-0">⚠ carried</span>}

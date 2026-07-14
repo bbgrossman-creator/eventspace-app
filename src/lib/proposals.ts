@@ -136,12 +136,12 @@ async function copyComponentsBetween(
   bookingId: string, fromVersionId: string | null, toVersionId: string,
 ): Promise<Outcome> {
   let q = supabase.from("event_components")
-    .select("id,domain,kind,title,position,copied_from,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description")
+    .select("id,domain,kind,title,position,copied_from,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description,proposal_display")
     .eq("booking_id", bookingId).order("position");
   q = fromVersionId ? q.eq("proposal_version_id", fromVersionId) : q.is("proposal_version_id", null);
   const { data: srcRows, error } = await q;
   if (error) return { ok: false, detail: error.message };
-  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null; group_label?: string | null; group_position?: number; group_description?: string | null }[];
+  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null; group_label?: string | null; group_position?: number; group_description?: string | null; proposal_display?: string | null }[];
   if (!sources.length) return { ok: true };
 
   const ids = sources.map((s) => s.id);
@@ -163,6 +163,7 @@ async function copyComponentsBetween(
       package_taxable: src.package_taxable ?? true,
       package_cost: src.package_cost ?? null,
       customer_description: src.customer_description ?? null,
+      proposal_display: src.proposal_display ?? null,   // presentation mode travels
       // Groups are inherited structure — the proven arrangement travels.
       group_label: src.group_label ?? null,
       group_position: src.group_position ?? 0,
@@ -171,7 +172,7 @@ async function copyComponentsBetween(
       package_price_confirmed: src.package_price == null,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "unknown"}` };
-    const its = ((items.data ?? []) as { component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null; taxable?: boolean | null; catalog_item_id?: string | null; applies_to_category_id?: string | null; served_with?: string | null; item_role?: string | null; selected?: boolean | null }[])
+    const its = ((items.data ?? []) as { component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null; taxable?: boolean | null; catalog_item_id?: string | null; applies_to_category_id?: string | null; served_with?: string | null; item_role?: string | null; selected?: boolean | null; show_on_proposal?: boolean | null }[])
       .filter((i) => i.component_id === src.id);
     if (its.length) {
       const { error: iErr } = await supabase.from("component_items").insert(its.map((i, idx) => ({
@@ -187,6 +188,7 @@ async function copyComponentsBetween(
         catalog_item_id: i.catalog_item_id ?? null,
         applies_to_category_id: i.applies_to_category_id ?? null,
         served_with: i.served_with ?? null,          // accompaniment travels with the item
+        show_on_proposal: i.show_on_proposal ?? true,   // visibility travels
         item_role: i.item_role ?? "included",
         selected: i.selected ?? true,
         pricing_reason: null,        // reasons are per-decision, never copied

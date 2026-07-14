@@ -120,7 +120,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
   for (const s of (sts ?? []) as { id: string; name: string }[]) secName[s.id] = s.name;
 
   const { data: cs } = await supabase.from("event_components")
-    .select("id,title,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_price_confirmed,customer_description,notes,position")
+    .select("id,title,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_price_confirmed,customer_description,notes,position,proposal_display")
     .eq("proposal_version_id", versionId).order("position");
   const comps = (cs ?? []) as {
     id: string; title: string; section_type_id: string | null;
@@ -128,13 +128,14 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     pricing_mode: string; package_price: number | null; package_basis: string | null;
     package_price_confirmed: boolean;
     customer_description: string | null; notes: string | null; position: number;
+    proposal_display: string | null;
   }[];
 
-  type ItemRow = { component_id: string; name: string; description: string | null; unit_price: number | null; quantity: number | null; quantity_basis: string | null; applies_to_category_id: string | null; item_role: string | null; selected: boolean; choice_group_id: string | null; price_confirmed: boolean; served_with: string | null };
+  type ItemRow = { component_id: string; name: string; description: string | null; unit_price: number | null; quantity: number | null; quantity_basis: string | null; applies_to_category_id: string | null; item_role: string | null; selected: boolean; choice_group_id: string | null; price_confirmed: boolean; served_with: string | null; show_on_proposal: boolean };
   const itemsBy: Record<string, ItemRow[]> = {};
   if (comps.length) {
     const { data: its } = await supabase.from("component_items")
-      .select("component_id,name,description,unit_price,quantity,quantity_basis,applies_to_category_id,item_role,selected,choice_group_id,price_confirmed,served_with")
+      .select("component_id,name,description,unit_price,quantity,quantity_basis,applies_to_category_id,item_role,selected,choice_group_id,price_confirmed,served_with,show_on_proposal")
       .in("component_id", comps.map((c) => c.id)).order("position");
     for (const i of (its ?? []) as ItemRow[]) {
       (itemsBy[i.component_id] ??= []).push(i);
@@ -166,6 +167,14 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     const isPackage = c.pricing_mode === "package";
     const rawItems = itemsBy[c.id] ?? [];
 
+    // Proposal display mode decides how much of the component the customer sees.
+    // Legacy rows without the column fall back to: package→description,
+    // itemized→items (preserves prior behavior while fixing the "items never
+    // rendered" bug for itemized components).
+    const displayMode = (c.proposal_display ?? (isPackage ? "description" : "items")) as
+      "title_only" | "description" | "items";
+    const showItems = displayMode === "items";
+
     // Route choice-group items into their group, out of the normal list.
     for (const i of rawItems) {
       if (i.choice_group_id && choiceItems[i.choice_group_id]) {
@@ -176,9 +185,14 @@ export async function buildPresentationModel(versionId: string): Promise<Present
       }
     }
 
-    const presItems: PresentationItem[] = isPackage ? [] : rawItems
-      // Drop unselected optional items and choice-group members (shown elsewhere).
-      .filter((i) => !i.choice_group_id && (i.item_role !== "optional" || i.selected))
+    // Items render only in 'items' mode, and only those flagged
+    // show_on_proposal. Internal-only items stay in the operational model for
+    // cost/ops/purchasing but never reach the customer projection.
+    const presItems: PresentationItem[] = !showItems ? [] : rawItems
+      // Drop unselected optional items, choice-group members (shown elsewhere),
+      // and internal-only items.
+      .filter((i) => !i.choice_group_id && i.show_on_proposal !== false
+                     && (i.item_role !== "optional" || i.selected))
       .map((i) => ({
         name: i.name, description: i.description,
         price: null,
@@ -187,12 +201,12 @@ export async function buildPresentationModel(versionId: string): Promise<Present
         optional: i.item_role === "optional",
       }));
 
-    // Also surface optional items that ARE selected? No — selected optionals are
-    // simply included. Offer UNSELECTED optionals as "available upgrade" only in
-    // full visibility, so the customer can see the choice.
-    if (!isPackage && visibility !== "hidden") {
+    // Offer UNSELECTED optionals as "available upgrade" only in items mode with
+    // full visibility, and only if customer-visible.
+    if (showItems && visibility !== "hidden") {
       for (const i of rawItems) {
-        if (!i.choice_group_id && i.item_role === "optional" && !i.selected) {
+        if (!i.choice_group_id && i.show_on_proposal !== false
+            && i.item_role === "optional" && !i.selected) {
           presItems.push({
             name: i.name, description: i.description, price: null,
             priceLabel: priceLabelFor(i.unit_price, i.quantity_basis, i.price_confirmed),
@@ -201,6 +215,11 @@ export async function buildPresentationModel(versionId: string): Promise<Present
         }
       }
     }
+
+    // Description shows in 'description' mode (any component) OR when a package
+    // component is set to items but we still want its blurb — v1: description
+    // renders in description mode only; title_only shows neither.
+    const compDescription = displayMode === "description" ? c.customer_description : null;
 
     const compPriceLabel = isPackage
       ? (visibility === "hidden" || c.package_price == null ? null
@@ -215,7 +234,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
       bandPos: c.group_label ? c.group_position : c.position + 100000,
       comp: {
         title: c.title,
-        description: isPackage ? c.customer_description : null, // NEVER notes
+        description: compDescription, // NEVER notes; only customer_description in description mode
         isPackage,
         priceLabel: compPriceLabel,
         items: presItems,
