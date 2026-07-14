@@ -80,6 +80,15 @@ export interface BusinessConfig {
   caps: Capabilities;
 }
 
+/** Capability change notification — lets persistent components (the root-layout
+ *  Sidebar) re-derive when an admin changes the operating model, instead of
+ *  holding a stale snapshot until a hard refresh. Same-tab by design; other
+ *  tabs refresh on their next hard load as before. */
+export const CAPS_CHANGED_EVENT = "eventcore:caps-changed";
+export function notifyCapabilitiesChanged() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CAPS_CHANGED_EVENT));
+}
+
 const DEFAULTS: BusinessConfig = {
   business_type: "venue",
   operating_model: "template_driven",

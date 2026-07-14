@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   BUSINESS_TYPES, OPERATING_MODELS, BusinessType, OperatingModel,
-  deriveCapabilities, loadCapabilities, Capabilities,
+  deriveCapabilities, loadCapabilities, Capabilities, notifyCapabilitiesChanged,
 } from "@/lib/capabilities";
 import { runTier1Backfill, BackfillResult } from "@/lib/componentBackfill";
 import PageGuard from "@/components/PageGuard";
@@ -48,7 +48,8 @@ function BusinessModelPage() {
       ? await supabase.from("app_settings").update({ value }).eq("key", key)
       : await supabase.from("app_settings").insert({ key, value });
     if (error) { setMsg({ ok: false, text: `Couldn't save: ${error.message} — run v164 SQL if app_settings is missing.` }); return; }
-    setMsg({ ok: true, text: "Saved — takes effect on next page load." });
+    notifyCapabilitiesChanged();  // persistent components (Sidebar) re-derive now
+    setMsg({ ok: true, text: "Saved — applied immediately." });
   }
 
   async function backfill() {

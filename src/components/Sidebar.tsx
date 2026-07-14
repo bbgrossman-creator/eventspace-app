@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { BRAND } from "@/lib/brand";
 import { usePathname } from "next/navigation";
-import { loadCapabilities, Capabilities } from "@/lib/capabilities";
+import { loadCapabilities, Capabilities, CAPS_CHANGED_EVENT } from "@/lib/capabilities";
 import { loadSession, Session, Permission, can } from "@/lib/permissions";
 
 // Nav is DATA. Each item may declare:
@@ -79,6 +79,12 @@ export default function Sidebar() {
       .then(([c, s]) => { setCaps(c.caps); setSession(s); })
       .catch(() => {})
       .finally(() => setReady(true));
+    // The sidebar lives in the persistent root layout: client-side navigation
+    // never remounts it, so a one-shot load would hold a stale caps snapshot
+    // after an admin changes the operating model. Re-derive on notification.
+    const refresh = () => { loadCapabilities().then((c) => setCaps(c.caps)).catch(() => {}); };
+    window.addEventListener(CAPS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(CAPS_CHANGED_EVENT, refresh);
   }, []);
 
   // BOTH dimensions must pass: the tenant has the module AND the user may see it.
