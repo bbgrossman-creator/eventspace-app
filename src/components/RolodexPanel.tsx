@@ -28,8 +28,9 @@ import { Booking, fmtDate } from "@/lib/workflow";
 import { bookingFinancials, ChargeLike } from "@/lib/finance";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { copyComponentsTo } from "@/lib/copyComponents";
+import { loadComponentGallery, GalleryResult } from "@/lib/componentGallery";
 
-interface CompRow { id: string; booking_id: string; domain: string; kind: string | null; title: string; copied_from: string | null; }
+interface CompRow { id: string; booking_id: string; domain: string; kind: string | null; title: string; copied_from: string | null; identity_id: string | null; }
 interface DebriefHit { booking_id: string; author: string | null; text: string; field: "worked" | "didnt_work" | "would_repeat"; }
 interface ChargeRow extends ChargeLike { booking_id: string; }
 
@@ -62,6 +63,21 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
   const [debriefHits, setDebriefHits] = useState<DebriefHit[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});     // component_id → signed URL
   const [reuse, setReuse] = useState<Record<string, number>>({});       // booking_id → times its components were copied
+
+  // Component gallery (v192b — the first identity-backed media consumer).
+  // Keyed by identity_id so the panel stays open across a re-search.
+  const [galleryFor, setGalleryFor] = useState<string | null>(null);
+  const [galleryTitle, setGalleryTitle] = useState("");
+  const [gallery, setGallery] = useState<GalleryResult | null>(null);
+  const [galleryBusy, setGalleryBusy] = useState(false);
+
+  async function openGallery(identityId: string | null, title: string) {
+    if (!identityId) return;   // pre-v192 rows / rows the trigger hasn't caught — nothing to show
+    if (galleryFor === identityId) { setGalleryFor(null); return; }   // toggle closed
+    setGalleryFor(identityId); setGalleryTitle(title); setGallery(null); setGalleryBusy(true);
+    const g = await loadComponentGallery(identityId);
+    setGallery(g); setGalleryBusy(false);
+  }
   const [inspired, setInspired] = useState<Record<string, number>>({}); // booking_id → bookings citing it as source
   const [revenue, setRevenue] = useState<Record<string, number>>({});   // booking_id → contracted total
 
@@ -132,7 +148,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
 
     // 3. All components of shown events (context around the matches).
     const { data: allComps } = await supabase.from("event_components")
-      .select("id,booking_id,domain,kind,title,copied_from").is("proposal_version_id", null)
+      .select("id,booking_id,domain,kind,title,copied_from,identity_id").is("proposal_version_id", null)
       .in("booking_id", shownIds).order("position");
     const byEvent: Record<string, CompRow[]> = {};
     const shownCompIds: string[] = [];
@@ -416,7 +432,9 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {shown.map((c) => (
                   <span key={c.id}
-                    className={`inline-flex items-center gap-1.5 rounded-lg ring-1 px-1.5 py-1 text-[12px] ${matchedComp.has(c.id) ? "ring-[#4A9EFF] bg-[#F4F9FF]" : "ring-[#E7EDF5] bg-[#F6F8FB]"}`}>
+                    onClick={mode === "explore" ? () => openGallery(c.identity_id, c.title) : undefined}
+                    title={mode === "explore" ? (c.identity_id ? "See every photo of this component, across every event" : "No identity yet — run v192 to enable galleries") : undefined}
+                    className={`inline-flex items-center gap-1.5 rounded-lg ring-1 px-1.5 py-1 text-[12px] ${matchedComp.has(c.id) ? "ring-[#4A9EFF] bg-[#F4F9FF]" : "ring-[#E7EDF5] bg-[#F6F8FB]"} ${mode === "explore" && c.identity_id ? "cursor-pointer hover:ring-[#C9A34E]" : ""} ${galleryFor && galleryFor === c.identity_id ? "ring-[#C9A34E] bg-[#FFFBEF]" : ""}`}>
                     {mode === "copy" && (
                       <input type="checkbox" className="accent-[#4A9EFF]" checked={!!checked[c.id]}
                         onChange={(ev) => setChecked((p) => ({ ...p, [c.id]: ev.target.checked }))} />
@@ -431,6 +449,54 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
                 ))}
                 {hidden > 0 && <span className="text-[11px] text-slate-400 self-center">+{hidden} more on the event</span>}
               </div>
+
+              {/* Component gallery — v192b. Renders once, in whichever event
+                  card the click happened in; it shows photos across ALL
+                  events for that identity, not just this one. */}
+              {shown.some((c) => c.identity_id === galleryFor) && (
+                <div className="mt-3 rounded-lg ring-1 ring-[#EAD9B0] bg-[#FFFBEF] p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-[#8A6D1D]">
+                      Gallery — {galleryTitle}
+                      {gallery && gallery.titleVariants.length > 1 && (
+                        <span className="font-normal normal-case text-slate-500"> (also seen as: {gallery.titleVariants.filter((t) => t !== galleryTitle).join(", ")})</span>
+                      )}
+                    </div>
+                    <button className="text-[11px] text-slate-400 hover:text-slate-700" onClick={() => setGalleryFor(null)}>close ✕</button>
+                  </div>
+                  {galleryBusy && <p className="text-[12px] text-slate-400">Loading gallery…</p>}
+                  {!galleryBusy && gallery && gallery.photos.length === 0 && (
+                    <p className="text-[12px] text-slate-400">
+                      {gallery.eventCount} event{gallery.eventCount === 1 ? "" : "s"} used this component — no photos attached yet.
+                    </p>
+                  )}
+                  {!galleryBusy && gallery && gallery.photos.length > 0 && (
+                    <>
+                      <p className="text-[11px] text-slate-400 mb-2">
+                        {gallery.photos.length} photo{gallery.photos.length === 1 ? "" : "s"} across {gallery.eventCount} event{gallery.eventCount === 1 ? "" : "s"}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {gallery.photos.map((p) => (
+                          <Link key={p.photoId} href={`/bookings/${p.bookingId}`}
+                            title={`${p.eventName}${p.eventDate ? " · " + fmtDate(p.eventDate) : ""}${p.caption ? " — " + p.caption : ""}`}
+                            className="block w-20">
+                            {p.url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={p.url} alt="" className="w-20 h-20 rounded object-cover ring-1 ring-[#EAD9B0]" />
+                            ) : (
+                              <div className="w-20 h-20 rounded ring-1 ring-[#EAD9B0] bg-[#F6F8FB] flex items-center justify-center text-slate-300 text-[10px]">
+                                broken
+                              </div>
+                            )}
+                            <div className="text-[10px] text-slate-500 truncate mt-0.5">{p.eventName}</div>
+                            <div className="text-[9px] text-slate-400">{p.eventDate ? fmtDate(p.eventDate) : ""}</div>
+                          </Link>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               {hits.length > 0 && (
                 <div className="mt-2 space-y-1">
