@@ -13,7 +13,7 @@ import {
   PricedItem, PackageLine, ChoiceGroupDef, VersionGuestCount, Adjustment,
 } from "../pricingEngine";
 import { resolveTax } from "../tax";
-import { visibleLenses, defaultLens, lensAllowed, LENSES } from "../lenses";
+import { visibleLenses, defaultLens, lensAllowed, resolveLens, LENSES } from "../lenses";
 import { Capabilities } from "../capabilities";
 import { Permission, Session } from "../permissions";
 
@@ -363,6 +363,43 @@ console.log("\n── v196 · Lens bar is data-driven and doubly gated ──");
   // (Grep-equivalent: strip the type import line, then look for the field.)
   ok("registry never branches on session.role — condition 1",
      !LENSES.some((l) => (l as unknown as { role?: string }).role !== undefined));
+}
+
+
+console.log("\n── v196 · Which lens opens? (the ladder) ──");
+{
+  const caps = (o: Partial<Capabilities> = {}): Capabilities => ({
+    components_editor: false, component_copy: false, rolodex: false,
+    photos_retrieval: false, requirements: false, proposals: false,
+    event_legacy: false, multi_domain: false, ...o,
+  } as Capabilities);
+  const sess = (perms: Permission[]): Session => ({
+    userId: "u", email: "e", tenantId: "t", tenantName: "T",
+    role: "admin", perms, unassigned: false,
+  } as Session);
+  const full = caps({ proposals: true, requirements: true, photos_retrieval: true });
+  const admin = sess(["bookings.view", "bookings.edit", "ops.view", "knowledge.view"]);
+  const viewer = sess(["bookings.view"]);
+
+  ok("explicit (a deep link) wins everything",
+     resolveLens({ caps: full }, admin, { explicit: "production", workspaceLens: "design", preference: "customer" }) === "production");
+  ok("workspace beats obligations and preference",
+     resolveLens({ caps: full }, admin, { workspaceLens: "operations", byObligation: ["production"], preference: "customer" }) === "operations");
+  ok("obligations are the multi-job tiebreak",
+     resolveLens({ caps: full }, admin, { byObligation: ["photography", "production"], preference: "customer" }) === "photography");
+  ok("preference is honoured when nothing else speaks",
+     resolveLens({ caps: full }, admin, { preference: "customer" }) === "customer");
+  ok("no intent ⇒ maker-first, never 'customer' by assumption",
+     resolveLens({ caps: full }, admin, {}) === "design");
+
+  // The rule that makes the ladder safe.
+  ok("a deep link to a FORBIDDEN lens is refused, not obeyed",
+     resolveLens({ caps: full }, viewer, { explicit: "design" }) === "customer");
+  ok("a stale preference for a now-forbidden lens falls through",
+     resolveLens({ caps: full }, viewer, { preference: "production" }) === "customer");
+  ok("an obligation pointing at a capability the tenant lost is skipped",
+     resolveLens({ caps: caps({ proposals: true }) }, admin, { byObligation: ["photography"], preference: "customer" }) === "customer");
+  ok("nothing visible ⇒ null, never a guess", resolveLens({ caps: caps() }, sess([]), { explicit: "design" }) === null);
 }
 
 console.log(`

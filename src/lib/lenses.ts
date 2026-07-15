@@ -115,11 +115,79 @@ export function visibleLenses(config: LensConfig, session: Session | null): Lens
   });
 }
 
-/** The lens to open on. Never assume "customer" — a chef who may not price an
- *  event would land on a page of numbers they cannot read. First visible wins,
- *  and LENSES is ordered maker-first deliberately. */
+// ─── WHICH LENS OPENS? ─────────────────────────────────────────────────────
+// The instinct "resolve permissions → resolve responsibilities → open the most
+// useful lens" is right about the ORDER and wrong about the MECHANISM, and the
+// difference matters:
+//
+//   "Most useful" implies the app COMPUTES usefulness. It almost never has to.
+//   The question is nearly always already answered before it is asked, because
+//   nobody opens an event from nowhere — they arrive from a workspace, from an
+//   obligation, from a search. **Provenance beats inference.** Building a
+//   usefulness scorer would be an oracle where a breadcrumb would do.
+//
+// The multi-job problem dissolves the same way. You are never "a user with four
+// jobs opening an event" — you are *standing in a workspace*, and the event
+// renders through that workspace's lens (R16: Job 1:1 Workspace). A chef in the
+// Production workspace opens an event in Production because that is the door
+// they came through, not because a heuristic ranked it highest.
+//
+// So the ladder is mostly memory, and inference is only the FALLBACK — for the
+// genuinely context-free arrival: a bookmark, an emailed link, a calendar click.
+//
+//   1. EXPLICIT      — the URL names a lens (deep link, or a link built by an
+//                      obligation: "your 3 production items on this event")
+//   2. WORKSPACE     — the door you are standing in            [needs Phase B]
+//   3. OBLIGATIONS   — where YOUR unresolved work on THIS event actually is
+//                      (the tiebreak for a multi-job user, and it is derived)
+//   4. JOB           — your primary job's lens                 [needs Phase B]
+//   5. PREFERENCE    — the lens you left open last
+//   6. FIRST VISIBLE — maker-first ordering; never "customer" by assumption
+//
+// Steps 2 and 4 need jobs/workspaces (Phase B). 1, 5 and 6 work today. Step 3
+// arrives with deriveObligations. The ladder is written whole so that landing
+// each rung is a filled-in branch, not a redesign.
+//
+// AND: EMPTY IS INFORMATION. A chef opening an Exploring event lands in
+// Production and sees nothing — that is CORRECT. Redirecting them to a lens
+// their job does not need would be the app pretending to know better than the
+// person. The honest rendering is the empty lens plus its blocking reason
+// ("quantities open once the menu is confirmed") — which is just the
+// obligation's `blocked` state, rendered.
+
+export interface LensIntent {
+  /** From the URL (?lens=production) or a link an obligation built. Wins. */
+  explicit?: LensKey | null;
+  /** The workspace the user is standing in. Phase B fills this. */
+  workspaceLens?: LensKey | null;
+  /** Lens keys where this user has unresolved work on THIS event, most first.
+   *  The multi-job tiebreak. Derived, never stored. */
+  byObligation?: LensKey[];
+  /** The lens they left open last. */
+  preference?: LensKey | null;
+}
+
+/** The ladder. Every rung is filtered through visibleLenses() — a lens grants
+ *  no permission, so a remembered or deep-linked lens is a REQUEST, never an
+ *  authorization. */
+export function resolveLens(
+  config: LensConfig, session: Session | null, intent: LensIntent = {},
+): LensKey | null {
+  const allowed = visibleLenses(config, session);
+  const ok = (k: LensKey | null | undefined): k is LensKey =>
+    !!k && allowed.some((l) => l.key === k);
+
+  if (ok(intent.explicit)) return intent.explicit;
+  if (ok(intent.workspaceLens)) return intent.workspaceLens;
+  for (const k of intent.byObligation ?? []) if (ok(k)) return k;
+  if (ok(intent.preference)) return intent.preference;
+  return allowed[0]?.key ?? null;   // maker-first; never "customer" by assumption
+}
+
+/** Context-free arrival. Kept as the bottom rung of resolveLens(), named
+ *  separately because "no intent at all" is a real and common case. */
 export function defaultLens(config: LensConfig, session: Session | null): LensKey | null {
-  return visibleLenses(config, session)[0]?.key ?? null;
+  return resolveLens(config, session, {});
 }
 
 /** Is a lens legal for this session? Used to reject a URL naming a lens the

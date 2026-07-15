@@ -22,7 +22,7 @@ import { Booking, fmtDate } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { resolveTaxForTenant, TaxResolution } from "@/lib/tax";
 import StudioShell from "@/components/studio/StudioShell";
-import { visibleLenses, defaultLens, LensKey } from "@/lib/lenses";
+import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import { loadSession, Session } from "@/lib/permissions";
 import { PRICING } from "@/lib/pricing";
 import { Proposal, ProposalVersion, VERSION_FLOW, createVersion } from "@/lib/proposals";
@@ -199,8 +199,21 @@ export default function StudioPage() {
   );
   useEffect(() => {
     if (!caps || lens) return;
-    setLens(defaultLens({ caps }, session));   // never assumes "customer"
+    // Rung 1 (explicit) + rung 5 (preference) are the two that work before
+    // Phase B. An obligation deep-link — "your 3 production items on this
+    // event" — arrives as ?lens=production and wins; both are permission-
+    // checked inside resolveLens, because a lens is a REQUEST, not a grant.
+    const url = new URLSearchParams(window.location.search).get("lens") as LensKey | null;
+    let pref: LensKey | null = null;
+    try { pref = localStorage.getItem("ec:lens") as LensKey | null; } catch { pref = null; }
+    setLens(resolveLens({ caps }, session, { explicit: url, preference: pref }));
   }, [caps, session, lens]);
+
+  // Remember the door they chose. A preference, never a permission.
+  useEffect(() => {
+    if (!lens) return;
+    try { localStorage.setItem("ec:lens", lens); } catch { /* private mode */ }
+  }, [lens]);
   useEffect(() => { loadAll(); loadCanvas(); }, [loadAll, loadCanvas]);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(""), 3500); return () => clearTimeout(t); } }, [toast]);
 
