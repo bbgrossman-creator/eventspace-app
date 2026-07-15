@@ -99,14 +99,14 @@ export async function copyIntoVersion(
     .select("id", { count: "exact", head: true }).eq("proposal_version_id", versionId);
   let pos = count ?? 0;
   const { data: srcRows, error } = await supabase.from("event_components")
-    .select("id,domain,kind,title,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description").in("id", srcComponentIds);
+    .select("id,domain,kind,title,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description,proposal_display,item_categories,item_layout,uncategorized_position").in("id", srcComponentIds);
   if (error) return { ok: false, detail: error.message, copied: 0 };
   const [{ data: its }, { data: rqs }] = await Promise.all([
     supabase.from("component_items").select("*").in("component_id", srcComponentIds).order("position"),
     supabase.from("component_requirements").select("component_id,name,category,notes").in("component_id", srcComponentIds),
   ]);
   let copied = 0;
-  for (const src of (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null; group_label?: string | null; group_position?: number; group_description?: string | null }[]) {
+  for (const src of (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null; group_label?: string | null; group_position?: number; group_description?: string | null; proposal_display?: string | null; item_categories?: unknown; item_layout?: string | null; uncategorized_position?: string | null }[]) {
     const { data: nc, error: cErr } = await supabase.from("event_components").insert({
       booking_id: booking.id, proposal_version_id: versionId,
       domain: src.domain, kind: src.kind, title: src.title, notes: src.notes,
@@ -121,6 +121,13 @@ export async function copyIntoVersion(
       group_label: src.group_label ?? null,
       group_position: src.group_position ?? 0,
       group_description: src.group_description ?? null,
+      // Presentation travels with a reused component: its proven look is part of
+      // why it is being reused. item_categories MUST come along, or the copied
+      // items' category_key values would point at nothing.
+      proposal_display: src.proposal_display ?? null,
+      item_categories: src.item_categories ?? [],
+      item_layout: src.item_layout ?? "vertical",
+      uncategorized_position: src.uncategorized_position ?? "bottom",
       package_price_confirmed: src.package_price == null,
     }).select("id").single();
     if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "?"}`, copied };
@@ -134,7 +141,8 @@ export async function copyIntoVersion(
         taxable: (i.taxable as boolean | null) ?? true,
         catalog_item_id: (i.catalog_item_id as string | null) ?? null,
         applies_to_category_id: (i.applies_to_category_id as string | null) ?? null,
-        served_with: (i.served_with as string | null) ?? null,
+        presentation_note: (i.presentation_note as string | null) ?? null,
+        category_key: (i.category_key as string | null) ?? null,
         item_role: (i.item_role as string | null) ?? "included",
         selected: (i.selected as boolean | null) ?? true,
         position: idx,

@@ -37,7 +37,11 @@ export interface PricedItem {
    *  contributes to Potential Upside only — never totals, invoices, memory. */
   item_role?: "included" | "optional";
   selected?: boolean;
-  served_with?: string | null;
+  /** Presentation copy attached to the item — a complete sentence, printed
+   *  as given (v191: renamed from served_with; no longer accompaniment-only). */
+  presentation_note?: string | null;
+  /** Component-local presentation category key; null = ungrouped. */
+  category_key?: string | null;
   /** Customer-facing visibility. false = internal-only (kept for cost/ops/
    *  purchasing, never rendered on the proposal). Default true. */
   show_on_proposal?: boolean;

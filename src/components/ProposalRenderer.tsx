@@ -62,22 +62,47 @@ export default function ProposalRenderer({ model, draftRibbon = true }: {
                         {comp.description && (
                           <p className="text-[13.5px] leading-relaxed text-slate-600 mt-1">{comp.description}</p>
                         )}
-                        {comp.items.length > 0 && (
-                          <ul className="mt-1.5 space-y-0.5">
-                            {comp.items.map((it, ii) => (
-                              <li key={ii} className="flex items-baseline justify-between gap-3 text-[13.5px] text-slate-600">
-                                <span>
-                                  <span className="text-[#C9A34E] mr-1.5">·</span>
-                                  {it.name}
-                                  {it.optional && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6D28D9]">optional</span>}
-                                  {it.description && <span className="text-slate-400"> — {it.description}</span>}
-                                  {it.servedWith && <span className="block pl-4 text-[12px] italic text-slate-400">served with {it.servedWith}</span>}
-                                </span>
-                                {it.priceLabel && <span className={`whitespace-nowrap ${it.priceLabel === "Pricing pending" ? "text-amber-500 italic" : "text-slate-400"}`}>{it.priceLabel}</span>}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                        {comp.blocks.map((block, bi) => (
+                          <div key={bi} className={bi === 0 ? "mt-1.5" : "mt-2.5"}>
+                            {block.showHeading && block.label && (
+                              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[#C9A34E] mb-1">{block.label}</div>
+                            )}
+                            {block.layout === "vertical" ? (
+                              <ul className="space-y-0.5">
+                                {block.items.map((it, ii) => (
+                                  <li key={ii} className="flex items-baseline justify-between gap-3 text-[13.5px] text-slate-600">
+                                    <span>
+                                      <span className="text-[#C9A34E] mr-1.5">·</span>
+                                      {it.name}
+                                      {it.optional && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#6D28D9]">optional</span>}
+                                      {it.description && <span className="text-slate-400"> — {it.description}</span>}
+                                      {/* Presentation note: printed as stored, no prefix. */}
+                                      {it.note && <span className="block pl-4 text-[12px] italic text-slate-400">{it.note}</span>}
+                                    </span>
+                                    {it.priceLabel && <span className={`whitespace-nowrap ${it.priceLabel === "Pricing pending" ? "text-amber-500 italic" : "text-slate-400"}`}>{it.priceLabel}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              /* Inline runs (comma/dot) are compact prose: per-item price
+                                 labels are suppressed — choose vertical if items need prices.
+                                 The note stays a distinct secondary element (italic, lighter),
+                                 never parenthesised. */
+                              <p className="text-[13.5px] leading-relaxed text-slate-600">
+                                {block.items.map((it, ii) => (
+                                  <span key={ii}>
+                                    {ii > 0 && (block.layout === "dot"
+                                      ? <span className="text-[#C9A34E]"> · </span>
+                                      : <span>, </span>)}
+                                    {it.name}
+                                    {it.optional && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-[#6D28D9]">optional</span>}
+                                    {it.note && <span className="text-[12px] italic text-slate-400"> {it.note}</span>}
+                                  </span>
+                                ))}
+                              </p>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>

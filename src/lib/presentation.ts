@@ -23,19 +23,31 @@ export interface PresentationItem {
   description: string | null;
   price: number | null;          // null when not shown (visibility/basis)
   priceLabel: string | null;     // "$18 / person", "$450", "Pricing pending", or null
-  servedWith: string | null;     // accompaniment, e.g. "Whole-grain Dijon"
+  /** Presentation copy attached to the item — a complete sentence, printed as
+   *  given. NOT accompaniment-only: "Served with au jus", "Carved to order",
+   *  "Choose one sauce". (v191: renamed from servedWith; the renderer no longer
+   *  prefixes anything.) */
+  note: string | null;
   optional: boolean;             // an upgrade the customer may add
 }
 export interface PresentationChoiceGroup {
   label: string; chooseCount: number;
   options: { name: string; description: string | null; priceLabel: string | null }[];
 }
+/** A run of items rendered together — one category, or the ungrouped run.
+ *  Presentation-only: no pricing, no identity beyond its component. */
+export interface PresentationBlock {
+  label: string | null;          // null = the ungrouped run
+  showHeading: boolean;          // false = render items without the heading
+  layout: "vertical" | "comma" | "dot";
+  items: PresentationItem[];
+}
 export interface PresentationComponent {
   title: string;
-  description: string | null;    // customer_description (package) or null
+  description: string | null;    // customer_description (description mode)
   isPackage: boolean;
   priceLabel: string | null;     // shown per visibility
-  items: PresentationItem[];     // empty for package mode
+  blocks: PresentationBlock[];   // empty unless display mode is 'items'
 }
 export interface PresentationBand {
   label: string;                 // "" for ungrouped run
@@ -61,6 +73,43 @@ export interface PresentationModel {
 }
 
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+type ItemLayout = "vertical" | "comma" | "dot";
+const LAYOUTS: ItemLayout[] = ["vertical", "comma", "dot"];
+/** Anything unrecognised (or null) falls back to the safe vertical list. */
+function normLayout(v: unknown): ItemLayout {
+  return typeof v === "string" && (LAYOUTS as string[]).includes(v) ? (v as ItemLayout) : "vertical";
+}
+
+interface CategoryDef {
+  key: string; label: string; position: number;
+  layout: ItemLayout | null;        // null = inherit the component default
+  showHeading: boolean | null;      // null = default (true, unless single-category)
+}
+/** Parse the component-local item_categories jsonb defensively: the DB only
+ *  guarantees it's an array. Malformed entries are skipped rather than thrown —
+ *  a bad category must never break a customer proposal. Explicit `position`
+ *  drives order (array index is only a fallback), so a partial jsonb update
+ *  can't silently reshuffle the menu. */
+function parseCategories(raw: unknown): CategoryDef[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CategoryDef[] = [];
+  raw.forEach((entry, idx) => {
+    if (!entry || typeof entry !== "object") return;
+    const o = entry as Record<string, unknown>;
+    if (typeof o.key !== "string" || !o.key) return;
+    if (out.some((d) => d.key === o.key)) return;   // first definition wins
+    out.push({
+      key: o.key,
+      label: typeof o.label === "string" && o.label.trim() ? o.label : o.key,
+      position: typeof o.position === "number" ? o.position : idx * 10,
+      layout: typeof o.layout === "string" && (LAYOUTS as string[]).includes(o.layout)
+        ? (o.layout as ItemLayout) : null,
+      showHeading: typeof o.show_heading === "boolean" ? o.show_heading : null,
+    });
+  });
+  return out.sort((a, b) => a.position - b.position);
+}
 
 /** THE gateway. Given a proposal version, returns only what a customer may see.
  *  Enforces tenant ownership BEFORE returning anything — whitelisting stops
@@ -120,7 +169,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
   for (const s of (sts ?? []) as { id: string; name: string }[]) secName[s.id] = s.name;
 
   const { data: cs } = await supabase.from("event_components")
-    .select("id,title,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_price_confirmed,customer_description,notes,position,proposal_display")
+    .select("id,title,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_price_confirmed,customer_description,notes,position,proposal_display,item_categories,item_layout,uncategorized_position")
     .eq("proposal_version_id", versionId).order("position");
   const comps = (cs ?? []) as {
     id: string; title: string; section_type_id: string | null;
@@ -129,13 +178,16 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     package_price_confirmed: boolean;
     customer_description: string | null; notes: string | null; position: number;
     proposal_display: string | null;
+    item_categories: unknown;
+    item_layout: string | null;
+    uncategorized_position: string | null;
   }[];
 
-  type ItemRow = { component_id: string; name: string; description: string | null; unit_price: number | null; quantity: number | null; quantity_basis: string | null; applies_to_category_id: string | null; item_role: string | null; selected: boolean; choice_group_id: string | null; price_confirmed: boolean; served_with: string | null; show_on_proposal: boolean };
+  type ItemRow = { component_id: string; name: string; description: string | null; unit_price: number | null; quantity: number | null; quantity_basis: string | null; applies_to_category_id: string | null; item_role: string | null; selected: boolean; choice_group_id: string | null; price_confirmed: boolean; presentation_note: string | null; show_on_proposal: boolean; category_key: string | null };
   const itemsBy: Record<string, ItemRow[]> = {};
   if (comps.length) {
     const { data: its } = await supabase.from("component_items")
-      .select("component_id,name,description,unit_price,quantity,quantity_basis,applies_to_category_id,item_role,selected,choice_group_id,price_confirmed,served_with,show_on_proposal")
+      .select("component_id,name,description,unit_price,quantity,quantity_basis,applies_to_category_id,item_role,selected,choice_group_id,price_confirmed,presentation_note,show_on_proposal,category_key")
       .in("component_id", comps.map((c) => c.id)).order("position");
     for (const i of (its ?? []) as ItemRow[]) {
       (itemsBy[i.component_id] ??= []).push(i);
@@ -188,33 +240,87 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     // Items render only in 'items' mode, and only those flagged
     // show_on_proposal. Internal-only items stay in the operational model for
     // cost/ops/purchasing but never reach the customer projection.
-    const presItems: PresentationItem[] = !showItems ? [] : rawItems
+    // Each survivor keeps its category_key so it can be grouped below.
+    type Pair = { item: PresentationItem; key: string | null };
+    const pairs: Pair[] = [];
+    const toItem = (i: (typeof rawItems)[number], optional: boolean): PresentationItem => ({
+      name: i.name, description: i.description,
+      price: null,
+      priceLabel: priceLabelFor(i.unit_price, i.quantity_basis, i.price_confirmed),
+      note: i.presentation_note,
+      optional,
+    });
+    if (showItems) {
       // Drop unselected optional items, choice-group members (shown elsewhere),
       // and internal-only items.
-      .filter((i) => !i.choice_group_id && i.show_on_proposal !== false
-                     && (i.item_role !== "optional" || i.selected))
-      .map((i) => ({
-        name: i.name, description: i.description,
-        price: null,
-        priceLabel: priceLabelFor(i.unit_price, i.quantity_basis, i.price_confirmed),
-        servedWith: i.served_with,
-        optional: i.item_role === "optional",
-      }));
-
-    // Offer UNSELECTED optionals as "available upgrade" only in items mode with
-    // full visibility, and only if customer-visible.
-    if (showItems && visibility !== "hidden") {
       for (const i of rawItems) {
         if (!i.choice_group_id && i.show_on_proposal !== false
-            && i.item_role === "optional" && !i.selected) {
-          presItems.push({
-            name: i.name, description: i.description, price: null,
-            priceLabel: priceLabelFor(i.unit_price, i.quantity_basis, i.price_confirmed),
-            servedWith: i.served_with, optional: true,
-          });
+            && (i.item_role !== "optional" || i.selected)) {
+          pairs.push({ item: toItem(i, i.item_role === "optional"), key: i.category_key });
+        }
+      }
+      // Offer UNSELECTED optionals as "available upgrade" only with full
+      // visibility, and only if customer-visible. They trail their peers.
+      if (visibility !== "hidden") {
+        for (const i of rawItems) {
+          if (!i.choice_group_id && i.show_on_proposal !== false
+              && i.item_role === "optional" && !i.selected) {
+            pairs.push({ item: toItem(i, true), key: i.category_key });
+          }
         }
       }
     }
+
+    // ── Group into presentation blocks ──────────────────────────────────────
+    // Categories are component-local presentation metadata. An item whose
+    // category_key matches no definition falls back to ungrouped: graceful by
+    // design, since jsonb keys carry no FK integrity.
+    const catDefs = parseCategories(c.item_categories);
+    const compLayout = normLayout(c.item_layout);
+    const byCat = new Map<string, PresentationItem[]>();
+    const ungrouped: PresentationItem[] = [];
+    for (const p of pairs) {
+      const known = p.key != null && catDefs.some((d) => d.key === p.key);
+      if (known) (byCat.get(p.key!) ?? byCat.set(p.key!, []).get(p.key!)!).push(p.item);
+      else ungrouped.push(p.item);
+    }
+
+    // Keep each block paired with the def that produced it — labels may legally
+    // repeat, so the def can only be re-identified by key.
+    const catPairs: { def: CategoryDef; block: PresentationBlock }[] = [];
+    for (const d of catDefs) {
+      const its = byCat.get(d.key);
+      if (!its || its.length === 0) continue;   // never print an empty heading
+      catPairs.push({
+        def: d,
+        block: {
+          label: d.label,
+          showHeading: d.showHeading ?? true,
+          layout: d.layout ?? compLayout,
+          items: its,
+        },
+      });
+    }
+
+    // Single-category rule: one category and nothing ungrouped means the
+    // heading only repeats what the component title already says — suppress it
+    // unless that category explicitly asked to be shown.
+    if (catPairs.length === 1 && ungrouped.length === 0) {
+      catPairs[0].block.showHeading = catPairs[0].def.showHeading === true;
+    }
+    const catBlocks: PresentationBlock[] = catPairs.map((p) => p.block);
+
+    const ungroupedBlock: PresentationBlock | null = ungrouped.length
+      ? { label: null, showHeading: false, layout: compLayout, items: ungrouped }
+      : null;
+
+    // Ungrouped placement is a component choice, defaulting to bottom: a
+    // stray uncategorized item must not leapfrog above Entrées.
+    const blocks: PresentationBlock[] = !ungroupedBlock
+      ? catBlocks
+      : c.uncategorized_position === "top"
+        ? [ungroupedBlock, ...catBlocks]
+        : [...catBlocks, ungroupedBlock];
 
     // Description shows in 'description' mode (any component) OR when a package
     // component is set to items but we still want its blurb — v1: description
@@ -237,7 +343,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
         description: compDescription, // NEVER notes; only customer_description in description mode
         isPackage,
         priceLabel: compPriceLabel,
-        items: presItems,
+        blocks,
       },
     });
   }

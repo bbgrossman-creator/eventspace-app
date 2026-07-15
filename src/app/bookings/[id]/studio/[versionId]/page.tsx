@@ -39,10 +39,40 @@ interface CompRow {
   package_taxable: boolean; package_price_confirmed: boolean; package_cost: number | null;
   customer_description: string | null;
   proposal_display: string | null;
+  item_categories: unknown;
+  item_layout: string | null;
+  uncategorized_position: string | null;
 }
 interface CanvasGroup { sectionTypeId: string | null; name: string; comps: CompRow[]; }
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DOMAINS = ["food", "decor", "flowers", "lighting", "music", "layout", "kids", "staffing", "logistics", "custom"];
+
+/** A component-local presentation category. Not an entity — just instructions
+ *  for how this one component wants to show its items. */
+interface CatDef { key: string; label: string; position: number; layout?: string | null; show_heading?: boolean; }
+/** Read the item_categories jsonb defensively; malformed entries are skipped. */
+function readCats(raw: unknown): CatDef[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CatDef[] = [];
+  raw.forEach((e, idx) => {
+    if (!e || typeof e !== "object") return;
+    const o = e as Record<string, unknown>;
+    if (typeof o.key !== "string" || !o.key || out.some((x) => x.key === o.key)) return;
+    out.push({
+      key: o.key,
+      label: typeof o.label === "string" ? o.label : o.key,
+      position: typeof o.position === "number" ? o.position : idx * 10,
+      layout: typeof o.layout === "string" ? o.layout : null,
+      show_heading: typeof o.show_heading === "boolean" ? o.show_heading : true,
+    });
+  });
+  return out.sort((a, b) => a.position - b.position);
+}
+const LAYOUT_OPTS: { v: string; label: string }[] = [
+  { v: "vertical", label: "Vertical list" },
+  { v: "comma", label: "Comma, inline" },
+  { v: "dot", label: "Dot · inline" },
+];
 
 export default function StudioPage() {
   const params = useParams<{ id: string; versionId: string }>();
@@ -103,7 +133,7 @@ export default function StudioPage() {
       loadGuestCategories(),
       supabase.from("version_guests").select("category_id,count").eq("version_id", versionId),
       supabase.from("version_adjustments").select("*").eq("version_id", versionId).order("position"),
-      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description,proposal_display").eq("proposal_version_id", versionId).order("position"),
+      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description,proposal_display,item_categories,item_layout,uncategorized_position").eq("proposal_version_id", versionId).order("position"),
       loadSectionTypes().catch(() => [] as SectionType[]),
       supabase.from("version_sections").select("section_type_id,position").eq("version_id", versionId).order("position"),
     ]);
@@ -118,7 +148,7 @@ export default function StudioPage() {
     setComps(compRows);
     if (compRows.length) {
       const { data: it, error } = await supabase.from("component_items")
-        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,served_with,show_on_proposal")
+        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,presentation_note,show_on_proposal,category_key")
         .in("component_id", compRows.map((x) => x.id)).order("position");
       if (error) { setErr(`${error.message} — run v178/v179 SQL.`); return; }
       const rows = (it ?? []) as PricedItem[];
@@ -173,6 +203,44 @@ export default function StudioPage() {
     if (!confirm(`Start from ${ev.contact_name}? Adds all ${src.length} of its components to this proposal.`)) return;
     addFromSource(src.map((c) => c.id), `${ev.contact_name}${ev.event_type ? ` ${ev.event_type}` : ""}`);
   }
+  // ── Component-local presentation categories (jsonb) ───────────────────────
+  // Presentation metadata only: no pricing, no lifecycle, no table. The label
+  // lives in exactly one place so items sharing a category cannot drift apart.
+  async function addCategory(c: CompRow) {
+    const label = prompt("Category heading (e.g. Signature Rolls)");
+    if (!label?.trim()) return;
+    const cats = readCats(c.item_categories);
+    // Component-local key: unique within this component, never referenced outside it.
+    const base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 24) || "cat";
+    let key = base; let n = 2;
+    while (cats.some((x) => x.key === key)) key = `${base}_${n++}`;
+    const next = [...cats, {
+      key, label: label.trim(),
+      position: (cats.length ? Math.max(...cats.map((x) => x.position)) : 0) + 10,
+      show_heading: true,
+    }];
+    await patchComp(c.id, { item_categories: next });
+  }
+  async function patchCategory(c: CompRow, key: string, patch: Record<string, unknown>) {
+    const next = readCats(c.item_categories).map((x) => (x.key === key ? { ...x, ...patch } : x));
+    await patchComp(c.id, { item_categories: next });
+  }
+  async function moveCategory(c: CompRow, key: string, dir: -1 | 1) {
+    const cats = readCats(c.item_categories);
+    const i = cats.findIndex((x) => x.key === key);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= cats.length) return;
+    [cats[i], cats[j]] = [cats[j], cats[i]];
+    await patchComp(c.id, { item_categories: cats.map((x, idx) => ({ ...x, position: (idx + 1) * 10 })) });
+  }
+  async function deleteCategory(c: CompRow, key: string) {
+    const orphans = items.filter((i) => i.component_id === c.id && i.category_key === key);
+    if (!confirm(`Remove this heading?${orphans.length ? ` ${orphans.length} item(s) become ungrouped.` : ""}`)) return;
+    await patchComp(c.id, { item_categories: readCats(c.item_categories).filter((x) => x.key !== key) });
+    // Clear the pointer rather than leaving keys aimed at nothing.
+    await Promise.all(orphans.map((i) => patchItem(i.id, { category_key: null })));
+  }
+
   async function patchComp(id: string, patch: Partial<CompRow>) {
     await supabase.from("event_components").update(patch).eq("id", id);
     setComps((p) => p.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -241,7 +309,7 @@ export default function StudioPage() {
       const ids = ((c ?? []) as { id: string }[]).map((x) => x.id);
       if (!ids.length) return 0;
       const [{ data: it }, { data: g }, { data: a }] = await Promise.all([
-        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,served_with,show_on_proposal").in("component_id", ids),
+        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,presentation_note,show_on_proposal,category_key").in("component_id", ids),
         supabase.from("version_guests").select("category_id,count").eq("version_id", vid),
         supabase.from("version_adjustments").select("*").eq("version_id", vid),
       ]);
@@ -643,6 +711,58 @@ export default function StudioPage() {
                             <option value="items">Title + visible items</option>
                           </select>
                         </div>
+                        {/* Item layout + headings only matter when items render. */}
+                        {(c.proposal_display ?? (isPkg ? "description" : "items")) === "items" && (
+                          <div className="rounded-lg ring-1 ring-[#E7EDF5] bg-[#FBFCFE] p-2 mb-1 space-y-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Item layout</span>
+                              <select className="field !py-0.5 !px-1.5 !text-[11px]" disabled={!!locked}
+                                title="Default layout for this component's items. A heading can override it."
+                                value={c.item_layout ?? "vertical"}
+                                onChange={(e) => patchComp(c.id, { item_layout: e.target.value })}>
+                                {LAYOUT_OPTS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                              </select>
+                              <span className="text-[10px] text-slate-400">ungrouped</span>
+                              <select className="field !py-0.5 !px-1.5 !text-[11px]" disabled={!!locked}
+                                title="Where items without a heading appear"
+                                value={c.uncategorized_position ?? "bottom"}
+                                onChange={(e) => patchComp(c.id, { uncategorized_position: e.target.value })}>
+                                <option value="bottom">last</option>
+                                <option value="top">first</option>
+                              </select>
+                            </div>
+                            {readCats(c.item_categories).map((cat, ci, arr) => (
+                              <div key={cat.key} className="flex items-center gap-1 flex-wrap">
+                                <input className="field !py-0.5 !px-1.5 !text-[11px] w-36" disabled={!!locked}
+                                  defaultValue={cat.label}
+                                  onBlur={(e) => e.target.value.trim() && e.target.value !== cat.label
+                                    && patchCategory(c, cat.key, { label: e.target.value.trim() })} />
+                                <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
+                                  title="Layout for this heading (overrides the component default)"
+                                  value={cat.layout ?? ""}
+                                  onChange={(e) => patchCategory(c, cat.key, { layout: e.target.value || null })}>
+                                  <option value="">(default)</option>
+                                  {LAYOUT_OPTS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                                </select>
+                                <label className="flex items-center gap-0.5 text-[10px] text-slate-500" title="Show this heading on the proposal">
+                                  <input type="checkbox" className="accent-[#4A9EFF]" disabled={!!locked}
+                                    checked={cat.show_heading !== false}
+                                    onChange={(e) => patchCategory(c, cat.key, { show_heading: e.target.checked })} />heading
+                                </label>
+                                <button className="text-[10px] text-slate-300 hover:text-slate-600 disabled:opacity-30" disabled={!!locked || ci === 0}
+                                  title="Move up" onClick={() => moveCategory(c, cat.key, -1)}>↑</button>
+                                <button className="text-[10px] text-slate-300 hover:text-slate-600 disabled:opacity-30" disabled={!!locked || ci === arr.length - 1}
+                                  title="Move down" onClick={() => moveCategory(c, cat.key, 1)}>↓</button>
+                                <button className="text-[10px] text-slate-300 hover:text-rose-600" disabled={!!locked}
+                                  title="Remove heading" onClick={() => deleteCategory(c, cat.key)}>✕</button>
+                              </div>
+                            ))}
+                            {!locked && (
+                              <button className="text-[10.5px] text-[#2F80ED] hover:underline"
+                                onClick={() => addCategory(c)}>+ Add heading</button>
+                            )}
+                          </div>
+                        )}
                         <textarea className="field w-full !py-1 !text-[12px] !bg-[#FBFCFE]" rows={2} disabled={!!locked}
                           placeholder="Customer description — what the guest receives (marketing copy, shown on the proposal)"
                           defaultValue={c.customer_description ?? ""}
@@ -668,8 +788,20 @@ export default function StudioPage() {
                             )}
                             <button className="font-medium text-left min-w-0 truncate hover:underline" onClick={() => focusOn(i)}>
                               {i.name}
-                              {i.served_with && <span className="block text-[10px] italic text-slate-400 font-normal">served with {i.served_with}</span>}
+                              {/* Presentation note prints as stored — no prefix (v191). */}
+                              {i.presentation_note && <span className="block text-[10px] italic text-slate-400 font-normal">{i.presentation_note}</span>}
                             </button>
+                            {i.category_key && (
+                              <span className="text-[9px] rounded-full px-1.5 py-0.5 bg-[#EEF4FB] text-slate-500 shrink-0 max-w-[7rem] truncate"
+                                title="Presentation heading">
+                                {readCats(c.item_categories).find((x) => x.key === i.category_key)?.label ?? i.category_key}
+                              </span>
+                            )}
+                            {/* Discoverability: the row must advertise that an item has
+                                details behind it. Without this nobody finds the panel. */}
+                            <button className={`shrink-0 text-[11px] ${focusItem === i.id ? "text-[#2F80ED]" : "text-slate-300 hover:text-[#2F80ED]"}`}
+                              title="Item details — visibility, heading, presentation note, pricing history"
+                              onClick={() => focusOn(i)}>⋯</button>
                             <button
                               className={`shrink-0 text-[13px] leading-none ${i.show_on_proposal === false ? "text-slate-300 hover:text-slate-500" : "text-[#2F80ED] hover:text-[#1b5fc0]"}`}
                               disabled={!!locked}
@@ -850,16 +982,49 @@ export default function StudioPage() {
               </div>
             </div>
 
-            {/* Price intelligence for the focused item */}
+            {/* Everything about the focused item: presentation first, then pricing.
+                Presentation used to hide inside a panel called "Price Memory", so
+                nobody found it — that framing is gone (v191). */}
             {focusItem && (() => {
               const i = items.find((x) => x.id === focusItem);
               if (!i) return null;
               const srp = i.catalog_item_id ? srps[i.catalog_item_id] : null;
               const mem = memory[i.id];
+              const owner = comps.find((x) => x.id === i.component_id);
+              const ownerCats = owner ? readCats(owner.item_categories) : [];
               return (
                 <div className="rounded-xl ring-1 ring-[#E7EDF5] p-3.5 bg-[#FDFDFF]">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Price Memory</div>
-                  <div className="text-[13px] font-semibold mb-1.5">{i.name}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Item Details</div>
+                  <div className="text-[13px] font-semibold mb-2">{i.name}</div>
+
+                  {/* ── Presentation ── */}
+                  <div className="text-[9.5px] font-bold uppercase tracking-wider text-[#2F80ED] mb-1">Presentation</div>
+                  <div className="space-y-1.5 mb-3">
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                      <input type="checkbox" className="accent-[#2F80ED]" disabled={!!locked}
+                        checked={i.show_on_proposal !== false}
+                        onChange={(e) => patchItem(i.id, { show_on_proposal: e.target.checked })} />
+                      Show on proposal
+                      {i.show_on_proposal === false && <span className="text-slate-400">— internal only</span>}
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400 w-14 shrink-0">Heading</span>
+                      <select className="field !py-0.5 !px-1.5 !text-[11px] w-full" disabled={!!locked || !ownerCats.length}
+                        title={ownerCats.length ? "Group this item under a presentation heading" : "Add a heading to this component first"}
+                        value={i.category_key ?? ""}
+                        onChange={(e) => patchItem(i.id, { category_key: e.target.value || null })}>
+                        <option value="">{ownerCats.length ? "(ungrouped)" : "(no headings yet)"}</option>
+                        {ownerCats.map((cat) => <option key={cat.key} value={cat.key}>{cat.label}</option>)}
+                      </select>
+                    </div>
+                    <input className="field !py-0.5 !px-1.5 !text-[11px] w-full" disabled={!!locked}
+                      placeholder="Presentation note — printed as written, e.g. “Served with au jus”, “Carved to order”"
+                      value={i.presentation_note ?? ""}
+                      onChange={(e) => patchItem(i.id, { presentation_note: e.target.value || null })} />
+                  </div>
+
+                  {/* ── Pricing ── */}
+                  <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-400 mb-1">Pricing memory</div>
                   <div className="space-y-1 text-[11px] text-slate-600">
                     {srp?.srp != null && (
                       <p>Suggested <b>{money(srp.srp)}</b>{srp.srp_set_at ? <span className="text-slate-400"> · set {new Date(srp.srp_set_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })}</span> : null}
@@ -879,9 +1044,6 @@ export default function StudioPage() {
                     {mem?.range && <p className="text-slate-400">Range (12mo): {money(mem.range.low)}–{money(mem.range.high)} · {mem.range.count} sales</p>}
                     {!locked && (
                       <div className="pt-1 space-y-1">
-                        <input className="field !py-0.5 !px-1.5 !text-[11px] w-full" placeholder="served with… (accompaniment — shown to customer & kitchen, e.g. Whole-grain Dijon)"
-                          value={i.served_with ?? ""}
-                          onChange={(e) => patchItem(i.id, { served_with: e.target.value || null })} />
                         <input className="field !py-0.5 !px-1.5 !text-[11px] w-full" placeholder="pricing reason (optional)"
                           value={i.pricing_reason ?? ""}
                           onChange={(e) => patchItem(i.id, { pricing_reason: e.target.value || null })} />
@@ -905,7 +1067,7 @@ export default function StudioPage() {
                 </div>
               );
             })()}
-            {!focusItem && <p className="text-[11px] text-slate-300">Click any item name to see its suggested price and sold history here.</p>}
+            {!focusItem && <p className="text-[11px] text-slate-300">Click any item (or its ⋯) for its details — proposal visibility, heading, presentation note, and pricing history.</p>}
           </div>
         </div>
       )}
