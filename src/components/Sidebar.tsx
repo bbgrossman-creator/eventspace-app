@@ -21,7 +21,7 @@ const NAV: NavItem[] = [
   { href: "/calendar", label: "Calendar", icon: "📅", perm: "calendar.view" },
   { href: "/bookings/new", label: "New Inquiry", icon: "📞", perm: "inquiries.create" },
   { href: "/drafts", label: "Inquiry Drafts", icon: "📝", perm: "inquiries.create" },
-  { href: "/rolodex", label: "Rolodex", icon: "🔭", cap: "rolodex", perm: "knowledge.view" },
+  { href: "/rolodex", label: "Library", icon: "🔭", cap: "rolodex", perm: "knowledge.view" },
   // Future, already wired:
   // { href: "/proposals", label: "Proposal Studio", icon: "🎨", cap: "proposals", perm: "bookings.edit" }
   // { href: "/production", label: "Production", icon: "👨‍🍳", cap: "production", perm: "kitchen.view" }

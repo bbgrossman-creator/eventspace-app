@@ -26,6 +26,8 @@ import LibraryBrowser from "@/components/studio/LibraryBrowser";
 import ProposalRenderer from "@/components/ProposalRenderer";
 import { buildPresentationModel, PresentationModel, outlineFromModel } from "@/lib/presentation";
 import DesignOutline from "@/components/studio/renderers/DesignOutline";
+import DesignStage from "@/components/studio/renderers/DesignStage";
+import { buildDesignStage, RawComp, RawItem } from "@/lib/designStageModel";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
 import { loadSession, Session } from "@/lib/permissions";
@@ -240,6 +242,21 @@ export default function StudioPage() {
     return () => { dead = true; };
   }, [versionId, lens, xray, items, comps, guests, adjs]);
 
+  // F focuses the selection; Esc releases. Ignored while typing — an inline
+  // field is content, and content owns its own Escape (abandon the edit).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      if (e.key === "Escape" && focusedId) { e.preventDefault(); setFocusedId(null); }
+      if ((e.key === "f" || e.key === "F") && selectedId && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault(); setFocusedId(focusedId === selectedId ? null : selectedId);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusedId, selectedId]);
+
   // Remember the door they chose. A preference, never a permission.
   useEffect(() => {
     if (!lens) return;
@@ -278,6 +295,24 @@ export default function StudioPage() {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totals, version, comps]);
+
+  const designChapters = useMemo(() => {
+    const secs = vSections
+      .map((vs) => sectionTypes.find((t) => t.id === vs.section_type_id))
+      .filter((x): x is SectionType => !!x)
+      .map((t) => ({ id: t.id, name: t.name }));
+    return buildDesignStage(
+      comps as unknown as RawComp[],
+      items as unknown as RawItem[],
+      secs,
+      (compId) => {
+        const mine = activeItems.filter((i) => i.component_id === compId);
+        if (!mine.length) return null;
+        return computeVersionTotals(mine, guestCounts, [], [], choiceGroups, tax.rate).itemsSubtotal;
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comps, items, vSections, sectionTypes, activeItems, guestCounts, choiceGroups, tax]);
 
   const hasOptions = items.some((i) => i.item_role === "optional");
   const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
@@ -504,7 +539,9 @@ export default function StudioPage() {
   if (caps && !caps.proposals) {
     return <main className="max-w-lg mx-auto px-6 py-20 text-center">
       <div className="text-4xl mb-3">🎨</div>
-      <h1 className="font-display font-bold text-xl mb-2">Proposal Studio</h1>
+      {/* v196 vocabulary sweep: the name has been lying since the One-Stage
+          Doctrine. The Proposal is ONE lens's emission, not the workspace. */}
+      <h1 className="font-display font-bold text-xl mb-2">Event Studio</h1>
       <p className="text-sm text-slate-500">Part of the proposal-driven toolset — enable it under Configuration → Business Model.</p>
     </main>;
   }
@@ -545,43 +582,6 @@ export default function StudioPage() {
           setToast(`"${name}" — instantiate arrives with the drag grammar (identity ${identityId.slice(0, 8)}…)`)
         }
       />
-
-      {/* ── THE STAGE ──────────────────────────────────────────────────────
-           One Stage. The active lens decides the rendering; X-ray decides
-           whether the scaffolding shows. The existing editor below is the
-           X-ray-heavy end of the same spectrum and converges into this in
-           later slices — release by release, never in one rewrite. */}
-      {(lens === "customer" || lens === "design") && (
-        <div className="shrink-0 max-h-[52vh] flex border-b" style={{ borderColor: "#E7EDF5" }}>
-          {/* The rail: a lens-owned projection. It NAVIGATES; it never drives. */}
-          <aside className="w-56 shrink-0 overflow-y-auto border-r bg-white" style={{ borderColor: "#E7EDF5" }}>
-            <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Outline</div>
-            {stage && (
-              <DesignOutline
-                nodes={outlineFromModel(stage)}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                focusedId={focusedId}
-                onFocus={setFocusedId}
-                xray={lens === "design" || xray}
-              />
-            )}
-          </aside>
-          <div className="flex-1 overflow-y-auto bg-[#EEF2F7] px-4 py-4">
-          {stageBusy && !stage && <p className="text-center text-[12px] text-slate-400 py-8">Rendering…</p>}
-          {stage && (
-            <div className="shadow-lg rounded-lg overflow-hidden">
-              <ProposalRenderer model={stage} xray={lens === "design" || xray} draftRibbon />
-            </div>
-          )}
-          {!stageBusy && !stage && (
-            <p className="text-center text-[12px] text-slate-400 py-8">
-              Nothing to show on this lens yet.
-            </p>
-          )}
-          </div>
-        </div>
-      )}
 
       {/* ── Header ── */}
       <div className="shrink-0 bg-white border-b border-[#E7EDF5] px-5 py-3">
@@ -643,13 +643,32 @@ export default function StudioPage() {
       {/* ── Body ── */}
       {tab === "build" && (
         <div className="flex-1 min-h-0 grid grid-cols-[280px_1fr_300px] gap-0">
-          {/* LEFT */}
-          <div className="border-r border-[#E7EDF5] bg-white p-3 min-h-0">
-            <SourceEventPane b={b} currentProposalId={proposal.id} onAdd={addFromSource} onSeed={seedFromEvent} busy={busy || !!locked} />
+          {/* LEFT — the Outline. A lens-owned projection (banked correction:
+               a Layout lens's outline is rooms ▸ zones ▸ stations). It
+               NAVIGATES; it never drives. Its own scroll. */}
+          <div className="border-r border-[#E7EDF5] bg-white min-h-0 overflow-y-auto">
+            <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 sticky top-0 bg-white border-b border-[#EEF2F7]">
+              Outline
+            </div>
+            {stage
+              ? <DesignOutline
+                  nodes={outlineFromModel(stage)}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  focusedId={focusedId}
+                  onFocus={setFocusedId}
+                  xray={lens === "design" || xray}
+                />
+              : <p className="px-3 py-6 text-[12px] text-center text-slate-400">Nothing composed yet.</p>}
           </div>
 
-          {/* CENTER — the canvas */}
-          <div className="min-h-0 overflow-y-auto p-5"
+          {/* CENTER — THE STAGE. One Stage; the active lens decides the
+               rendering (§III.4: a lens may change the rendering, never the
+               scope — both render the WHOLE Design). Its own vertical scroll,
+               which is the bug this rebuild exists to fix: the renderer used
+               to sit ABOVE 700 lines of component forms, so the page scrolled
+               and the Stage never did. */}
+          <div className="min-h-0 overflow-y-auto bg-white"
             onDragOver={(e) => { if (e.dataTransfer.types.includes("text/eventcore-component")) { e.preventDefault(); setDropHot(true); } }}
             onDragLeave={() => setDropHot(false)}
             onDrop={(e) => {
@@ -658,410 +677,35 @@ export default function StudioPage() {
               if (!raw) return;
               e.preventDefault();
               try { const d = JSON.parse(raw); addFromSource([d.id], d.label); } catch {}
-            }}>
-            <div className="max-w-3xl mx-auto space-y-3">
-              {needsGuests && (
-                <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 text-amber-800 text-[12px] px-3 py-2">
-                  👥 This proposal has per-person pricing — enter the guest count on the right to calculate totals.
-                </div>
-              )}
-              {comps.length === 0 && (
-                <div className={`rounded-2xl border-2 border-dashed p-10 text-center transition-colors ${dropHot ? "border-[#4A9EFF] bg-[#F4F9FF]" : "border-[#D8E2EF] bg-white"}`}>
-                  <div className="text-3xl mb-2">🎨</div>
-                  <p className="text-sm font-semibold text-slate-600">The proposal starts here.</p>
-                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                    Open a similar event on the left and drag its components in — or use
-                    <b> ⤓ Start from this event</b> to seed the whole thing, then sculpt.
-                  </p>
-                  {!locked && <button className="btn-primary !py-1.5 !px-3 text-xs mt-4" onClick={() => setSectionPicker(true)}>＋ Add a section</button>}
-                </div>
-              )}
-              {groups.map((g) => (
-                <div key={g.sectionTypeId ?? "none"} className="rounded-2xl ring-1 ring-[#DCE6F2] bg-[#FBFCFE] p-2.5">
-                  <div className="flex items-center gap-2 px-1 pb-1.5">
-                    <span className="font-display font-bold text-[13px] tracking-wide text-[#102F56] uppercase">{g.name}</span>
-                    <span className="text-[10px] text-slate-400">{g.comps.length || "empty"}</span>
-                    {!locked && g.sectionTypeId && (
-                      <span className="ml-auto flex items-center gap-1 text-slate-300">
-                        <button className="hover:text-slate-500" title="Section up" onClick={() => moveSection(g, -1)}>↑</button>
-                        <button className="hover:text-slate-500" title="Section down" onClick={() => moveSection(g, 1)}>↓</button>
-                        <button className="hover:text-red-500" title="Remove section" onClick={() => removeSection(g)}>✕</button>
-                      </span>
-                    )}
-                  </div>
-                  {g.comps.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-[#D8E2EF] py-2.5 text-center text-[11px] text-slate-300"
-                      onDragOver={(e) => { if (e.dataTransfer.types.includes("text/eventcore-reorder")) e.preventDefault(); }}
-                      onDrop={(e) => {
-                        const dragId = e.dataTransfer.getData("text/eventcore-reorder");
-                        if (dragId) { e.preventDefault(); e.stopPropagation(); setCompSection(dragId, g.sectionTypeId); }
-                      }}>
-                      nothing here yet — drop a component or ＋ below
-                    </div>
-                  )}
-                  <div className="space-y-2">
-              {(() => {
-                const norm = (l: string | null) => (l ?? "").trim().toLowerCase();
-                const bandKeys: string[] = [];
-                const bandMeta: Record<string, { label: string; desc: string; minPos: number; comps: CompRow[] }> = {};
-                for (const c of g.comps) {
-                  const k = norm(c.group_label);
-                  if (!k) { const bk = `__bare__${c.id}`; bandKeys.push(bk); bandMeta[bk] = { label: "", desc: "", minPos: c.position + 100000, comps: [c] }; continue; }
-                  if (!bandMeta[k]) { bandMeta[k] = { label: (c.group_label ?? "").trim(), desc: "", minPos: c.group_position, comps: [] }; bandKeys.push(k); }
-                  bandMeta[k].comps.push(c);
-                  bandMeta[k].minPos = Math.min(bandMeta[k].minPos, c.group_position);
-                  if (!bandMeta[k].desc && c.group_description) bandMeta[k].desc = c.group_description;
-                }
-                const orderedKeys = bandKeys.sort((a, z) => bandMeta[a].minPos - bandMeta[z].minPos);
-                return orderedKeys.map((bk) => {
-                  const band = bandMeta[bk];
-                  const isBand = !bk.startsWith("__bare__");
-                  const bandTotal = band.comps.reduce((sum, cc) => {
-                    if (cc.pricing_mode === "package") return sum + (cc.package_price != null ? (cc.package_basis === "per_person" ? cc.package_price * totalGuests : cc.package_price) : 0);
-                    return sum + items.filter((i) => i.component_id === cc.id).reduce((t, i) => {
-                      if (i.unit_price == null || !isActive(i)) return t;
-                      const n = i.quantity_basis === "per_person" ? (i.applies_to_category_id ? (guests[i.applies_to_category_id] ?? 0) : totalGuests) : (i.quantity ?? 1);
-                      return t + i.unit_price * n;
-                    }, 0);
-                  }, 0);
-                  return (
-                  <div key={bk} className={isBand ? "rounded-lg bg-[#F8FAFD] ring-1 ring-[#E7EDF5] p-2" : ""}>
-                    {isBand && (
-                      <div className="flex items-center gap-2 px-1 pb-1.5">
-                        <span className="text-[11px]">◱</span>
-                        <input className="font-display font-semibold text-[12px] bg-transparent outline-none flex-1 min-w-0 focus:bg-white rounded px-1 text-[#334155]"
-                          defaultValue={band.label} disabled={!!locked}
-                          onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== band.label) renameBand(band.label, g.sectionTypeId, v); }} />
-                        <span className="text-[11px] font-semibold text-slate-400">{money(bandTotal)}</span>
-                        {!locked && (
-                          <button className="text-slate-300 hover:text-red-500 text-[11px]" title="Ungroup this band"
-                            onClick={() => { for (const cc of band.comps) assignGroup(cc.id, ""); }}>⊘</button>
-                        )}
-                      </div>
-                    )}
-                    <div className="space-y-2">
-              {band.comps.map((c) => {
-                const isPkg = c.pricing_mode === "package";
-                const its = isPkg ? [] : items.filter((i) => i.component_id === c.id);
-                const pkgTotal = isPkg && c.package_price != null
-                  ? (c.package_basis === "per_person" ? c.package_price * totalGuests : c.package_price) : 0;
-                const secTotal = isPkg ? pkgTotal : its.reduce((s, i) => {
-                  if (i.unit_price == null || !isActive(i)) return s;
-                  const allG = guestCounts.reduce((x, g) => x + g.count, 0);
-                  const n = i.quantity_basis === "per_person"
-                    ? (i.applies_to_category_id ? (guests[i.applies_to_category_id] ?? 0) : allG)
-                    : (i.quantity ?? 1);
-                  return s + i.unit_price * n;
-                }, 0);
-                return (
-                  <div key={c.id}
-                    draggable={!locked}
-                    onDragStart={(e) => { e.dataTransfer.setData("text/eventcore-reorder", c.id); e.dataTransfer.effectAllowed = "move"; }}
-                    onDragOver={(e) => { if (e.dataTransfer.types.includes("text/eventcore-reorder")) e.preventDefault(); }}
-                    onDrop={(e) => {
-                      const dragId = e.dataTransfer.getData("text/eventcore-reorder");
-                      if (dragId) {
-                        e.preventDefault(); e.stopPropagation();
-                        // dropping into another section MOVES the component there
-                        const dragged = comps.find((x) => x.id === dragId);
-                        if (dragged && dragged.section_type_id !== c.section_type_id) setCompSection(dragId, c.section_type_id);
-                        else reorderTo(dragId, c.id);
-                      }
-                    }}
-                    className="rounded-xl bg-white ring-1 ring-[#E7EDF5] shadow-sm">
-                    <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-[#F1F5F9]">
-                      <span className="cursor-grab text-slate-300 select-none" title="Drag to reorder or into another section">⠿</span>
-                      <input className="font-display font-semibold text-[14px] bg-transparent outline-none flex-1 min-w-0 focus:bg-[#F6F8FB] rounded px-1"
-                        defaultValue={c.title} disabled={!!locked}
-                        onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.title) patchComp(c.id, { title: v }); }} />
-                      {isPkg && <span className="text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-[#FEF3C7] text-[#92400E]">package</span>}
-                      {isPkg && c.package_price != null && !c.package_price_confirmed && <span className="text-[10px] font-semibold text-amber-700">⚠ carried</span>}
-                      {secTotal === 0 && totalGuests === 0 && (isPkg ? c.package_basis === "per_person" && c.package_price != null : its.some((i) => i.quantity_basis === "per_person" && i.unit_price != null && isActive(i)))
-                        ? <span className="text-[10px] font-semibold text-amber-600">needs guest count</span>
-                        : <span className="text-[12px] font-semibold text-slate-500">{money(secTotal)}</span>}
-                      {!locked && (
-                        <button className="text-[9px] font-semibold text-slate-300 hover:text-[#2F80ED] uppercase tracking-wide"
-                          title={isPkg ? "Switch to itemized (items return)" : "Switch to package (one price, items hidden & not counted)"}
-                          onClick={() => {
-                            if (!isPkg && items.some((i) => i.component_id === c.id) &&
-                              !confirm("Package mode sells this as ONE unit — its items will be hidden and not counted. Switch?")) return;
-                            patchComp(c.id, { pricing_mode: isPkg ? "itemized" : "package" });
-                          }}>⇄ {isPkg ? "itemize" : "package"}</button>
-                      )}
-                      {!locked && (
-                        <span className="flex items-center gap-1.5 text-slate-300">
-                          <label className="flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
-                            <span className="text-slate-300">§</span>
-                            <select className="field !py-0.5 !px-1 !text-[10px] max-w-[110px]" title="Section — where in the event"
-                              value={c.section_type_id ?? ""}
-                              onChange={(e) => setCompSection(c.id, e.target.value || null)}>
-                              <option value="">— section —</option>
-                              {sectionTypes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </select>
-                          </label>
-                          <label className={`flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide ${c.group_label ? "text-[#6D28D9]" : "text-slate-400"}`}>
-                            <span>◱</span>
-                            <select className={`field !py-0.5 !px-1 !text-[10px] max-w-[130px] ${c.group_label ? "!text-[#6D28D9] !border-[#DDD6FE]" : ""}`}
-                              title="Band — group components into a display (e.g. Stationary Display)"
-                              value={c.group_label ? `existing:${(c.group_label).trim()}` : ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                if (val === "") { assignGroup(c.id, ""); return; }
-                                if (val === "__new") {
-                                  const name = prompt(`New band name for "${c.title}" — e.g. Stationary Display, Chef Stations`, "");
-                                  if (name && name.trim()) assignGroup(c.id, name.trim());
-                                  return;
-                                }
-                                if (val.startsWith("existing:")) assignGroup(c.id, val.slice("existing:".length));
-                              }}>
-                              <option value="">— no band —</option>
-                              {(() => {
-                                // Existing bands in THIS component's section (dedup, case-insensitive).
-                                const here = Array.from(new Set(
-                                  comps.filter((x) => (x.section_type_id ?? "") === (c.section_type_id ?? "") && x.group_label)
-                                    .map((x) => (x.group_label ?? "").trim())
-                                    .filter((l) => l.toLowerCase() !== (c.group_label ?? "").trim().toLowerCase())));
-                                return here.map((label) => <option key={label} value={`existing:${label}`}>{label}</option>);
-                              })()}
-                              {c.group_label && <option value={`existing:${(c.group_label).trim()}`}>{(c.group_label).trim()} ✓</option>}
-                              <option value="__new">＋ New band…</option>
-                            </select>
-                          </label>
-                          <button className="hover:text-slate-500" title="Move up" onClick={() => moveComp(c, -1)}>↑</button>
-                          <button className="hover:text-slate-500" title="Move down" onClick={() => moveComp(c, 1)}>↓</button>
-                          <button className="hover:text-red-500" title="Remove component" onClick={() => deleteComp(c)}>✕</button>
-                        </span>
-                      )}
-                    </div>
-                    {isPkg && (
-                      <div className="px-3.5 py-2.5 space-y-2">
-                        <div className="flex items-center gap-2 flex-wrap text-[12px]">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sell price</span>
-                          <span className="text-slate-400">$</span>
-                          <input type="number" step="0.01" min={0} disabled={!!locked}
-                            className="field !py-0.5 !px-1 !text-[12px] w-24"
-                            value={c.package_price ?? ""}
-                            onChange={(e) => {
-                              const val = e.target.value === "" ? null : parseFloat(e.target.value);
-                              patchComp(c.id, { package_price: val, package_price_confirmed: true });
-                            }} />
-                          <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
-                            value={c.package_basis}
-                            onChange={(e) => patchComp(c.id, { package_basis: e.target.value })}>
-                            <option value="flat">flat</option>
-                            <option value="per_person">/person</option>
-                          </select>
-                          <label className="flex items-center gap-0.5 text-[10px] text-slate-500">
-                            <input type="checkbox" className="accent-[#4A9EFF]" disabled={!!locked}
-                              checked={c.package_taxable} onChange={(e) => patchComp(c.id, { package_taxable: e.target.checked })} />tax
-                          </label>
-                          {!locked && c.package_price != null && !c.package_price_confirmed && (
-                            <button className="text-[10px] font-bold text-amber-700 underline"
-                              onClick={() => patchComp(c.id, { package_price_confirmed: true })}>ok</button>
-                          )}
-                          <span className="ml-auto flex items-center gap-1 text-[10px] text-slate-400">
-                            cost $
-                            <input type="number" step="0.01" min={0} disabled={!!locked}
-                              className="field !py-0.5 !px-1 !text-[10px] w-16" placeholder="opt."
-                              title="Internal cost (optional, dormant) — feeds margin when the purchasing module exists; never shown to customers, never changes the sell price"
-                              value={c.package_cost ?? ""}
-                              onChange={(e) => patchComp(c.id, { package_cost: e.target.value === "" ? null : parseFloat(e.target.value) })} />
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Proposal detail</span>
-                          <select className="field !py-0.5 !px-1.5 !text-[11px]" disabled={!!locked}
-                            title="How much of this component the customer sees on the proposal"
-                            value={c.proposal_display ?? (isPkg ? "description" : "items")}
-                            onChange={(e) => patchComp(c.id, { proposal_display: e.target.value })}>
-                            <option value="title_only">Title only</option>
-                            <option value="description">Title + description</option>
-                            <option value="items">Title + visible items</option>
-                          </select>
-                        </div>
-                        {/* Item layout + headings only matter when items render. */}
-                        {(c.proposal_display ?? (isPkg ? "description" : "items")) === "items" && (
-                          <div className="rounded-lg ring-1 ring-[#E7EDF5] bg-[#FBFCFE] p-2 mb-1 space-y-1.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Item layout</span>
-                              <select className="field !py-0.5 !px-1.5 !text-[11px]" disabled={!!locked}
-                                title="Default layout for this component's items. A heading can override it."
-                                value={c.item_layout ?? "vertical"}
-                                onChange={(e) => patchComp(c.id, { item_layout: e.target.value })}>
-                                {LAYOUT_OPTS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
-                              </select>
-                              <span className="text-[10px] text-slate-400">ungrouped</span>
-                              <select className="field !py-0.5 !px-1.5 !text-[11px]" disabled={!!locked}
-                                title="Where items without a heading appear"
-                                value={c.uncategorized_position ?? "bottom"}
-                                onChange={(e) => patchComp(c.id, { uncategorized_position: e.target.value })}>
-                                <option value="bottom">last</option>
-                                <option value="top">first</option>
-                              </select>
-                            </div>
-                            {readCats(c.item_categories).map((cat, ci, arr) => (
-                              <div key={cat.key} className="flex items-center gap-1 flex-wrap">
-                                <input className="field !py-0.5 !px-1.5 !text-[11px] w-36" disabled={!!locked}
-                                  defaultValue={cat.label}
-                                  onBlur={(e) => e.target.value.trim() && e.target.value !== cat.label
-                                    && patchCategory(c, cat.key, { label: e.target.value.trim() })} />
-                                <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
-                                  title="Layout for this heading (overrides the component default)"
-                                  value={cat.layout ?? ""}
-                                  onChange={(e) => patchCategory(c, cat.key, { layout: e.target.value || null })}>
-                                  <option value="">(default)</option>
-                                  {LAYOUT_OPTS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
-                                </select>
-                                <label className="flex items-center gap-0.5 text-[10px] text-slate-500" title="Show this heading on the proposal">
-                                  <input type="checkbox" className="accent-[#4A9EFF]" disabled={!!locked}
-                                    checked={cat.show_heading !== false}
-                                    onChange={(e) => patchCategory(c, cat.key, { show_heading: e.target.checked })} />heading
-                                </label>
-                                <button className="text-[10px] text-slate-300 hover:text-slate-600 disabled:opacity-30" disabled={!!locked || ci === 0}
-                                  title="Move up" onClick={() => moveCategory(c, cat.key, -1)}>↑</button>
-                                <button className="text-[10px] text-slate-300 hover:text-slate-600 disabled:opacity-30" disabled={!!locked || ci === arr.length - 1}
-                                  title="Move down" onClick={() => moveCategory(c, cat.key, 1)}>↓</button>
-                                <button className="text-[10px] text-slate-300 hover:text-rose-600" disabled={!!locked}
-                                  title="Remove heading" onClick={() => deleteCategory(c, cat.key)}>✕</button>
-                              </div>
-                            ))}
-                            {!locked && (
-                              <button className="text-[10.5px] text-[#2F80ED] hover:underline"
-                                onClick={() => addCategory(c)}>+ Add heading</button>
-                            )}
-                          </div>
-                        )}
-                        <textarea className="field w-full !py-1 !text-[12px] !bg-[#FBFCFE]" rows={2} disabled={!!locked}
-                          placeholder="Customer description — what the guest receives (marketing copy, shown on the proposal)"
-                          defaultValue={c.customer_description ?? ""}
-                          onBlur={(e) => patchComp(c.id, { customer_description: e.target.value || null })} />
-                        <textarea className="field w-full !py-1 !text-[11px] !bg-[#F6F8FB]" rows={2} disabled={!!locked}
-                          placeholder="Internal / production notes — vendor, order details, purchasing reminders (never shown to the customer)"
-                          defaultValue={c.notes ?? ""}
-                          onBlur={(e) => patchComp(c.id, { notes: e.target.value || null })} />
-                      </div>
-                    )}
-                    {!isPkg && (
-                    <div className="px-3.5 py-2 space-y-1">
-                      {its.map((i) => {
-                        const active = isActive(i);
-                        const carried = i.unit_price != null && !i.price_confirmed;
-                        return (
-                          <div key={i.id}
-                            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] ring-1 transition-colors ${focusItem === i.id ? "ring-[#4A9EFF] bg-[#F4F9FF]" : carried ? "ring-amber-300 bg-amber-50" : "ring-transparent hover:ring-[#E7EDF5]"} ${!active ? "opacity-60" : ""}`}>
-                            {i.item_role === "optional" && (
-                              <input type="checkbox" className="accent-[#2F80ED]" disabled={!!locked} title="Customer option — include?"
-                                checked={i.selected !== false}
-                                onChange={(e) => patchItem(i.id, { selected: e.target.checked })} />
-                            )}
-                            <button className="font-medium text-left min-w-0 truncate hover:underline" onClick={() => focusOn(i)}>
-                              {i.name}
-                              {/* Presentation note prints as stored — no prefix (v191). */}
-                              {i.presentation_note && <span className="block text-[10px] italic text-slate-400 font-normal">{i.presentation_note}</span>}
-                            </button>
-                            {i.category_key && (
-                              <span className="text-[9px] rounded-full px-1.5 py-0.5 bg-[#EEF4FB] text-slate-500 shrink-0 max-w-[7rem] truncate"
-                                title="Presentation heading">
-                                {readCats(c.item_categories).find((x) => x.key === i.category_key)?.label ?? i.category_key}
-                              </span>
-                            )}
-                            {/* Discoverability: the row must advertise that an item has
-                                details behind it. Without this nobody finds the panel. */}
-                            <button className={`shrink-0 text-[11px] ${focusItem === i.id ? "text-[#2F80ED]" : "text-slate-300 hover:text-[#2F80ED]"}`}
-                              title="Item details — visibility, heading, presentation note, pricing history"
-                              onClick={() => focusOn(i)}>⋯</button>
-                            <button
-                              className={`shrink-0 text-[13px] leading-none ${i.show_on_proposal === false ? "text-slate-300 hover:text-slate-500" : "text-[#2F80ED] hover:text-[#1b5fc0]"}`}
-                              disabled={!!locked}
-                              title={i.show_on_proposal === false ? "Internal only — hidden from the customer proposal. Click to show." : "Shown on the customer proposal. Click to make internal-only."}
-                              onClick={() => patchItem(i.id, { show_on_proposal: i.show_on_proposal === false })}>
-                              {i.show_on_proposal === false ? "🚫" : "👁"}
-                            </button>
-                            {i.item_role === "optional" && <span className="text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-[#EDE9FE] text-[#6D28D9] shrink-0">option</span>}
-                            {carried && <span className="text-[10px] font-semibold text-amber-700 shrink-0">⚠ carried</span>}
-                            <span className="ml-auto flex items-center gap-1.5 shrink-0">
-                              <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
-                                value={i.quantity_basis ?? "flat"}
-                                onChange={(e) => patchItem(i.id, { quantity_basis: e.target.value })}>
-                                <option value="per_person">/person</option>
-                                <option value="flat">flat</option>
-                                <option value="per_table">/table</option>
-                              </select>
-                              {i.quantity_basis === "per_person" ? (
-                                <select className="field !py-0.5 !px-1 !text-[10px]" disabled={!!locked}
-                                  value={i.applies_to_category_id ?? ""}
-                                  onChange={(e) => patchItem(i.id, { applies_to_category_id: e.target.value || null })}>
-                                  <option value="">All guests</option>
-                                  {cats.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                </select>
-                              ) : (
-                                <input type="number" min={0} disabled={!!locked} className="field !py-0.5 !px-1 !text-[10px] w-12"
-                                  value={i.quantity ?? 1}
-                                  onChange={(e) => patchItem(i.id, { quantity: parseFloat(e.target.value || "1") })} />
-                              )}
-                              <span className="text-slate-400">$</span>
-                              <input type="number" step="0.01" min={0} disabled={!!locked}
-                                className="field !py-0.5 !px-1 !text-[11px] w-[70px]"
-                                value={i.unit_price ?? ""}
-                                onChange={(e) => {
-                                  const val = e.target.value === "" ? null : parseFloat(e.target.value);
-                                  patchItem(i.id, { unit_price: val, price_confirmed: true });
-                                }} />
-                              {carried && !locked && (
-                                <button className="text-[10px] font-bold text-amber-700 underline"
-                                  onClick={() => patchItem(i.id, { price_confirmed: true })}>ok</button>
-                              )}
-                              {!locked && (
-                                <>
-                                  <button className={`text-[10px] ${i.item_role === "optional" ? "text-[#6D28D9]" : "text-slate-300 hover:text-[#6D28D9]"}`}
-                                    title={i.item_role === "optional" ? "Make included" : "Make optional upgrade"}
-                                    onClick={() => patchItem(i.id, i.item_role === "optional" ? { item_role: "included", selected: true } : { item_role: "optional", selected: false })}>
-                                    ☆
-                                  </button>
-                                  <button className="text-slate-300 hover:text-red-500 text-[11px]" onClick={() => deleteItem(i.id)}>✕</button>
-                                </>
-                              )}
-                            </span>
-                          </div>
-                        );
-                      })}
-                      {!locked && (
-                        <button className="text-[11px] text-slate-400 hover:text-[#2F80ED] font-medium pl-2 py-0.5"
-                          onClick={() => addItem(c.id)}>＋ item</button>
-                      )}
-                    </div>
-                    )}
-                  </div>
-                );
-              })}
-                    </div>
-                  </div>
-                  );
-                });
-              })()}
-                  </div>
-                  {!locked && (
-                    <button className="text-[11px] text-slate-400 hover:text-[#2F80ED] font-medium pl-1.5 pt-1.5"
-                      onClick={() => addComponentIn(g.sectionTypeId)}>＋ component</button>
-                  )}
-                </div>
-              ))}
-              {comps.length + groups.length > 0 && !locked && (
-                <div className={`rounded-xl border-2 border-dashed py-3 text-center text-[12px] transition-colors ${dropHot ? "border-[#4A9EFF] bg-[#F4F9FF] text-[#2F80ED]" : "border-[#D8E2EF] text-slate-400"}`}>
-                  Drop a component here — or{" "}
-                  {sectionPicker ? (
-                    <select className="field !py-0.5 !text-[11px]" autoFocus
-                      onChange={(e) => { if (e.target.value === "__new") { const n = prompt("New section name"); if (n?.trim()) { supabase.from("section_types").insert({ name: n.trim(), position: sectionTypes.length }).select("id").single().then(({ data }) => { if (data) addSectionType((data as { id: string }).id); }); } } else if (e.target.value) addSectionType(e.target.value); }}>
-                      <option value="">pick a section…</option>
-                      {sectionTypes.filter((t) => !seen.has(t.id)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                      <option value="__new">＋ new section type…</option>
-                    </select>
-                  ) : (
-                    <button className="font-semibold text-[#2F80ED] hover:underline" onClick={() => setSectionPicker(true)}>＋ add a section</button>
-                  )}
-                </div>
-              )}
-            </div>
+            }}
+            style={dropHot ? { outline: "2px dashed #C9A34E", outlineOffset: -4 } : undefined}
+          >
+            {lens === "design" && (
+              <DesignStage
+                chapters={designChapters}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                focusedId={focusedId}
+                xray={true}
+                mayEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                onPatchComponent={(id, patch) => patchComp(id, patch as Partial<CompRow>)}
+                onPatchItem={(id, patch) => patchItem(id, patch as Partial<PricedItem>)}
+                onAddComponent={(chapterId) => addComponentIn(chapterId === "__none__" ? null : chapterId)}
+                money={money}
+              />
+            )}
+            {lens === "customer" && (
+              <div className="bg-[#EEF2F7] p-4 min-h-full">
+                {stage
+                  ? <div className="shadow-lg rounded-lg overflow-hidden"><ProposalRenderer model={stage} xray={xray} draftRibbon /></div>
+                  : <p className="text-center text-[12px] text-slate-400 py-8">Nothing to show on this lens yet.</p>}
+              </div>
+            )}
+            {lens !== "design" && lens !== "customer" && (
+              <p className="text-center text-[12px] text-slate-400 py-16">
+                This lens has no renderer yet.
+              </p>
+            )}
           </div>
 
           {/* RIGHT — persistent intelligence */}

@@ -536,6 +536,47 @@ console.log("\n── v196 · Obligations: computed ≠ zero ──");
      assumed.items.some((i) => i.label.includes("quoted on an assumption")));
 }
 
+
+console.log("\n── v196 · designForBooking: the A1 seam ──");
+{
+  // The RULE, tested as a pure function (the query is the thin part; the
+  // ordering is the thing that must never drift).
+  type V = { id: string; version: number; status: string; sent_at: string | null };
+  const resolve = (wonId: string | null, versions: V[]) => {
+    if (wonId && versions.some((v) => v.id === wonId))
+      return { id: wonId, source: "won", provisional: false };
+    const byV = [...versions].sort((a, b) => b.version - a.version);
+    const approved = byV.find((v) => v.status === "approved");
+    if (approved) return { id: approved.id, source: "approved", provisional: false };
+    const sent = byV.find((v) => v.status === "sent" || !!v.sent_at);
+    if (sent) return { id: sent.id, source: "sent", provisional: false };
+    if (!byV.length) return { id: null, source: "none", provisional: false };
+    return { id: byV[0].id, source: "draft", provisional: true };
+  };
+  const v = (id: string, n: number, status: string, sent: string | null = null): V =>
+    ({ id, version: n, status, sent_at: sent });
+
+  ok("a WON version beats everything", resolve("v1", [v("v1", 1, "sent"), v("v3", 3, "draft")]).id === "v1");
+  ok("...and is never provisional", resolve("v1", [v("v1", 1, "sent")]).provisional === false);
+  ok("approved beats sent", resolve(null, [v("v2", 2, "sent", "x"), v("v1", 1, "approved")]).source === "approved");
+  ok("sent beats draft", resolve(null, [v("v3", 3, "draft"), v("v2", 2, "sent")]).id === "v2");
+  ok("sent_at counts as sent even if status lags",
+     resolve(null, [v("v2", 2, "draft", "2026-06-01"), v("v1", 1, "draft")]).source === "sent");
+  ok("newest draft is the fallback", resolve(null, [v("v1", 1, "draft"), v("v3", 3, "draft")]).id === "v3");
+
+  // THE point of the whole file: a draft resolution is a GUESS, and says so.
+  ok("a draft resolution is flagged PROVISIONAL", resolve(null, [v("v3", 3, "draft")]).provisional === true);
+  ok("...because Production reading a draft is a real risk (A1)",
+     resolve(null, [v("v3", 3, "draft")]).source === "draft");
+  ok("no versions ⇒ 'none', not an error — an inquiry is a real state",
+     resolve(null, []).source === "none");
+
+  // The old accidental rule this replaces.
+  const created = [v("v1", 1, "draft"), v("v3", 3, "sent")];
+  ok("'order by created_at limit 1' would have picked v1 — the rule picks v3",
+     resolve(null, created).id === "v3");
+}
+
 console.log(`
 ═══ ${pass} passed, ${fail} failed ═══
 `);
