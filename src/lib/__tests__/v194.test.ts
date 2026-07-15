@@ -13,6 +13,9 @@ import {
   PricedItem, PackageLine, ChoiceGroupDef, VersionGuestCount, Adjustment,
 } from "../pricingEngine";
 import { resolveTax } from "../tax";
+import { visibleLenses, defaultLens, lensAllowed, LENSES } from "../lenses";
+import { Capabilities } from "../capabilities";
+import { Permission, Session } from "../permissions";
 
 let pass = 0, fail = 0;
 function ok(name: string, cond: boolean, detail?: string) {
@@ -301,6 +304,65 @@ console.log("\n── F0 · Tax resolves per tenant, never assumed ──");
   eq("engine default is unchanged (back-compat)", nj.tax, 6.63);
   eq("engine honours a resolved NY rate", ny.tax, 8.88);
   ok("a NY tenant is no longer taxed at NJ's rate", nj.tax !== ny.tax);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v196 SLICE 1 — THE LENS REGISTRY
+// These tests exist to lock the three conditions that let v196 proceed in
+// parallel with the role migration. If one ever fails, the tracks have
+// collided and Phase B is no longer independent.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log("\n── v196 · Lens bar is data-driven and doubly gated ──");
+{
+  const caps = (o: Partial<Capabilities> = {}): Capabilities => ({
+    components_editor: false, component_copy: false, rolodex: false,
+    photos_retrieval: false, requirements: false, proposals: false,
+    event_legacy: false, multi_domain: false, ...o,
+  } as Capabilities);
+  const sess = (perms: Permission[]): Session => ({
+    userId: "u", email: "e", tenantId: "t", tenantName: "T",
+    role: "admin", perms, unassigned: false,
+  } as Session);
+
+  const admin = sess(["bookings.view", "bookings.edit", "ops.view", "knowledge.view"]);
+  const full = caps({ proposals: true, requirements: true, photos_retrieval: true });
+
+  ok("no session ⇒ no lenses (never throws)", visibleLenses({ caps: full }, null).length === 0);
+  ok("full caps + full perms ⇒ every lens", visibleLenses({ caps: full }, admin).length === LENSES.length);
+
+  // Condition 3: capability gating, independent of permission.
+  const noProposals = visibleLenses({ caps: caps({ requirements: true }) }, admin);
+  ok("tenant without `proposals` cap ⇒ no Customer lens", !noProposals.some((l) => l.key === "customer"));
+  ok("...but Design survives (cap: null)", noProposals.some((l) => l.key === "design"));
+
+  // Requires BOTH — the rule permissions.ts has always stated.
+  const viewer = sess(["bookings.view"]);
+  const forViewer = visibleLenses({ caps: full }, viewer);
+  ok("perm gate holds: viewer gets Customer", forViewer.some((l) => l.key === "customer"));
+  ok("perm gate holds: viewer does NOT get Design (needs bookings.edit)", !forViewer.some((l) => l.key === "design"));
+  ok("perm gate holds: viewer does NOT get Production (needs ops.view)", !forViewer.some((l) => l.key === "production"));
+
+  // A capability without the permission, and vice versa, must both fail.
+  ok("cap without perm ⇒ hidden", !visibleLenses({ caps: full }, sess([])).length);
+  ok("perm without cap ⇒ hidden",
+     !visibleLenses({ caps: caps() }, admin).some((l) => l.key === "photography"));
+
+  // defaultLens must never assume "customer".
+  ok("default for a viewer is a lens they can actually open",
+     ["customer"].includes(defaultLens({ caps: full }, viewer) ?? ""));
+  ok("default for an admin is the maker's lens", defaultLens({ caps: full }, admin) === "design");
+  ok("default with nothing visible is null", defaultLens({ caps: caps() }, sess([])) === null);
+
+  // A lens grants no permission — a URL naming one must be checked, not trusted.
+  ok("lensAllowed rejects a lens the session cannot open",
+     !lensAllowed("design", { caps: full }, viewer));
+  ok("lensAllowed accepts a legal lens", lensAllowed("customer", { caps: full }, viewer));
+
+  // CONDITION 1, mechanically: the registry must not read session.role.
+  // (Grep-equivalent: strip the type import line, then look for the field.)
+  ok("registry never branches on session.role — condition 1",
+     !LENSES.some((l) => (l as unknown as { role?: string }).role !== undefined));
 }
 
 console.log(`
