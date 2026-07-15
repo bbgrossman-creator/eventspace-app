@@ -31,6 +31,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useEffect } from "react";
 import { LensDef, LensKey } from "@/lib/lenses";
+import { ModuleObligations, obligationBadge, badgeTitle } from "@/lib/obligations";
 import { Session } from "@/lib/permissions";
 
 const T = {
@@ -85,9 +86,16 @@ export interface LensBarProps {
    *  previously only visible inside the totals panel — i.e. only to someone
    *  already looking at money. */
   debtCount?: number;
+  /** v196: per-lens obligations, keyed by the lens's MODULE. The badges are
+   *  `count(deriveObligations(event, lens.module))` — the "dominance bars",
+   *  realized: Production lights up when Production is owed something and
+   *  stays dark during Exploring because nothing is yet owed. Saliency is
+   *  DERIVED; a stored phase would be the single-status-column bug v177
+   *  refused. */
+  obligations?: Partial<Record<string, ModuleObligations>>;
 }
 
-export function LensBar({ lenses, active, onSelect, xray, onXray, session, debtCount = 0 }: LensBarProps) {
+export function LensBar({ lenses, active, onSelect, xray, onXray, session, debtCount = 0, obligations }: LensBarProps) {
   // X-ray reveals the scaffolding an author needs (hidden items, amber prices,
   // drop zones). Someone who cannot edit has no use for it — and showing it
   // would leak internal truth to a read-only viewer. Perms, never role.
@@ -106,18 +114,36 @@ export function LensBar({ lenses, active, onSelect, xray, onXray, session, debtC
     <div className="flex items-center gap-1 px-3 py-1.5 border-b" style={{ borderColor: T.rule, background: T.soft }}>
       {lenses.map((l) => {
         const on = l.key === active;
+        const mod = obligations?.[l.module];
+        const badge = mod ? obligationBadge(mod) : null;
         return (
           <button
             key={l.key}
             onClick={() => onSelect(l.key)}
-            title={l.blurb}
+            // The tooltip carries the honesty: it distinguishes "nothing
+            // outstanding" from "not yet computed". A bare badge cannot.
+            title={mod ? `${l.blurb}\n\n${badgeTitle(mod)}` : l.blurb}
             aria-pressed={on}
-            className={`text-[12px] px-2.5 py-1 rounded-md transition-colors ${
+            className={`flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md transition-colors ${
               on ? "font-semibold bg-white shadow-sm" : "text-slate-500 hover:text-slate-800"
             }`}
             style={on ? { color: T.navy } : undefined}
           >
             {l.label}
+            {/* NO badge when computed-and-zero, and NO badge when uncomputed.
+                A "0" would be a claim — and for an uncomputed module it would
+                be a FALSE claim of cleanliness. Silence is the honest render;
+                the tooltip says which silence it is. */}
+            {badge && (
+              <span
+                className={`text-[10px] font-bold leading-none px-1 py-0.5 rounded-full ${
+                  badge.blocked ? "text-white" : "text-white"
+                }`}
+                style={{ background: badge.blocked ? "#94A3B8" : T.gold, minWidth: 14 }}
+              >
+                {badge.n}
+              </span>
+            )}
           </button>
         );
       })}
@@ -164,6 +190,7 @@ export default function StudioShell(p: StudioShellProps) {
       <LensBar
         lenses={p.lenses} active={p.active} onSelect={p.onSelect}
         xray={p.xray} onXray={p.onXray} session={p.session} debtCount={p.debtCount}
+        obligations={p.obligations}
       />
     </>
   );

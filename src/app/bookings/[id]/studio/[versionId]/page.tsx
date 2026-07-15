@@ -27,6 +27,7 @@ import ProposalRenderer from "@/components/ProposalRenderer";
 import { buildPresentationModel, PresentationModel, outlineFromModel } from "@/lib/presentation";
 import DesignOutline from "@/components/studio/renderers/DesignOutline";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
+import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
 import { loadSession, Session } from "@/lib/permissions";
 import { PRICING } from "@/lib/pricing";
 import { Proposal, ProposalVersion, VERSION_FLOW, createVersion } from "@/lib/proposals";
@@ -261,6 +262,23 @@ export default function StudioPage() {
   const totals = useMemo(() => computeVersionTotals(activeItems, guestCounts, adjs, packageLines, choiceGroups, tax.rate),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [items, comps, guests, adjs, cats, choiceGroups, tax]);
+  // Every lens's badge comes from ONE derivation. The oversight strip (v197)
+  // will call the same function and count — which is why a rail and a summary
+  // cannot disagree. One derivation, many renderings.
+  const obligations = useMemo(() => {
+    const ctx = {
+      totals,
+      versionStatus: version?.status ?? null,
+      hasIntro: !!((version as { customer_intro?: string | null } | null)?.customer_intro ?? "").trim(),
+      componentCount: comps.length,
+    };
+    const mods: ObligationModule[] = ["events", "production", "operations", "photography", "finance"];
+    const out: Record<string, ModuleObligations> = {};
+    for (const m of mods) out[m] = deriveObligations(m, ctx);
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totals, version, comps]);
+
   const hasOptions = items.some((i) => i.item_role === "optional");
   const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
   // "$0.00" would be a lie of precision: per-person items aren't zero, they're
@@ -511,6 +529,7 @@ export default function StudioPage() {
           xray={xray}
           onXray={setXray}
           debtCount={totals.unconfirmed + totals.unpriced}
+          obligations={obligations}
           onOpenLibrary={() => setLibraryOpen(true)}
         />
       </div>

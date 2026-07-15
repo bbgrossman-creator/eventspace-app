@@ -10,9 +10,10 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   computeVersionTotals, resolveChoices, audienceCount, isPriceDebt,
-  PricedItem, PackageLine, ChoiceGroupDef, VersionGuestCount, Adjustment,
+  PricedItem, PackageLine, ChoiceGroupDef, VersionGuestCount, Adjustment, VersionTotals,
 } from "../pricingEngine";
 import { resolveTax } from "../tax";
+import { deriveObligations, obligationBadge, badgeTitle } from "../obligations";
 import { visibleLenses, defaultLens, lensAllowed, resolveLens, LENSES } from "../lenses";
 import { Capabilities } from "../capabilities";
 import { Permission, Session } from "../permissions";
@@ -476,6 +477,63 @@ console.log("\n── v196 · X-ray is a MODEL difference, not a CSS difference 
   const visible = (xray: boolean) => rows.filter((r) => !r.hidden || xray).map((r) => r.name);
   ok("customer model omits the heat lamps ENTIRELY", JSON.stringify(visible(false)) === JSON.stringify(["Prime Rib"]));
   ok("xray model includes them, flagged", visible(true).length === 2);
+}
+
+
+console.log("\n── v196 · Obligations: computed ≠ zero ──");
+{
+  const t = (o: Partial<VersionTotals> = {}): VersionTotals => ({
+    itemsSubtotal: 0, baseSubtotal: 0, upside: 0, adjustmentsTotal: 0,
+    taxable: 0, tax: 0, total: 0, unconfirmed: 0, unpriced: 0,
+    choiceAssumptions: [], ...o,
+  } as VersionTotals);
+
+  // THE honesty property: a module with no derivation must not claim clean.
+  const prod = deriveObligations("production", { totals: t() });
+  ok("production is NOT computed (no module exists yet)", prod.computed === false);
+  ok("...and renders NO badge — never a zero", obligationBadge(prod) === null);
+  ok("...and its tooltip says which silence it is",
+     badgeTitle(prod).includes("Not yet computed"));
+
+  const clean = deriveObligations("events", { totals: t(), versionStatus: "approved", hasIntro: true, componentCount: 5 });
+  ok("sales with nothing owed IS computed", clean.computed === true);
+  ok("...and also renders no badge (zero is not a claim worth making)", obligationBadge(clean) === null);
+  ok("...but its tooltip says 'Nothing outstanding'", badgeTitle(clean) === "Nothing outstanding");
+  ok("the two silences are DIFFERENT facts",
+     badgeTitle(prod) !== badgeTitle(clean));
+
+  const debt = deriveObligations("events", {
+    totals: t({ unconfirmed: 4, unpriced: 2 }), versionStatus: "draft", hasIntro: false, componentCount: 17,
+  });
+  const b = obligationBadge(debt);
+  ok("4 carried + 2 unpriced + unsent + no intro ⇒ 4 obligations", b?.n === 4);
+  ok("each names its count in the label",
+     debt.items.some((i) => i.label === "4 carried prices unconfirmed"));
+  ok("singular/plural is honest", deriveObligations("events", {
+     totals: t({ unconfirmed: 1 }), componentCount: 1,
+  }).items.some((i) => i.label === "1 carried price unconfirmed"));
+
+  // blocked names its blocker — "nothing here" is a worse answer than "waiting on X"
+  const empty = deriveObligations("events", { totals: t(), versionStatus: "draft", hasIntro: true, componentCount: 0 });
+  const send = empty.items.find((i) => i.id === "send");
+  ok("an empty draft BLOCKS sending", send?.state === "blocked");
+  ok("...and says what it waits on", send?.blockedBy === "Nothing composed yet");
+  ok("a blocked badge is visually distinct", obligationBadge(empty)?.blocked === true);
+
+  // Obligations carry the lens — which is how rung 1 of the ladder gets fed.
+  ok("obligations name where to resolve them", debt.items.every((i) => !!i.lens));
+
+  // v194 P0.5/P0.6 paying off: internal rows can't manufacture sales debt.
+  ok("hidden operational items create no obligation (unpriced already excludes them)",
+     deriveObligations("events", { totals: t({ unpriced: 0 }), componentCount: 3, versionStatus: "approved", hasIntro: true }).items.length === 0);
+
+  // A quoted assumption is a thing to resolve, not a footnote.
+  const assumed = deriveObligations("events", {
+    totals: t({ choiceAssumptions: [{ groupId: "g", label: "Entrées", detail: "no default" }] }),
+    versionStatus: "approved", hasIntro: true, componentCount: 5,
+  });
+  ok("a choice group quoted on an assumption becomes an obligation",
+     assumed.items.some((i) => i.label.includes("quoted on an assumption")));
 }
 
 console.log(`
