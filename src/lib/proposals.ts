@@ -136,12 +136,12 @@ async function copyComponentsBetween(
   bookingId: string, fromVersionId: string | null, toVersionId: string,
 ): Promise<Outcome> {
   let q = supabase.from("event_components")
-    .select("id,domain,kind,title,position,copied_from,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description,proposal_display,item_categories,item_layout,uncategorized_position")
+    .select("id,domain,kind,title,position,copied_from,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description,proposal_display,item_categories,item_layout,uncategorized_position,identity_id")
     .eq("booking_id", bookingId).order("position");
   q = fromVersionId ? q.eq("proposal_version_id", fromVersionId) : q.is("proposal_version_id", null);
   const { data: srcRows, error } = await q;
   if (error) return { ok: false, detail: error.message };
-  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null; group_label?: string | null; group_position?: number; group_description?: string | null; proposal_display?: string | null; item_categories?: unknown; item_layout?: string | null; uncategorized_position?: string | null }[];
+  const sources = (srcRows ?? []) as { id: string; domain: string; kind: string | null; title: string; position: number; copied_from: string | null; notes: string | null; section_type_id?: string | null; pricing_mode?: string; package_price?: number | null; package_basis?: string | null; package_taxable?: boolean | null; package_cost?: number | null; customer_description?: string | null; group_label?: string | null; group_position?: number; group_description?: string | null; proposal_display?: string | null; item_categories?: unknown; item_layout?: string | null; uncategorized_position?: string | null; identity_id?: string | null }[];
   if (!sources.length) return { ok: true };
 
   const ids = sources.map((s) => s.id);
@@ -155,6 +155,7 @@ async function copyComponentsBetween(
       booking_id: bookingId, proposal_version_id: toVersionId,
       domain: src.domain, kind: src.kind, title: src.title, position: src.position,
       copied_from: src.copied_from,   // ← passthrough, NOT src.id
+      identity_id: src.identity_id ?? null,   // identity travels — a renamed instance keeps its noun
       notes: src.notes,
       section_type_id: src.section_type_id ?? null,   // section knowledge travels
       pricing_mode: src.pricing_mode ?? "itemized",
