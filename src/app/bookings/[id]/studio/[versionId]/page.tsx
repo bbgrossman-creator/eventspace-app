@@ -21,6 +21,9 @@ import { supabase } from "@/lib/supabase";
 import { Booking, fmtDate } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { resolveTaxForTenant, TaxResolution } from "@/lib/tax";
+import StudioShell from "@/components/studio/StudioShell";
+import { visibleLenses, defaultLens, LensKey } from "@/lib/lenses";
+import { loadSession, Session } from "@/lib/permissions";
 import { PRICING } from "@/lib/pricing";
 import { Proposal, ProposalVersion, VERSION_FLOW, createVersion } from "@/lib/proposals";
 import {
@@ -109,6 +112,12 @@ export default function StudioPage() {
   // tenant has no configured rate and is silently inheriting New Jersey's —
   // which is exactly the bug F0 exists to make visible.
   const [tax, setTax] = useState<TaxResolution>({ rate: PRICING.TAX_RATE, source: "legacy_constant", isFallback: true });
+  // v196 slice 2 — the shell. `session` is read for PERMS ONLY (condition 1);
+  // this page must never branch on session.role, or Phase B stops being an
+  // independent track.
+  const [session, setSession] = useState<Session | null>(null);
+  const [lens, setLens] = useState<LensKey | null>(null);
+  const [xray, setXray] = useState(true);   // authors default to seeing the truth
   const [srps, setSrps] = useState<Record<string, { srp: number | null; srp_set_at: string | null }>>({});
 
   // Focus / intelligence rail
@@ -160,6 +169,7 @@ export default function StudioPage() {
     setChoiceGroups(((cg ?? []) as { id: string; label: string; choose_count: number }[])
       .map((x) => ({ id: x.id, choose_count: x.choose_count, label: x.label })));
     setTax(await resolveTaxForTenant());
+    setSession(await loadSession());
     const compRows = (c ?? []) as CompRow[];
     setComps(compRows);
     if (compRows.length) {
@@ -180,6 +190,17 @@ export default function StudioPage() {
   }, [versionId]);
 
   useEffect(() => { loadCapabilities().then((x) => setCaps(x.caps)); }, []);
+
+  // The lens bar is DATA: this page renders whatever visibleLenses() returns
+  // and knows the name of no lens. Adding one is a row in lib/lenses.ts.
+  const lenses = useMemo(
+    () => (caps ? visibleLenses({ caps }, session) : []),
+    [caps, session],
+  );
+  useEffect(() => {
+    if (!caps || lens) return;
+    setLens(defaultLens({ caps }, session));   // never assumes "customer"
+  }, [caps, session, lens]);
   useEffect(() => { loadAll(); loadCanvas(); }, [loadAll, loadCanvas]);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(""), 3500); return () => clearTimeout(t); } }, [toast]);
 
@@ -434,6 +455,23 @@ export default function StudioPage() {
 
   return (
     <main className="h-[calc(100vh-0px)] flex flex-col bg-[#F6F8FB]">
+      {/* ── v196 shell: Library (global, learned tense) then the lens bar
+           (event-scoped). The existing header below is untouched — it already
+           carries title/version/contact/date, and a second event strip would
+           be one truth rendered twice. ── */}
+      <div className="shrink-0">
+        <StudioShell
+          session={session}
+          lenses={lenses}
+          active={lens}
+          onSelect={setLens}
+          xray={xray}
+          onXray={setXray}
+          debtCount={totals.unconfirmed + totals.unpriced}
+          onOpenLibrary={() => setToast("Library — Ctrl+K opens the browser in the next slice")}
+        />
+      </div>
+
       {/* ── Header ── */}
       <div className="shrink-0 bg-white border-b border-[#E7EDF5] px-5 py-3">
         <div className="flex items-center gap-3 flex-wrap">
