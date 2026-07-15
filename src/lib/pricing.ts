@@ -90,6 +90,12 @@ export function invoiceTotals(base: number, charges: ChargeRow[]) {
   const taxableExtra = charges.filter(c => c.taxable).reduce((s, c) => s + c.quantity * c.unit_price, 0);
   const nonTaxable   = charges.filter(c => !c.taxable).reduce((s, c) => s + c.quantity * c.unit_price, 0);
   const subtotal = Math.round((base + taxableExtra + nonTaxable) * 100) / 100;
+  // ⚠️ F0 GAP — KNOWN, NOT FIXED. This is the legacy buffet path (the
+  // Apps Script port) and it still reads the hard-coded NJ constant. It is
+  // correct for Burger Bar and WRONG for any non-NJ tenant using template-
+  // driven buffets. The Studio/proposal path is fixed; this one needs the
+  // rate threaded from the caller, which means touching the buffet invoice
+  // surface. Deliberately deferred, not overlooked — see menu/page.tsx too.
   const tax = Math.round((base + taxableExtra) * PRICING.TAX_RATE * 100) / 100;
   const total = Math.round((subtotal + tax) * 100) / 100;
   return { subtotal, tax, total };

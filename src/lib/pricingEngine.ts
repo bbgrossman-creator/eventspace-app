@@ -12,7 +12,8 @@
 // TOTALS: per_person items multiply against the version's frozen guest
 // counts (by category, or all). Percent adjustments compute against the
 // components subtotal ONLY — adjustments never compound. Tax uses the same
-// PRICING.TAX_RATE the invoice uses.
+// the resolved tax rate the invoice uses (F0: lib/tax.ts resolves it;
+// this engine only multiplies by it).
 //
 // GENERATION: approval offers one-way generation into charges, each line
 // stamped source_proposal_version_id. Regeneration from a later version
@@ -312,6 +313,11 @@ export function computeVersionTotals(
   adjustments: Adjustment[],
   packages: PackageLine[] = [],
   choiceGroups: ChoiceGroupDef[] = [],
+  /** F0: the RESOLVED tax rate for this event (see lib/tax.ts). The engine
+   *  stays pure — it does no IO and knows nothing about tenants. Omitted =
+   *  the legacy NJ constant, so every existing caller is unchanged until it
+   *  opts in. */
+  taxRate: number = PRICING.TAX_RATE,
 ): VersionTotals {
   const allGuests = guests.reduce((s, g) => s + g.count, 0);
   const countFor = (categoryId: string | null) =>
@@ -361,7 +367,7 @@ export function computeVersionTotals(
   }
 
   const r2 = (n: number) => Math.round(n * 100) / 100;
-  const tax = r2(taxableBase * PRICING.TAX_RATE);
+  const tax = r2(taxableBase * taxRate);   // F0: resolved, not assumed
   return {
     itemsSubtotal: r2(itemsSubtotal),
     baseSubtotal: r2(baseSubtotal),

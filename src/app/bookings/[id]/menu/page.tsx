@@ -83,6 +83,8 @@ export default function MenuForm() {
     const lines = computeMenuCharges(template, sel);
     const addons = lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
     const subtotal = base + addons;
+    // ⚠️ F0 GAP — KNOWN, NOT FIXED. Legacy buffet menu path; still NJ-constant.
+    // Correct for Burger Bar, wrong for a non-NJ tenant. See lib/pricing.ts.
     const tax = Math.round(subtotal * PRICING.TAX_RATE * 100) / 100;
     return { base, lines, addons, subtotal, total: Math.round((subtotal + tax) * 100) / 100, tax };
   }, [template, sel]);

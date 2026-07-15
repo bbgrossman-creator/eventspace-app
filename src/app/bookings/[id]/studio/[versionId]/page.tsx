@@ -20,6 +20,8 @@ import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Booking, fmtDate } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
+import { resolveTaxForTenant, TaxResolution } from "@/lib/tax";
+import { PRICING } from "@/lib/pricing";
 import { Proposal, ProposalVersion, VERSION_FLOW, createVersion } from "@/lib/proposals";
 import {
   GuestCategory, Adjustment, PricedItem, MemoryPoint, PackageLine, isActive,
@@ -103,6 +105,10 @@ export default function StudioPage() {
   // v194 P0.1: choice groups were never loaded here — that omission, not the
   // arithmetic, is why every option was charged.
   const [choiceGroups, setChoiceGroups] = useState<ChoiceGroupDef[]>([]);
+  // F0: tax is resolved per tenant, not assumed. `isFallback` means this
+  // tenant has no configured rate and is silently inheriting New Jersey's —
+  // which is exactly the bug F0 exists to make visible.
+  const [tax, setTax] = useState<TaxResolution>({ rate: PRICING.TAX_RATE, source: "legacy_constant", isFallback: true });
   const [srps, setSrps] = useState<Record<string, { srp: number | null; srp_set_at: string | null }>>({});
 
   // Focus / intelligence rail
@@ -153,6 +159,7 @@ export default function StudioPage() {
     setAdjs((a ?? []) as Adjustment[]);
     setChoiceGroups(((cg ?? []) as { id: string; label: string; choose_count: number }[])
       .map((x) => ({ id: x.id, choose_count: x.choose_count, label: x.label })));
+    setTax(await resolveTaxForTenant());
     const compRows = (c ?? []) as CompRow[];
     setComps(compRows);
     if (compRows.length) {
@@ -187,9 +194,9 @@ export default function StudioPage() {
       package_audience: c.package_audience }));   // v194 P0.4
   // v194 P0.1: choiceGroups is the argument whose ABSENCE made the engine
   // structurally blind to choice groups and charge every option.
-  const totals = useMemo(() => computeVersionTotals(activeItems, guestCounts, adjs, packageLines, choiceGroups),
+  const totals = useMemo(() => computeVersionTotals(activeItems, guestCounts, adjs, packageLines, choiceGroups, tax.rate),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, comps, guests, adjs, cats, choiceGroups]);
+    [items, comps, guests, adjs, cats, choiceGroups, tax]);
   const hasOptions = items.some((i) => i.item_role === "optional");
   const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
   // "$0.00" would be a lie of precision: per-person items aren't zero, they're

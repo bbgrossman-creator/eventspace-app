@@ -17,6 +17,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase } from "./supabase";
 import { parseLocalDate } from "./workflow";
+import { resolveTaxForTenant } from "./tax";
 import { computeVersionTotals, PricedItem, PackageLine, Adjustment, VersionGuestCount, ChoiceGroupDef } from "./pricingEngine";
 import { loadSession } from "./permissions";
 
@@ -487,7 +488,9 @@ export async function buildPresentationModel(versionId: string): Promise<Present
   const groupDefs: ChoiceGroupDef[] = ((cgs ?? []) as { id: string; label: string; choose_count: number }[])
     .map((cg) => ({ id: cg.id, choose_count: cg.choose_count, label: cg.label }));
 
-  const canonical = computeVersionTotals(allPriced, guestCounts, adjustments, allPackages, groupDefs);
+  // F0: resolve tax at the edge; the engine only multiplies.
+  const taxRes = await resolveTaxForTenant();
+  const canonical = computeVersionTotals(allPriced, guestCounts, adjustments, allPackages, groupDefs, taxRes.rate);
 
   /** Section subtotal: the SAME engine, scoped to one section and given no
    *  adjustments — so a subtotal can never drift from the grand total's rules. */
@@ -495,7 +498,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     const ids = new Set(comps.filter((c) => (c.section_type_id ?? "__none__") === sid).map((c) => c.id));
     return computeVersionTotals(
       allPriced.filter((i) => ids.has(i.component_id)),
-      guestCounts, [], allPackages.filter((p) => p.id != null && ids.has(p.id)), groupDefs,
+      guestCounts, [], allPackages.filter((p) => p.id != null && ids.has(p.id)), groupDefs, taxRes.rate,
     ).itemsSubtotal;
   };
   const compById: Record<string, typeof comps[number]> = {};

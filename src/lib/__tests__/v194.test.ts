@@ -12,6 +12,7 @@ import {
   computeVersionTotals, resolveChoices, audienceCount, isPriceDebt,
   PricedItem, PackageLine, ChoiceGroupDef, VersionGuestCount, Adjustment,
 } from "../pricingEngine";
+import { resolveTax } from "../tax";
 
 let pass = 0, fail = 0;
 function ok(name: string, cond: boolean, detail?: string) {
@@ -269,6 +270,37 @@ console.log("\n── v195 P1.8 · Components with nothing to say disappear ─�
   ok("a component note alone survives", speaks({ ...bare, note: "Carved to order." }));
   ok("a choice alone survives", speaks({ ...bare, choice: {} }));
   ok("one visible item survives", speaks({ ...bare, blocks: [{ items: [1] }] }));
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// F0 — TAX RESOLUTION (audit A3)
+// ═══════════════════════════════════════════════════════════════════════════
+console.log("\n── F0 · Tax resolves per tenant, never assumed ──");
+{
+  const NJ = 0.06625, NY = 0.08875;
+  ok("tenant default wins over the constant", resolveTax({ tenantDefault: NY }).rate === NY);
+  ok("and is not a fallback", resolveTax({ tenantDefault: NY }).isFallback === false);
+  ok("event override beats tenant default", resolveTax({ tenantDefault: NY, eventOverride: 0.04 }).rate === 0.04);
+  ok("override is sourced honestly", resolveTax({ tenantDefault: NY, eventOverride: 0.04 }).source === "event_override");
+  ok("unset tenant falls back to the legacy constant", resolveTax({}).rate === NJ);
+  ok("...and SAYS it fell back", resolveTax({}).isFallback === true);
+  ok("...with an honest source", resolveTax({}).source === "legacy_constant");
+  ok("null default is not a rate", resolveTax({ tenantDefault: null }).isFallback === true);
+  // A percent that forgot to become a fraction must never reach an invoice.
+  ok("6.625 (a percent) is REJECTED, not charged", resolveTax({ tenantDefault: 6.625 }).isFallback === true);
+  ok("1.0 is rejected", resolveTax({ tenantDefault: 1 }).isFallback === true);
+  ok("negative is rejected", resolveTax({ tenantDefault: -0.05 }).isFallback === true);
+  ok("NaN is rejected", resolveTax({ tenantDefault: NaN }).isFallback === true);
+  ok("zero IS a valid rate (tax-exempt)", resolveTax({ tenantDefault: 0 }).rate === 0 && resolveTax({ tenantDefault: 0 }).isFallback === false);
+
+  // The engine multiplies by what it is given — and defaults to old behaviour.
+  const rows = [item({ id: "a", unit_price: 100, quantity_basis: "flat", quantity: 1, taxable: true })];
+  const nj = computeVersionTotals(rows, guests, [], []);
+  const ny = computeVersionTotals(rows, guests, [], [], [], NY);
+  eq("engine default is unchanged (back-compat)", nj.tax, 6.63);
+  eq("engine honours a resolved NY rate", ny.tax, 8.88);
+  ok("a NY tenant is no longer taxed at NJ's rate", nj.tax !== ny.tax);
 }
 
 console.log(`
