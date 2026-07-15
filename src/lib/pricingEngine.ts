@@ -45,18 +45,134 @@ export interface PricedItem {
   /** Customer-facing visibility. false = internal-only (kept for cost/ops/
    *  purchasing, never rendered on the proposal). Default true. */
   show_on_proposal?: boolean;
+  /** v194 P0.1: THE root cause of choice groups being charged in full — this
+   *  field did not exist, so computeVersionTotals was structurally blind to
+   *  choice groups. It could not have been fixed with arithmetic. */
+  choice_group_id?: string | null;
+  is_default_choice?: boolean;
+  position?: number;
+  /** v194 P0.5: what unit_price MEANS. See v194 SQL. */
+  price_state?: PriceState;
 }
+
+/** v194 P0.5 — the four authored intents that unit_price/NULL/0 used to carry
+ *  ambiguously. "Pending" is NOT here: it stays price_confirmed=false, which
+ *  is orthogonal (a quoted price can be pending; an included one cannot). */
+export type PriceState = "quoted" | "included" | "free" | "internal";
+
+/** Does this row contribute a sell line at all? */
+export const isFinancial = (i: { price_state?: PriceState }) =>
+  (i.price_state ?? "quoted") === "quoted";
+
+/** Would a missing price on this row be real debt a salesperson must clear?
+ *  v194 P0.6: an internal-only heat lamp is NOT sales debt. */
+export const isPriceDebt = (i: { price_state?: PriceState; unit_price: number | null }) =>
+  isFinancial(i) && i.unit_price == null;
 export const isActive = (i: PricedItem) => i.item_role !== "optional" || i.selected !== false;
+
+// ── v194 P0.1: DETERMINISTIC CHOICE-GROUP RESOLUTION ────────────────────────
+// A choice group offers N alternatives of which the customer takes
+// `choose_count`. Charging all N is a fabrication; charging none is a
+// different fabrication. Neither may depend on the customer having decided —
+// a quote must be answerable the moment it is authored.
+//
+// THREE BUCKETS, not two. An unchosen ALTERNATIVE is not "upside": upside
+// means "might be added on top"; an alternative will never be added, it will
+// be swapped. Conflating them inflates Potential Upside by the entire menu.
+//
+// Rule (deterministic, no customer selection required):
+//   1. Candidates = group members that are not excluded optional upgrades.
+//   2. Explicit defaults (is_default_choice) win, by position, up to N.
+//   3. Short of N, fill by HIGHEST unit price, then position. Never
+//      under-quote: an over-quote is visible and correctable, an under-quote
+//      is discovered at the invoice.
+//   4. Charge exactly min(N, candidates). The rest are alternatives.
+//   5. Where every option shares one price the rule is a no-op — any
+//      selection yields the same figure, so the quote is exact, not assumed.
+export interface ChoiceGroupDef { id: string; choose_count: number; label?: string }
+export interface ChoiceResolution {
+  charge: Set<string>;        // item ids that DO price
+  alternatives: Set<string>;  // group members that do not (and are not upside)
+  assumptions: { groupId: string; label: string; detail: string }[];
+}
+
+export function resolveChoices(items: PricedItem[], groups: ChoiceGroupDef[]): ChoiceResolution {
+  const charge = new Set<string>();
+  const alternatives = new Set<string>();
+  const assumptions: ChoiceResolution["assumptions"] = [];
+
+  const byGroup = new Map<string, PricedItem[]>();
+  for (const i of items) {
+    const g = i.choice_group_id;
+    if (!g) continue;
+    const arr = byGroup.get(g);
+    if (arr) arr.push(i); else byGroup.set(g, [i]);
+  }
+  const defOf = new Map<string, ChoiceGroupDef>();
+  for (const g of groups) defOf.set(g.id, g);
+
+  const pos = (i: PricedItem) => i.position ?? 0;
+  const price = (i: PricedItem) => i.unit_price ?? 0;
+
+  byGroup.forEach((members, gid) => {
+    const def = defOf.get(gid);
+    // An orphaned choice_group_id (group deleted) must not silently charge
+    // every member. Fall back to choose-1 — conservative and predictable.
+    const n = Math.max(1, def?.choose_count ?? 1);
+    const label = def?.label ?? "Choice group";
+
+    // An optional upgrade sitting inside a group is an ADD-ON to the choice,
+    // not one of the alternatives. It is governed by item_role/selected and
+    // never consumes a choice slot.
+    const upgrades = members.filter((m) => m.item_role === "optional");
+    const candidates = members.filter((m) => m.item_role !== "optional");
+
+    const chosen: PricedItem[] = candidates
+      .filter((m) => m.is_default_choice)
+      .sort((a, b) => pos(a) - pos(b))
+      .slice(0, n);
+
+    if (chosen.length < n) {
+      const rest = candidates
+        .filter((m) => !chosen.includes(m))
+        .sort((a, b) => price(b) - price(a) || pos(a) - pos(b));
+      const need = n - chosen.length;
+      chosen.push(...rest.slice(0, need));
+      const prices = new Set(candidates.map(price));
+      if (rest.length > need && prices.size > 1) {
+        assumptions.push({
+          groupId: gid, label,
+          detail: `No default marked — quoting the ${need} highest-priced of ${candidates.length} options.`,
+        });
+      }
+    }
+    for (const m of candidates) (chosen.includes(m) ? charge : alternatives).add(m.id);
+    // Upgrades keep normal optional semantics (charged iff selected).
+    for (const u of upgrades) charge.add(u.id);
+  });
+  return { charge, alternatives, assumptions };
+}
+
+/** Guests covered by a package audience. NULL/empty = all guests (v194 P0.4). */
+export function audienceCount(audience: string[] | null | undefined, guests: VersionGuestCount[]): number {
+  if (!audience || audience.length === 0) return guests.reduce((s, g) => s + g.count, 0);
+  return guests.reduce((s, g) => (audience.includes(g.category_id) ? s + g.count : s), 0);
+}
 
 /** A package-mode component contributes one line. Callers must pass only
  *  items belonging to ITEMIZED components (a package's leftover items are
  *  hidden and never counted), plus the packages themselves here. */
 export interface PackageLine {
+  /** v194: component id — lets a caller scope packages to a section. */
+  id?: string;
   title: string;
   package_price: number | null;
   package_basis: string | null;          // flat | per_person
   package_taxable?: boolean | null;
   package_price_confirmed?: boolean | null;
+  /** v194 P0.4: guest categories this per-person package applies to.
+   *  null/empty = all guests. */
+  package_audience?: string[] | null;
 }
 export interface CatalogItem {
   id: string; name: string; domain: string; quantity_basis: string | null;
@@ -183,7 +299,11 @@ export interface VersionTotals {
   tax: number;
   total: number;
   unconfirmed: number;    // count of carried, not-yet-confirmed prices
-  unpriced: number;       // items with no price at all
+  unpriced: number;       // v194: rows in state 'quoted' with NO price — real sales debt.
+                          //       internal/included/free rows are NOT counted.
+  /** v194 P0.1: choice groups quoted without an explicit default — the figure
+   *  rests on an assumption the salesperson should see, not discover. */
+  choiceAssumptions: { groupId: string; label: string; detail: string }[];
 }
 
 export function computeVersionTotals(
@@ -191,29 +311,43 @@ export function computeVersionTotals(
   guests: VersionGuestCount[],
   adjustments: Adjustment[],
   packages: PackageLine[] = [],
+  choiceGroups: ChoiceGroupDef[] = [],
 ): VersionTotals {
   const allGuests = guests.reduce((s, g) => s + g.count, 0);
   const countFor = (categoryId: string | null) =>
     categoryId === null ? allGuests : (guests.find((g) => g.category_id === categoryId)?.count ?? 0);
 
+  // v194 P0.1 — resolve choice groups BEFORE summing anything.
+  const choice = resolveChoices(items, choiceGroups);
+
   let itemsSubtotal = 0, baseSubtotal = 0, upside = 0, taxableBase = 0, unconfirmed = 0, unpriced = 0;
   for (const i of items) {
+    // v194 P0.5 — non-'quoted' rows carry no financial line by construction.
+    // v194 P0.6 — and therefore create no price debt either.
+    if (!isFinancial(i)) continue;
     if (i.unit_price == null) { unpriced++; continue; }
+
+    // v194 P0.1 — an unchosen ALTERNATIVE is neither charged nor upside.
+    if (i.choice_group_id && choice.alternatives.has(i.id)) continue;
+
     const line =
       i.quantity_basis === "per_person" ? i.unit_price * countFor(i.applies_to_category_id)
       : i.unit_price * (i.quantity ?? 1);
-    if (!isActive(i)) { upside += line; continue; }   // unselected option: upside only
+    if (!isActive(i)) { upside += line; continue; }   // unselected UPGRADE: upside only
     if (!i.price_confirmed) unconfirmed++;
     itemsSubtotal += line;
     if (i.item_role !== "optional") baseSubtotal += line;
     if (i.taxable) taxableBase += line;
   }
 
-  const allCount = guests.reduce((s2, g) => s2 + g.count, 0);
   for (const pk of packages) {
     if (pk.package_price == null) { unpriced++; continue; }
     if (pk.package_price_confirmed === false) unconfirmed++;
-    const line = pk.package_basis === "per_person" ? pk.package_price * allCount : pk.package_price;
+    // v194 P0.4 — a package multiplies against its AUDIENCE, not blindly
+    // against every guest. NULL audience preserves the old meaning (all).
+    const line = pk.package_basis === "per_person"
+      ? pk.package_price * audienceCount(pk.package_audience, guests)
+      : pk.package_price;
     itemsSubtotal += line; baseSubtotal += line;
     if (pk.package_taxable !== false) taxableBase += line;
   }
@@ -237,6 +371,7 @@ export function computeVersionTotals(
     tax,
     total: r2(itemsSubtotal + adjustmentsTotal + tax),
     unconfirmed, unpriced,
+    choiceAssumptions: choice.assumptions,
   };
 }
 

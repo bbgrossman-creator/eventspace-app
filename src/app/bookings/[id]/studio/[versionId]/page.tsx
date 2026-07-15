@@ -24,6 +24,7 @@ import { Proposal, ProposalVersion, VERSION_FLOW, createVersion } from "@/lib/pr
 import {
   GuestCategory, Adjustment, PricedItem, MemoryPoint, PackageLine, isActive,
   loadGuestCategories, loadPriceMemory, computeVersionTotals, promoteToCatalog,
+  ChoiceGroupDef,
 } from "@/lib/pricingEngine";
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
 import { SectionType, loadSectionTypes } from "@/lib/sections";
@@ -42,6 +43,7 @@ interface CompRow {
   item_categories: unknown;
   item_layout: string | null;
   uncategorized_position: string | null;
+  package_audience: string[] | null;
 }
 interface CanvasGroup { sectionTypeId: string | null; name: string; comps: CompRow[]; }
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -98,6 +100,9 @@ export default function StudioPage() {
   const [cats, setCats] = useState<GuestCategory[]>([]);
   const [guests, setGuests] = useState<Record<string, number>>({});
   const [adjs, setAdjs] = useState<Adjustment[]>([]);
+  // v194 P0.1: choice groups were never loaded here — that omission, not the
+  // arithmetic, is why every option was charged.
+  const [choiceGroups, setChoiceGroups] = useState<ChoiceGroupDef[]>([]);
   const [srps, setSrps] = useState<Record<string, { srp: number | null; srp_set_at: string | null }>>({});
 
   // Focus / intelligence rail
@@ -129,13 +134,15 @@ export default function StudioPage() {
   }, [bookingId, versionId]);
 
   const loadCanvas = useCallback(async () => {
-    const [categories, { data: g }, { data: a }, { data: c }, types, { data: vsec }] = await Promise.all([
+    const [categories, { data: g }, { data: a }, { data: c }, types, { data: vsec }, { data: cg }] = await Promise.all([
       loadGuestCategories(),
       supabase.from("version_guests").select("category_id,count").eq("version_id", versionId),
       supabase.from("version_adjustments").select("*").eq("version_id", versionId).order("position"),
-      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description,proposal_display,item_categories,item_layout,uncategorized_position").eq("proposal_version_id", versionId).order("position"),
+      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description,proposal_display,item_categories,item_layout,uncategorized_position,package_audience").eq("proposal_version_id", versionId).order("position"),
       loadSectionTypes().catch(() => [] as SectionType[]),
       supabase.from("version_sections").select("section_type_id,position").eq("version_id", versionId).order("position"),
+      // v194 P0.1
+      supabase.from("choice_groups").select("id,label,choose_count").eq("version_id", versionId),
     ]);
     setSectionTypes(types);
     setVSections((vsec ?? []) as { section_type_id: string; position: number }[]);
@@ -144,11 +151,13 @@ export default function StudioPage() {
     for (const row of (g ?? []) as { category_id: string; count: number }[]) gm[row.category_id] = row.count;
     setGuests(gm);
     setAdjs((a ?? []) as Adjustment[]);
+    setChoiceGroups(((cg ?? []) as { id: string; label: string; choose_count: number }[])
+      .map((x) => ({ id: x.id, choose_count: x.choose_count, label: x.label })));
     const compRows = (c ?? []) as CompRow[];
     setComps(compRows);
     if (compRows.length) {
       const { data: it, error } = await supabase.from("component_items")
-        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,presentation_note,show_on_proposal,category_key")
+        .select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,presentation_note,show_on_proposal,category_key,choice_group_id,is_default_choice,position,price_state")
         .in("component_id", compRows.map((x) => x.id)).order("position");
       if (error) { setErr(`${error.message} — run v178/v179 SQL.`); return; }
       const rows = (it ?? []) as PricedItem[];
@@ -173,11 +182,14 @@ export default function StudioPage() {
   const itemizedIds = new Set(comps.filter((c) => c.pricing_mode !== "package").map((c) => c.id));
   const activeItems = items.filter((i) => itemizedIds.has(i.component_id));
   const packageLines: PackageLine[] = comps.filter((c) => c.pricing_mode === "package")
-    .map((c) => ({ title: c.title, package_price: c.package_price, package_basis: c.package_basis,
-      package_taxable: c.package_taxable, package_price_confirmed: c.package_price_confirmed }));
-  const totals = useMemo(() => computeVersionTotals(activeItems, guestCounts, adjs, packageLines),
+    .map((c) => ({ id: c.id, title: c.title, package_price: c.package_price, package_basis: c.package_basis,
+      package_taxable: c.package_taxable, package_price_confirmed: c.package_price_confirmed,
+      package_audience: c.package_audience }));   // v194 P0.4
+  // v194 P0.1: choiceGroups is the argument whose ABSENCE made the engine
+  // structurally blind to choice groups and charge every option.
+  const totals = useMemo(() => computeVersionTotals(activeItems, guestCounts, adjs, packageLines, choiceGroups),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, comps, guests, adjs, cats]);
+    [items, comps, guests, adjs, cats, choiceGroups]);
   const hasOptions = items.some((i) => i.item_role === "optional");
   const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
   // "$0.00" would be a lie of precision: per-person items aren't zero, they're
@@ -309,7 +321,7 @@ export default function StudioPage() {
       const ids = ((c ?? []) as { id: string }[]).map((x) => x.id);
       if (!ids.length) return 0;
       const [{ data: it }, { data: g }, { data: a }] = await Promise.all([
-        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,presentation_note,show_on_proposal,category_key").in("component_id", ids),
+        supabase.from("component_items").select("id,component_id,name,quantity,quantity_basis,unit_price,applies_to_category_id,catalog_item_id,price_confirmed,pricing_reason,taxable,item_role,selected,presentation_note,show_on_proposal,category_key,choice_group_id,is_default_choice,position,price_state").in("component_id", ids),
         supabase.from("version_guests").select("category_id,count").eq("version_id", vid),
         supabase.from("version_adjustments").select("*").eq("version_id", vid),
       ]);

@@ -16,6 +16,8 @@
 //   • price visibility (full | sections | hidden) is applied
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase } from "./supabase";
+import { parseLocalDate } from "./workflow";
+import { computeVersionTotals, PricedItem, PackageLine, Adjustment, VersionGuestCount, ChoiceGroupDef } from "./pricingEngine";
 import { loadSession } from "./permissions";
 
 export interface PresentationItem {
@@ -151,14 +153,28 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     const b = bk as { event_type: string | null; event_date: string | null; est_guests: number | null } | null;
     const parts: string[] = [];
     if (b?.event_type) parts.push(b.event_type);
-    if (b?.event_date) parts.push(new Date(b.event_date).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }));
+    // v194 P0.7: event_date is a DATE column ('2026-06-30'). Raw new Date()
+    // parses it as UTC midnight, which renders as the PREVIOUS day anywhere
+    // west of Greenwich. parseLocalDate (which already existed and was simply
+    // not used here) anchors it to local noon — immune to any offset.
+    if (b?.event_date) parts.push(parseLocalDate(b.event_date).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }));
     if (b?.est_guests) parts.push(`${b.est_guests} guests`);
     eventLine = parts.join(" · ");
   }
 
   // Guests for per-person math.
-  const { data: g } = await supabase.from("version_guests").select("count").eq("version_id", versionId);
-  const totalGuests = ((g ?? []) as { count: number }[]).reduce((s, x) => s + x.count, 0);
+  // v194 P0.2: category_id is required — the preview previously ignored
+  // per-category targeting entirely and multiplied everything by ALL guests.
+  const { data: g } = await supabase.from("version_guests").select("category_id,count").eq("version_id", versionId);
+  const guestRows = ((g ?? []) as { category_id: string; count: number }[]);
+  const guestCounts: VersionGuestCount[] = guestRows.map((x) => ({ category_id: x.category_id, count: x.count }));
+  const totalGuests = guestRows.reduce((s, x) => s + x.count, 0);
+
+  // v194 P0.2: adjustments were never fetched here, so the preview omitted the
+  // service charge, the mashgiach fee and tax entirely.
+  const { data: adjRows } = await supabase.from("version_adjustments")
+    .select("label,kind,value,taxable,position").eq("version_id", versionId);
+  const adjustments = ((adjRows ?? []) as Adjustment[]);
 
   const [{ data: sts }, { data: vsec }, { data: cgs }] = await Promise.all([
     supabase.from("section_types").select("id,name"),
@@ -169,25 +185,26 @@ export async function buildPresentationModel(versionId: string): Promise<Present
   for (const s of (sts ?? []) as { id: string; name: string }[]) secName[s.id] = s.name;
 
   const { data: cs } = await supabase.from("event_components")
-    .select("id,title,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_price_confirmed,customer_description,notes,position,proposal_display,item_categories,item_layout,uncategorized_position")
+    .select("id,title,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,customer_description,notes,position,proposal_display,item_categories,item_layout,uncategorized_position,package_audience")
     .eq("proposal_version_id", versionId).order("position");
   const comps = (cs ?? []) as {
     id: string; title: string; section_type_id: string | null;
     group_label: string | null; group_position: number; group_description: string | null;
     pricing_mode: string; package_price: number | null; package_basis: string | null;
-    package_price_confirmed: boolean;
+    package_taxable: boolean | null; package_price_confirmed: boolean;
     customer_description: string | null; notes: string | null; position: number;
     proposal_display: string | null;
     item_categories: unknown;
     item_layout: string | null;
     uncategorized_position: string | null;
+    package_audience: string[] | null;
   }[];
 
-  type ItemRow = { component_id: string; name: string; description: string | null; unit_price: number | null; quantity: number | null; quantity_basis: string | null; applies_to_category_id: string | null; item_role: string | null; selected: boolean; choice_group_id: string | null; price_confirmed: boolean; presentation_note: string | null; show_on_proposal: boolean; category_key: string | null };
+  type ItemRow = { component_id: string; name: string; description: string | null; unit_price: number | null; quantity: number | null; quantity_basis: string | null; applies_to_category_id: string | null; item_role: string | null; selected: boolean; choice_group_id: string | null; price_confirmed: boolean; presentation_note: string | null; show_on_proposal: boolean; category_key: string | null; id: string; is_default_choice: boolean; position: number; price_state: string | null; taxable: boolean | null };
   const itemsBy: Record<string, ItemRow[]> = {};
   if (comps.length) {
     const { data: its } = await supabase.from("component_items")
-      .select("component_id,name,description,unit_price,quantity,quantity_basis,applies_to_category_id,item_role,selected,choice_group_id,price_confirmed,presentation_note,show_on_proposal,category_key")
+      .select("id,component_id,name,description,unit_price,quantity,quantity_basis,applies_to_category_id,item_role,selected,choice_group_id,price_confirmed,presentation_note,show_on_proposal,category_key,is_default_choice,position,price_state,taxable")
       .in("component_id", comps.map((c) => c.id)).order("position");
     for (const i of (its ?? []) as ItemRow[]) {
       (itemsBy[i.component_id] ??= []).push(i);
@@ -358,22 +375,60 @@ export async function buildPresentationModel(versionId: string): Promise<Present
   for (const b of built) if (b.sectionId !== "__none__" && !seen.has(b.sectionId) && secName[b.sectionId]) { sectionOrder.push(b.sectionId); seen.add(b.sectionId); }
   if (built.some((b) => b.sectionId === "__none__")) sectionOrder.push("__none__");
 
-  const sumComp = (c: typeof comps[number]) => {
-    if (c.pricing_mode === "package") {
-      if (c.package_price == null) return 0;
-      return c.package_basis === "per_person" ? c.package_price * totalGuests : c.package_price;
-    }
-    return (itemsBy[c.id] ?? []).reduce((s, i) => {
-      if (i.unit_price == null || i.choice_group_id) return s;
-      if (i.item_role === "optional" && !i.selected) return s;
-      return s + i.unit_price * lineCount(i.quantity_basis, i.quantity);
-    }, 0);
+  // ── v194 P0.2: ONE CANONICAL TOTALS CALCULATION ──────────────────────────
+  // This function used to do its own arithmetic (`sumComp`), and it was wrong
+  // in four independent ways versus the Studio, which is why the two surfaces
+  // disagreed by $12,388.68:
+  //   1. it EXCLUDED every choice-group item (the engine included them ALL);
+  //   2. it ignored applies_to_category_id, multiplying by all 278 guests
+  //      instead of the targeted category;
+  //   3. it applied NO adjustments (service charge, mashgiach);
+  //   4. it added NO tax.
+  // A projection must never reconstruct the fact it projects. The renderer and
+  // the Studio now consume the same computeVersionTotals output.
+  const toPriced = (i: ItemRow & { id: string }): PricedItem => ({
+    id: i.id, component_id: i.component_id, name: i.name,
+    quantity: i.quantity, quantity_basis: i.quantity_basis,
+    unit_price: i.unit_price, applies_to_category_id: i.applies_to_category_id,
+    catalog_item_id: null, price_confirmed: i.price_confirmed,
+    pricing_reason: null, taxable: i.taxable !== false,
+    item_role: (i.item_role === "optional" ? "optional" : "included"),
+    selected: i.selected, show_on_proposal: i.show_on_proposal,
+    choice_group_id: i.choice_group_id, is_default_choice: i.is_default_choice,
+    position: i.position,
+    price_state: (i.price_state as PricedItem["price_state"]) ?? "quoted",
+  });
+  const itemizedIds = new Set(comps.filter((c) => c.pricing_mode !== "package").map((c) => c.id));
+  const allPriced: PricedItem[] = [];
+  for (const c of comps) {
+    if (!itemizedIds.has(c.id)) continue;
+    for (const i of (itemsBy[c.id] ?? [])) allPriced.push(toPriced(i as ItemRow & { id: string }));
+  }
+  const allPackages: PackageLine[] = comps.filter((c) => c.pricing_mode === "package").map((c) => ({
+    id: c.id, title: c.title, package_price: c.package_price,
+    package_basis: c.package_basis ?? "flat",
+    package_taxable: c.package_taxable !== false,
+    package_price_confirmed: c.package_price_confirmed,
+    package_audience: c.package_audience,
+  }));
+  const groupDefs: ChoiceGroupDef[] = ((cgs ?? []) as { id: string; label: string; choose_count: number }[])
+    .map((cg) => ({ id: cg.id, choose_count: cg.choose_count, label: cg.label }));
+
+  const canonical = computeVersionTotals(allPriced, guestCounts, adjustments, allPackages, groupDefs);
+
+  /** Section subtotal: the SAME engine, scoped to one section and given no
+   *  adjustments — so a subtotal can never drift from the grand total's rules. */
+  const sumSection = (sid: string) => {
+    const ids = new Set(comps.filter((c) => (c.section_type_id ?? "__none__") === sid).map((c) => c.id));
+    return computeVersionTotals(
+      allPriced.filter((i) => ids.has(i.component_id)),
+      guestCounts, [], allPackages.filter((p) => p.id != null && ids.has(p.id)), groupDefs,
+    ).itemsSubtotal;
   };
   const compById: Record<string, typeof comps[number]> = {};
   for (const c of comps) compById[c.id] = c;
 
   const sections: PresentationSection[] = [];
-  let grandTotal = 0;
   for (const sid of sectionOrder) {
     const inSection = built.filter((b) => b.sectionId === sid);
     if (!inSection.length && sid === "__none__") continue;
@@ -391,10 +446,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     const bands: PresentationBand[] = bandKeys.sort((a, z) => bandMeta[a].minPos - bandMeta[z].minPos)
       .map((k) => ({ label: bandMeta[k].label, description: bandMeta[k].desc, components: bandMeta[k].comps }));
 
-    // Section subtotal (sum of its components).
-    let secTotal = 0;
-    for (const c of comps) if ((c.section_type_id ?? "__none__") === sid) secTotal += sumComp(c);
-    grandTotal += secTotal;
+    const secTotal = sumSection(sid);
 
     const groups = (cgs ?? []).filter((cg: { section_type_id: string | null }) => (cg.section_type_id ?? "") === (sid === "__none__" ? "" : sid))
       .map((cg: { id: string }) => choiceItems[cg.id]).filter((x): x is PresentationChoiceGroup => !!x && x.options.length > 0);
@@ -425,7 +477,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     closing: ver.customer_closing,
     priceVisibility: visibility,
     sections,
-    totalLabel: visibility === "full" ? money(grandTotal) : null,
+    totalLabel: visibility === "full" ? money(canonical.total) : null,   // v194 P0.2: THE canonical number
     status: ver.status,
     hasUnconfirmedVisiblePrice,
   };

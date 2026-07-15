@@ -12,7 +12,7 @@
 // operational rows only).
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase, logActivity } from "./supabase";
-import { Booking } from "./workflow";
+import { Booking, parseLocalDate } from "./workflow";
 
 export interface SourceEvent {
   booking: Booking;
@@ -265,7 +265,8 @@ export async function loadComponentPalette(): Promise<PaletteEntry[]> {
   ]);
   const bMap: Record<string, string> = {};
   for (const b of (bks ?? []) as { id: string; contact_name: string; event_type: string | null; event_date: string | null }[]) {
-    const when = b.event_date ? new Date(b.event_date).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "";
+    // v194 P0.7: date-only column — parseLocalDate, never raw new Date().
+    const when = b.event_date ? parseLocalDate(b.event_date).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "";
     bMap[b.id] = `${b.contact_name}${b.event_type ? ` ${b.event_type}` : ""}${when ? ` · ${when}` : ""}`;
   }
   const itemsBy: Record<string, string[]> = {};
