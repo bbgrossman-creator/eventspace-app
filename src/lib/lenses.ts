@@ -135,17 +135,39 @@ export function visibleLenses(config: LensConfig, session: Session | null): Lens
 // So the ladder is mostly memory, and inference is only the FALLBACK — for the
 // genuinely context-free arrival: a bookmark, an emailed link, a calendar click.
 //
+//   ── PROVENANCE — what we KNOW ──
 //   1. EXPLICIT      — the URL names a lens (deep link, or a link built by an
 //                      obligation: "your 3 production items on this event")
-//   2. WORKSPACE     — the door you are standing in            [needs Phase B]
-//   3. OBLIGATIONS   — where YOUR unresolved work on THIS event actually is
-//                      (the tiebreak for a multi-job user, and it is derived)
-//   4. JOB           — your primary job's lens                 [needs Phase B]
-//   5. PREFERENCE    — the lens you left open last
-//   6. FIRST VISIBLE — maker-first ordering; never "customer" by assumption
+//   2. INTENT        — you searched for a TYPED object and opened the event
+//                      through it. Ctrl+K "Prime Rib" → a component → you were
+//                      thinking Production, not Customer. Ctrl+K "invoice
+//                      560018" → Finance. This is NOT inference: the result
+//                      type is a fact about what you clicked. It outranks the
+//                      workspace because an ACT in this moment is more specific
+//                      than a PLACE you happen to stand in — an admin sitting
+//                      in Sales who searches an invoice wants Finance.
+//                      Silent when the result carries no signal (searching the
+//                      EVENT itself says nothing about lens).
+//   3. WORKSPACE     — the door you are standing in            [needs Phase B]
 //
-// Steps 2 and 4 need jobs/workspaces (Phase B). 1, 5 and 6 work today. Step 3
-// arrives with deriveObligations. The ladder is written whole so that landing
+//   ── INFERENCE — what we can DERIVE ──
+//   4. OBLIGATIONS   — where YOUR unresolved work on THIS event actually is
+//                      (the tiebreak for a multi-job user, and it is derived)
+//   5. JOB           — your primary job's lens                 [needs Phase B]
+//
+//   ── MEMORY — what you DID ──
+//   6. PREFERENCE    — the lens you left open last
+//
+//   ── SURRENDER — a defensible guess ──
+//   7. FIRST VISIBLE — maker-first ordering; never "customer" by assumption
+//
+// The four tiers are the shape: the ladder consumes provenance until it runs
+// out, then derives, then remembers, and only then guesses. Every rung is less
+// opinionated than the one above it. **Provenance beats inference** — the
+// system's job is to notice what it already knows, not to be clever.
+//
+// Rungs 3 and 5 need jobs/workspaces (Phase B). 1, 2, 6 and 7 work today. Rung
+// 4 arrives with deriveObligations. The ladder is written whole so that landing
 // each rung is a filled-in branch, not a redesign.
 //
 // AND: EMPTY IS INFORMATION. A chef opening an Exploring event lands in
@@ -155,9 +177,36 @@ export function visibleLenses(config: LensConfig, session: Session | null): Lens
 // ("quantities open once the menu is confirmed") — which is just the
 // obligation's `blocked` state, rendered.
 
+/** What kind of thing did the user open the event THROUGH? Not the event
+ *  itself — that carries no signal. A typed object does. */
+export type SearchResultKind =
+  | "event" | "component" | "recipe" | "blueprint"
+  | "invoice" | "payment" | "photo" | "person" | "vendor" | "asset";
+
+/** The home lens of a kind of object. `null` = says nothing; skip the rung.
+ *  This is a map, not a scorer: no weights, no "92% confident". */
+const LENS_FOR_KIND: Record<SearchResultKind, LensKey | null> = {
+  event: null,          // searching the event itself says nothing about lens
+  person: null,         // could be staff or a client — ambiguous, so silent
+  component: "design",  // you were thinking about what's IN the event
+  recipe: "production",
+  blueprint: "design",
+  invoice: null,        // → "finance" once the Finance lens exists
+  payment: null,        // → "finance"
+  photo: "photography",
+  vendor: null,         // → "operations" once vendor work has a home
+  asset: "operations",
+};
+
+export function lensForKind(kind: SearchResultKind | null | undefined): LensKey | null {
+  return kind ? LENS_FOR_KIND[kind] ?? null : null;
+}
+
 export interface LensIntent {
   /** From the URL (?lens=production) or a link an obligation built. Wins. */
   explicit?: LensKey | null;
+  /** The KIND of object the user opened the event through (Ctrl+K result). */
+  viaKind?: SearchResultKind | null;
   /** The workspace the user is standing in. Phase B fills this. */
   workspaceLens?: LensKey | null;
   /** Lens keys where this user has unresolved work on THIS event, most first.
@@ -178,6 +227,8 @@ export function resolveLens(
     !!k && allowed.some((l) => l.key === k);
 
   if (ok(intent.explicit)) return intent.explicit;
+  const viaLens = lensForKind(intent.viaKind);       // rung 2 — provenance, not inference
+  if (ok(viaLens)) return viaLens;
   if (ok(intent.workspaceLens)) return intent.workspaceLens;
   for (const k of intent.byObligation ?? []) if (ok(k)) return k;
   if (ok(intent.preference)) return intent.preference;

@@ -402,6 +402,44 @@ console.log("\n── v196 · Which lens opens? (the ladder) ──");
   ok("nothing visible ⇒ null, never a guess", resolveLens({ caps: caps() }, sess([]), { explicit: "design" }) === null);
 }
 
+
+console.log("\n── v196 · Intent is provenance, not inference ──");
+{
+  const caps = (o: Partial<Capabilities> = {}): Capabilities => ({
+    components_editor: false, component_copy: false, rolodex: false,
+    photos_retrieval: false, requirements: false, proposals: false,
+    event_legacy: false, multi_domain: false, ...o,
+  } as Capabilities);
+  const sess = (perms: Permission[]): Session => ({
+    userId: "u", email: "e", tenantId: "t", tenantName: "T",
+    role: "admin", perms, unassigned: false,
+  } as Session);
+  const full = caps({ proposals: true, requirements: true, photos_retrieval: true });
+  const admin = sess(["bookings.view", "bookings.edit", "ops.view", "knowledge.view"]);
+
+  ok("Ctrl+K → a recipe ⇒ Production, not Customer",
+     resolveLens({ caps: full }, admin, { viaKind: "recipe", preference: "customer" }) === "production");
+  ok("Ctrl+K → a photo ⇒ Photography",
+     resolveLens({ caps: full }, admin, { viaKind: "photo", preference: "customer" }) === "photography");
+  ok("Ctrl+K → a component ⇒ Design",
+     resolveLens({ caps: full }, admin, { viaKind: "component", preference: "customer" }) === "design");
+  // The rung must be SILENT when it has nothing to say.
+  ok("searching the EVENT itself carries no lens signal ⇒ falls through",
+     resolveLens({ caps: full }, admin, { viaKind: "event", preference: "customer" }) === "customer");
+  ok("an ambiguous kind (person) is silent ⇒ falls through",
+     resolveLens({ caps: full }, admin, { viaKind: "person", preference: "customer" }) === "customer");
+  // An act in this moment beats a place you happen to stand in.
+  ok("intent outranks workspace (admin in Sales searching a photo)",
+     resolveLens({ caps: full }, admin, { viaKind: "photo", workspaceLens: "design" }) === "photography");
+  ok("but explicit still outranks intent",
+     resolveLens({ caps: full }, admin, { explicit: "customer", viaKind: "photo" }) === "customer");
+  // And it is still only a REQUEST.
+  ok("intent pointing at a forbidden lens is refused, falls through",
+     resolveLens({ caps: full }, sess(["bookings.view"]), { viaKind: "recipe" }) === "customer");
+  ok("intent pointing at a lens the tenant lacks the cap for is skipped",
+     resolveLens({ caps: caps({ proposals: true }) }, admin, { viaKind: "photo", preference: "customer" }) === "customer");
+}
+
 console.log(`
 ═══ ${pass} passed, ${fail} failed ═══
 `);
