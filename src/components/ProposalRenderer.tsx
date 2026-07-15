@@ -25,6 +25,9 @@ const T = {
   ink: "#1F2A37", navy: "#102F56", gold: "#C9A34E",
   goldSoft: "#EAD9B0", goldFaint: "#F0E6CC", cream: "#FBFAF6",
   bandInk: "#334155", optional: "#6D28D9",
+  /** v196 X-ray chrome. Deliberately in the SAME token object: X-ray is not a
+   *  separate theme, it is chrome drawn over the artifact. */
+  xrayInk: "#94A3B8", xrayEdge: "#CBD5E1",
 } as const;
 
 // ── Price ─ v195 P1.4: styling keyed off a TYPED status, never off wording ──
@@ -53,15 +56,33 @@ function Heading({ children }: { children: React.ReactNode }) {
 function ItemRun({ items, layout, bullet = "\u00b7" }: {
   items: PresentationItem[]; layout: "vertical" | "comma" | "dot"; bullet?: string;
 }) {
+  // v196: an internal row is drawn GHOSTED — struck through, greyed, with the
+  // reason. It is not styled to look deleted; it is styled to look like truth
+  // the customer will never receive. The distinction matters: the chef needs
+  // these rows, so they must read as real, just not customer-facing.
+  const ghost = (it: PresentationItem) => it.internal === true;
   if (!items.length) return null;
   if (layout === "vertical") {
     return (
       <ul className="space-y-0.5">
         {items.map((it, i) => (
-          <li key={i} className="flex items-baseline justify-between gap-3 text-[13.5px] text-slate-600">
+          <li key={i}
+              className={`flex items-baseline justify-between gap-3 text-[13.5px] ${
+                ghost(it) ? "" : "text-slate-600"}`}
+              style={ghost(it) ? { color: T.xrayInk } : undefined}>
             <span>
-              <span className="mr-1.5" style={{ color: T.gold }}>{bullet}</span>
-              {it.name}
+              <span className="mr-1.5" style={{ color: ghost(it) ? T.xrayEdge : T.gold }}>{bullet}</span>
+              <span className={ghost(it) ? "line-through decoration-slate-300" : ""}>{it.name}</span>
+              {ghost(it) && (
+                <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded"
+                      style={{ background: "#F1F5F9", color: T.xrayInk }}>
+                  {it.hiddenReason ?? "internal"}
+                </span>
+              )}
+              {it.unconfirmed && !ghost(it) && (
+                <span title="Carried price — not yet confirmed"
+                      className="ml-1.5 text-[9px] font-bold text-amber-600">⚠</span>
+              )}
               {it.optional && <OptionalBadge />}
               {it.description && <span className="text-slate-400"> &mdash; {it.description}</span>}
               {it.note && <span className="block pl-4 text-[12px] italic text-slate-400">{it.note}</span>}
@@ -106,12 +127,22 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
   );
 }
 
-export default function ProposalRenderer({ model, draftRibbon = true }: {
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false }: {
   model: PresentationModel; draftRibbon?: boolean;
+  /** v196: chrome only. The MODEL already decided what exists — an internal
+   *  item is absent from a non-xray model, so this flag cannot leak one. It
+   *  only labels the page as an authoring surface. */
+  xray?: boolean;
 }) {
   const isDraft = model.status !== "approved" && model.status !== "sent";
   return (
     <div className="mx-auto max-w-3xl bg-white px-8 py-10 sm:px-12 sm:py-14 relative" style={{ color: T.ink }}>
+      {xray && (
+        <div className="absolute top-4 left-4 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded"
+             style={{ background: T.gold, color: "white" }}>
+          X-ray — the customer sees none of this chrome
+        </div>
+      )}
       {draftRibbon && isDraft && (
         <div className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-widest text-amber-600 border border-amber-300 rounded px-2 py-0.5">
           Draft preview

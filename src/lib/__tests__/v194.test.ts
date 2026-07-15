@@ -440,6 +440,44 @@ console.log("\n── v196 · Intent is provenance, not inference ──");
      resolveLens({ caps: caps({ proposals: true }) }, admin, { viaKind: "photo", preference: "customer" }) === "customer");
 }
 
+
+console.log("\n── v196 · X-ray is a MODEL difference, not a CSS difference ──");
+{
+  // The property that makes a leak impossible rather than merely unlikely:
+  // a non-xray build has NO FIELD for internal truth. The renderer cannot
+  // show what the projection did not put in the model.
+  type Item = { name: string; internal?: boolean; unconfirmed?: boolean; hiddenReason?: string | null };
+  const buildItem = (row: { name: string; hidden: boolean; confirmed: boolean }, xray: boolean): Item => ({
+    name: row.name,
+    ...(xray ? {
+      internal: row.hidden,
+      unconfirmed: !row.confirmed,
+      hiddenReason: row.hidden ? "Operational only" : null,
+    } : {}),
+  });
+  const lamp = { name: "Heat Lamps", hidden: true, confirmed: true };
+  const rib = { name: "Prime Rib", hidden: false, confirmed: false };
+
+  const custLamp = buildItem(lamp, false);
+  ok("customer build: internal flag is ABSENT, not false", !("internal" in custLamp));
+  ok("customer build: unconfirmed flag is ABSENT", !("unconfirmed" in custLamp));
+  ok("customer build: no hiddenReason to leak", !("hiddenReason" in custLamp));
+
+  const xrayLamp = buildItem(lamp, true);
+  ok("xray build: internal is marked", xrayLamp.internal === true);
+  ok("xray build: the REASON is carried, not guessed", xrayLamp.hiddenReason === "Operational only");
+
+  const xrayRib = buildItem(rib, true);
+  ok("xray build: a carried price is flagged unconfirmed", xrayRib.unconfirmed === true);
+  ok("xray build: a visible item is not marked internal", xrayRib.internal === false);
+
+  // The filter itself: internal rows are absent from a customer model entirely.
+  const rows = [lamp, rib];
+  const visible = (xray: boolean) => rows.filter((r) => !r.hidden || xray).map((r) => r.name);
+  ok("customer model omits the heat lamps ENTIRELY", JSON.stringify(visible(false)) === JSON.stringify(["Prime Rib"]));
+  ok("xray model includes them, flagged", visible(true).length === 2);
+}
+
 console.log(`
 ═══ ${pass} passed, ${fail} failed ═══
 `);

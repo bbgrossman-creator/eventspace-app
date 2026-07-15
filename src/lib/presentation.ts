@@ -38,6 +38,14 @@ export interface PresentationItem {
    *  prefixes anything.) */
   note: string | null;
   optional: boolean;             // an upgrade the customer may add
+  /** v196 X-RAY. These fields are populated ONLY when the model is built with
+   *  { xray: true }, and are undefined otherwise — so a customer-facing build
+   *  cannot leak them even by accident. The renderer shows them only in X-ray;
+   *  the projection decides they exist at all. Belt and braces, deliberately:
+   *  this is the one place where a leak is a breach rather than a bug. */
+  internal?: boolean;            // show_on_proposal = false — never sent
+  unconfirmed?: boolean;         // a carried price awaiting confirmation
+  hiddenReason?: string | null;  // why the customer won't see this
 }
 export interface PresentationChoiceGroup {
   label: string; chooseCount: number;
@@ -110,6 +118,49 @@ function dedupeChoiceLabel(groupLabel: string, componentTitle: string): string {
   return groupLabel;
 }
 
+/** v196: the compositional outline — chapters ▸ components ▸ items.
+ *  A PROJECTION, not shell furniture (banked correction: a Layout lens's
+ *  outline is rooms ▸ zones ▸ stations, so the rail belongs to a lens's
+ *  rendering). Debt ROLLS UP so a chapter can say "something inside me is
+ *  unresolved" without the user opening all 17 components. Derived on every
+ *  build; never stored. */
+export interface OutlineNodeModel {
+  id: string; label: string; kind: "chapter" | "component" | "item";
+  children?: OutlineNodeModel[]; debt?: number; internal?: boolean;
+}
+
+export function outlineFromModel(model: PresentationModel): OutlineNodeModel[] {
+  return model.sections.map((sec, si) => {
+    const comps: OutlineNodeModel[] = [];
+    for (const band of sec.bands) {
+      for (const comp of band.components) {
+        const items: OutlineNodeModel[] = [];
+        let compDebt = 0;
+        for (const block of comp.blocks) {
+          for (const it of block.items) {
+            const d = (it.unconfirmed === true || it.priceStatus === "pending") ? 1 : 0;
+            compDebt += d;
+            items.push({
+              id: `i:${si}:${comps.length}:${items.length}`, label: it.name,
+              kind: "item", debt: d, internal: it.internal === true,
+            });
+          }
+        }
+        if (comp.priceStatus === "pending") compDebt += 1;
+        comps.push({
+          id: `c:${si}:${comps.length}`, label: comp.title, kind: "component",
+          children: items.length ? items : undefined, debt: compDebt,
+        });
+      }
+    }
+    return {
+      id: `s:${si}`, label: sec.name, kind: "chapter",
+      children: comps.length ? comps : undefined,
+      debt: comps.reduce((n, c) => n + (c.debt ?? 0), 0),
+    };
+  });
+}
+
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type ItemLayout = "vertical" | "comma" | "dot";
@@ -155,7 +206,16 @@ function parseCategories(raw: unknown): CategoryDef[] {
  *  another tenant's customer-safe proposal. Required while RLS is still off.
  *  Returns null on not-found OR unauthorized (indistinguishable to the caller,
  *  so a wrong UUID can't confirm a proposal exists in another tenant). */
-export async function buildPresentationModel(versionId: string): Promise<PresentationModel | null> {
+/** v196: build options. `xray` includes the truths the customer never sees —
+ *  internal-only items, unconfirmed flags — each marked for what it is. It is
+ *  NOT a rendering flag: it changes what the MODEL CONTAINS, which is why a
+ *  non-xray build cannot leak. Same projection, two models. */
+export interface BuildOptions { xray?: boolean }
+
+export async function buildPresentationModel(
+  versionId: string, opts: BuildOptions = {},
+): Promise<PresentationModel | null> {
+  const xray = opts.xray === true;
   const { data: v } = await supabase.from("proposal_versions")
     .select("id,proposal_id,version,status,price_visibility,customer_intro,customer_closing")
     .eq("id", versionId).maybeSingle();
@@ -323,12 +383,25 @@ export async function buildPresentationModel(versionId: string): Promise<Present
       priceStatus: priceInfo(i.unit_price, i.quantity_basis, i.price_confirmed, i.price_state).status,
       note: i.presentation_note,
       optional,
+      // Populated only under X-ray — see PresentationItem.
+      ...(xray ? {
+        internal: i.show_on_proposal === false,
+        unconfirmed: i.price_confirmed === false,
+        hiddenReason: i.show_on_proposal === false
+          ? ((i.price_state ?? "quoted") === "internal" ? "Operational only" : "Hidden from proposal")
+          : null,
+      } : {}),
     });
     if (showItems) {
       // Drop unselected optional items, choice-group members (shown elsewhere),
-      // and internal-only items.
+      // and — UNLESS X-RAY — internal-only items.
+      //
+      // v196: under X-ray the internal rows come back, flagged. This is the
+      // whole of "compose on the projection": the author sees the customer's
+      // page WITH the truth showing, rather than a schematic beside a preview.
       for (const i of rawItems) {
-        if (!i.choice_group_id && i.show_on_proposal !== false
+        const customerVisible = i.show_on_proposal !== false;
+        if (!i.choice_group_id && (customerVisible || xray)
             && (i.item_role !== "optional" || i.selected)) {
           pairs.push({ item: toItem(i, i.item_role === "optional"), key: i.category_key });
         }
@@ -524,6 +597,9 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     // printed as a bare heading over blank space. Drop it — and drop any band
     // left empty as a result. (title_only components DO survive: a title and a
     // price IS the intended message there.)
+    // v195 P1.8 unchanged in meaning — but note it now works FOR X-ray too:
+    // the Sushi Condiments category (every item hidden) stays suppressed for
+    // the customer and reappears under X-ray, because the model itself differs.
     const speaks = (comp: PresentationComponent) =>
       !!comp.description || !!comp.note || !!comp.priceLabel || !!comp.choice ||
       comp.blocks.some((b) => b.items.length > 0);

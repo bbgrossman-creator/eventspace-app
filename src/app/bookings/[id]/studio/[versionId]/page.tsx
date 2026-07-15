@@ -22,6 +22,10 @@ import { Booking, fmtDate } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { resolveTaxForTenant, TaxResolution } from "@/lib/tax";
 import StudioShell from "@/components/studio/StudioShell";
+import LibraryBrowser from "@/components/studio/LibraryBrowser";
+import ProposalRenderer from "@/components/ProposalRenderer";
+import { buildPresentationModel, PresentationModel, outlineFromModel } from "@/lib/presentation";
+import DesignOutline from "@/components/studio/renderers/DesignOutline";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import { loadSession, Session } from "@/lib/permissions";
 import { PRICING } from "@/lib/pricing";
@@ -117,6 +121,17 @@ export default function StudioPage() {
   // independent track.
   const [session, setSession] = useState<Session | null>(null);
   const [lens, setLens] = useState<LensKey | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  // v196 THE STAGE. The customer projection, rendered INLINE — not a route in
+  // another tab. This is the convergence the design doc committed to: the
+  // preview was the X-ray-off end of a spectrum and the build view the X-ray-on
+  // end; they meet here. The author stops working blind and checking.
+  const [stage, setStage] = useState<PresentationModel | null>(null);
+  const [stageBusy, setStageBusy] = useState(false);
+  // Selection and focus are SHELL state: the rail, the Stage and Details must
+  // agree, and three components cannot each own that (renderer contract).
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const [xray, setXray] = useState(true);   // authors default to seeing the truth
   const [srps, setSrps] = useState<Record<string, { srp: number | null; srp_set_at: string | null }>>({});
 
@@ -208,6 +223,21 @@ export default function StudioPage() {
     try { pref = localStorage.getItem("ec:lens") as LensKey | null; } catch { pref = null; }
     setLens(resolveLens({ caps }, session, { explicit: url, preference: pref }));
   }, [caps, session, lens]);
+
+  // The Stage is a PROJECTION: rebuilt from canonical data, never patched in
+  // place. Cheap because it is derived — and it is the reason the number on
+  // the Stage can never drift from the number in the totals panel.
+  useEffect(() => {
+    if (!versionId || (lens !== "customer" && lens !== "design")) { setStage(null); return; }
+    let dead = false;
+    setStageBusy(true);
+    // Design = the maker's lens: every truth, so X-ray content is on.
+    // Customer = the artifact: X-ray only if the author asked to see chrome.
+    buildPresentationModel(versionId, { xray: lens === "design" ? true : xray })
+      .then((m) => { if (!dead) setStage(m); })
+      .finally(() => { if (!dead) setStageBusy(false); });
+    return () => { dead = true; };
+  }, [versionId, lens, xray, items, comps, guests, adjs]);
 
   // Remember the door they chose. A preference, never a permission.
   useEffect(() => {
@@ -481,9 +511,58 @@ export default function StudioPage() {
           xray={xray}
           onXray={setXray}
           debtCount={totals.unconfirmed + totals.unpriced}
-          onOpenLibrary={() => setToast("Library — Ctrl+K opens the browser in the next slice")}
+          onOpenLibrary={() => setLibraryOpen(true)}
         />
       </div>
+
+      <LibraryBrowser
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onInstantiate={(identityId, name) =>
+          // Instantiate lands in slice 4 with the drag grammar (it must arrive
+          // amber — carried facts are unconfirmed by construction). Naming the
+          // identity now proves the wiring end-to-end without pretending the
+          // ceremony exists yet.
+          setToast(`"${name}" — instantiate arrives with the drag grammar (identity ${identityId.slice(0, 8)}…)`)
+        }
+      />
+
+      {/* ── THE STAGE ──────────────────────────────────────────────────────
+           One Stage. The active lens decides the rendering; X-ray decides
+           whether the scaffolding shows. The existing editor below is the
+           X-ray-heavy end of the same spectrum and converges into this in
+           later slices — release by release, never in one rewrite. */}
+      {(lens === "customer" || lens === "design") && (
+        <div className="shrink-0 max-h-[52vh] flex border-b" style={{ borderColor: "#E7EDF5" }}>
+          {/* The rail: a lens-owned projection. It NAVIGATES; it never drives. */}
+          <aside className="w-56 shrink-0 overflow-y-auto border-r bg-white" style={{ borderColor: "#E7EDF5" }}>
+            <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Outline</div>
+            {stage && (
+              <DesignOutline
+                nodes={outlineFromModel(stage)}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                focusedId={focusedId}
+                onFocus={setFocusedId}
+                xray={lens === "design" || xray}
+              />
+            )}
+          </aside>
+          <div className="flex-1 overflow-y-auto bg-[#EEF2F7] px-4 py-4">
+          {stageBusy && !stage && <p className="text-center text-[12px] text-slate-400 py-8">Rendering…</p>}
+          {stage && (
+            <div className="shadow-lg rounded-lg overflow-hidden">
+              <ProposalRenderer model={stage} xray={lens === "design" || xray} draftRibbon />
+            </div>
+          )}
+          {!stageBusy && !stage && (
+            <p className="text-center text-[12px] text-slate-400 py-8">
+              Nothing to show on this lens yet.
+            </p>
+          )}
+          </div>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <div className="shrink-0 bg-white border-b border-[#E7EDF5] px-5 py-3">
