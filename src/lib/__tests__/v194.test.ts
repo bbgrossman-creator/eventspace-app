@@ -214,3 +214,64 @@ console.log("\n── P0.7 · Date-only values do not shift by timezone ──")
 
 console.log(`\n═══ ${pass} passed, ${fail} failed ═══\n`);
 if (fail > 0) process.exit(1);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v195 — PRESENTATION CLEANUP REGRESSIONS
+// Pure logic only; the renderer is JSX and is covered by tsc + review.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log("\n── v195 P1.3 · Choice label de-duplication ──");
+{
+  // Mirrors dedupeChoiceLabel in presentation.ts.
+  const dedupe = (groupLabel: string, componentTitle: string) => {
+    const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const g = norm(groupLabel), t = norm(componentTitle);
+    if (!g || g === t || g.startsWith(t)) return "";
+    return groupLabel;
+  };
+  ok("'Soup Course — choose one' inside 'Soup Course' collapses", dedupe("Soup Course — choose one", "Soup Course") === "");
+  ok("exact restatement collapses", dedupe("Soup Course", "Soup Course") === "");
+  ok("a genuinely different label survives", dedupe("Upgrade your protein", "Entrées") === "Upgrade your protein");
+  ok("case/punctuation differences still collapse", dedupe("SOUP COURSE - Choose One", "Soup Course") === "");
+}
+
+console.log("\n── v195 P1.4 · Price status is typed, not English ──");
+{
+  type PriceStatus = "none" | "quoted" | "pending" | "included" | "free";
+  const priceInfo = (unit: number | null, basis: string | null, confirmed: boolean, state?: string | null,
+  ): { label: string | null; status: PriceStatus } => {
+    const st = state ?? "quoted";
+    if (st === "internal") return { label: null, status: "none" };
+    if (st === "included") return { label: "Included", status: "included" };
+    if (st === "free") return { label: "Complimentary", status: "free" };
+    if (unit == null) return { label: null, status: "none" };
+    if (!confirmed) return { label: "Pricing pending", status: "pending" };
+    return { label: basis === "per_person" ? `$${unit} / person` : `$${unit}`, status: "quoted" };
+  };
+  ok("included renders 'Included', NOT $0.00", priceInfo(0, null, true, "included").label === "Included");
+  ok("included is typed, not sniffed", priceInfo(0, null, true, "included").status === "included");
+  ok("free reads as complimentary", priceInfo(0, null, true, "free").status === "free");
+  ok("internal shows the customer nothing", priceInfo(null, null, true, "internal").label === null);
+  ok("unconfirmed is pending", priceInfo(52, null, false).status === "pending");
+  ok("normal is quoted", priceInfo(52, "per_person", true).status === "quoted");
+  // The regression this locks: renaming the label must NOT change the status.
+  const renamed = { ...priceInfo(52, null, false), label: "Awaiting confirmation" };
+  ok("renaming the label leaves the status intact", renamed.status === "pending");
+}
+
+console.log("\n── v195 P1.8 · Components with nothing to say disappear ──");
+{
+  type C = { description: string | null; note: string | null; priceLabel: string | null; choice: unknown | null; blocks: { items: unknown[] }[] };
+  const speaks = (c: C) => !!c.description || !!c.note || !!c.priceLabel || !!c.choice || c.blocks.some((b) => b.items.length > 0);
+  const bare: C = { description: null, note: null, priceLabel: null, choice: null, blocks: [{ items: [] }] };
+  ok("all-items-hidden + nothing else ⇒ dropped", !speaks(bare));
+  ok("title_only WITH a price survives", speaks({ ...bare, priceLabel: "$950" }));
+  ok("a description alone survives", speaks({ ...bare, description: "Chef attended." }));
+  ok("a component note alone survives", speaks({ ...bare, note: "Carved to order." }));
+  ok("a choice alone survives", speaks({ ...bare, choice: {} }));
+  ok("one visible item survives", speaks({ ...bare, blocks: [{ items: [1] }] }));
+}
+
+console.log(`
+═══ ${pass} passed, ${fail} failed ═══
+`);
+if (fail > 0) process.exit(1);

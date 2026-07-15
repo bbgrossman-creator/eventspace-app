@@ -20,11 +20,17 @@ import { parseLocalDate } from "./workflow";
 import { computeVersionTotals, PricedItem, PackageLine, Adjustment, VersionGuestCount, ChoiceGroupDef } from "./pricingEngine";
 import { loadSession } from "./permissions";
 
+/** v195 P1.4 — the renderer must never branch on English. A price label is
+ *  copy; a price STATUS is data. Renaming the label used to silently break the
+ *  amber styling, with no type error and no failing test. */
+export type PriceStatus = "none" | "quoted" | "pending" | "included" | "free";
+
 export interface PresentationItem {
   name: string;
   description: string | null;
   price: number | null;          // null when not shown (visibility/basis)
-  priceLabel: string | null;     // "$18 / person", "$450", "Pricing pending", or null
+  priceLabel: string | null;     // "$18 / person", "$450", "Included", or null
+  priceStatus: PriceStatus;      // v195 P1.4: what the label MEANS
   /** Presentation copy attached to the item — a complete sentence, printed as
    *  given. NOT accompaniment-only: "Served with au jus", "Carved to order",
    *  "Choose one sauce". (v191: renamed from servedWith; the renderer no longer
@@ -34,7 +40,9 @@ export interface PresentationItem {
 }
 export interface PresentationChoiceGroup {
   label: string; chooseCount: number;
-  options: { name: string; description: string | null; priceLabel: string | null }[];
+  /** v195 P1.7: choices honour the layout system like any other run of items. */
+  layout: "vertical" | "comma" | "dot";
+  options: { name: string; description: string | null; priceLabel: string | null; priceStatus: PriceStatus }[];
 }
 /** A run of items rendered together — one category, or the ungrouped run.
  *  Presentation-only: no pricing, no identity beyond its component. */
@@ -47,9 +55,16 @@ export interface PresentationBlock {
 export interface PresentationComponent {
   title: string;
   description: string | null;    // customer_description (description mode)
+  /** v195 P1.2: copy about the COMPONENT ("Carved to order by our chefs") —
+   *  no longer welded to a representative item. */
+  note: string | null;
   isPackage: boolean;
   priceLabel: string | null;     // shown per visibility
+  priceStatus: PriceStatus;      // v195 P1.4
   blocks: PresentationBlock[];   // empty unless display mode is 'items'
+  /** v195 P1.1: the choice belonging to THIS component, rendered in place
+   *  rather than orphaned at the foot of the section. */
+  choice: PresentationChoiceGroup | null;
 }
 export interface PresentationBand {
   label: string;                 // "" for ungrouped run
@@ -62,6 +77,15 @@ export interface PresentationSection {
   choiceGroups: PresentationChoiceGroup[];
   subtotalLabel: string | null;  // shown when visibility = sections
 }
+/** v195 — the ending, made intentional. Derived entirely from the canonical
+ *  totals; stores nothing, decides nothing. A projection of a projection. */
+export interface PresentationSummary {
+  lines: { label: string; amount: string }[];
+  totalLabel: string;
+  preparedFor: string | null;
+  preparedBy: string | null;
+}
+
 export interface PresentationModel {
   title: string;
   eventLine: string;             // "Wedding · October 12, 2025 · 200 guests" — no customer PII beyond what they gave
@@ -72,6 +96,17 @@ export interface PresentationModel {
   totalLabel: string | null;     // shown only when visibility = full
   status: string;                // draft | sent | approved … (for a "DRAFT" ribbon)
   hasUnconfirmedVisiblePrice: boolean;  // a visible price is still amber/carried
+  summary: PresentationSummary | null;  // v195: shown only at full visibility
+}
+
+/** v195 P1.3 — "Soup Course — choose one" inside the "Soup Course" component
+ *  is the same words twice. If the group's label merely restates the component,
+ *  drop it and let the card speak with "Choose N" alone. */
+function dedupeChoiceLabel(groupLabel: string, componentTitle: string): string {
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const g = norm(groupLabel), t = norm(componentTitle);
+  if (!g || g === t || g.startsWith(t)) return "";
+  return groupLabel;
 }
 
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -147,10 +182,12 @@ export async function buildPresentationModel(versionId: string): Promise<Present
   // Event line: only customer-appropriate facts (type, date, guests). No
   // internal status, invoice, tenant, or contact details beyond the name.
   let eventLine = "";
+  // v195: the customer's own name on their own proposal — not a PII widening.
+  let prepFor: string | null = null;
   {
     const { data: bk } = await supabase.from("bookings")
-      .select("event_type,event_date,est_guests").eq("id", ownBookingId).maybeSingle();
-    const b = bk as { event_type: string | null; event_date: string | null; est_guests: number | null } | null;
+      .select("event_type,event_date,est_guests,contact_name").eq("id", ownBookingId).maybeSingle();
+    const b = bk as { event_type: string | null; event_date: string | null; est_guests: number | null; contact_name: string | null } | null;
     const parts: string[] = [];
     if (b?.event_type) parts.push(b.event_type);
     // v194 P0.7: event_date is a DATE column ('2026-06-30'). Raw new Date()
@@ -160,6 +197,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     if (b?.event_date) parts.push(parseLocalDate(b.event_date).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }));
     if (b?.est_guests) parts.push(`${b.est_guests} guests`);
     eventLine = parts.join(" · ");
+    prepFor = b?.contact_name ?? null;
   }
 
   // Guests for per-person math.
@@ -179,13 +217,13 @@ export async function buildPresentationModel(versionId: string): Promise<Present
   const [{ data: sts }, { data: vsec }, { data: cgs }] = await Promise.all([
     supabase.from("section_types").select("id,name"),
     supabase.from("version_sections").select("section_type_id,position").eq("version_id", versionId).order("position"),
-    supabase.from("choice_groups").select("id,section_type_id,label,choose_count,position").eq("version_id", versionId).order("position"),
+    supabase.from("choice_groups").select("id,section_type_id,component_id,label,choose_count,position").eq("version_id", versionId).order("position"),
   ]);
   const secName: Record<string, string> = {};
   for (const s of (sts ?? []) as { id: string; name: string }[]) secName[s.id] = s.name;
 
   const { data: cs } = await supabase.from("event_components")
-    .select("id,title,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,customer_description,notes,position,proposal_display,item_categories,item_layout,uncategorized_position,package_audience")
+    .select("id,title,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,customer_description,notes,position,proposal_display,item_categories,item_layout,uncategorized_position,package_audience,presentation_note")
     .eq("proposal_version_id", versionId).order("position");
   const comps = (cs ?? []) as {
     id: string; title: string; section_type_id: string | null;
@@ -198,6 +236,7 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     item_layout: string | null;
     uncategorized_position: string | null;
     package_audience: string[] | null;
+    presentation_note: string | null;
   }[];
 
   type ItemRow = { component_id: string; name: string; description: string | null; unit_price: number | null; quantity: number | null; quantity_basis: string | null; applies_to_category_id: string | null; item_role: string | null; selected: boolean; choice_group_id: string | null; price_confirmed: boolean; presentation_note: string | null; show_on_proposal: boolean; category_key: string | null; id: string; is_default_choice: boolean; position: number; price_state: string | null; taxable: boolean | null };
@@ -213,20 +252,35 @@ export async function buildPresentationModel(versionId: string): Promise<Present
 
   const lineCount = (basis: string | null, quantity: number | null) =>
     basis === "per_person" ? totalGuests : (quantity ?? 1);
-  const priceLabelFor = (unit: number | null, basis: string | null, confirmed: boolean) => {
-    if (visibility === "hidden") return null;
-    if (unit == null) return null;
+  /** v195 P1.4 — returns the label AND its typed status, so the renderer never
+   *  has to read English to decide how to style a price.
+   *  v194 P0.5 states are honoured here: an "included" line says Included, and
+   *  crucially does NOT read as an unpriced gap or a $0.00 insult. */
+  const priceInfo = (
+    unit: number | null, basis: string | null, confirmed: boolean, state?: string | null,
+  ): { label: string | null; status: PriceStatus } => {
+    if (visibility === "hidden") return { label: null, status: "none" };
+    const st = state ?? "quoted";
+    if (st === "internal") return { label: null, status: "none" };
+    if (st === "included") return { label: "Included", status: "included" };
+    if (st === "free") return { label: "Complimentary", status: "free" };
+    if (unit == null) return { label: null, status: "none" };
     // Unconfirmed = historical price awaiting confirmation. NEVER show it as a
     // real number and NEVER let it read as included — say pricing is pending.
-    if (!confirmed) return "Pricing pending";
-    return basis === "per_person" ? `${money(unit)} / person` : money(unit);
+    if (!confirmed) return { label: "Pricing pending", status: "pending" };
+    return {
+      label: basis === "per_person" ? `${money(unit)} / person` : money(unit),
+      status: "quoted",
+    };
   };
+  const priceLabelFor = (unit: number | null, basis: string | null, confirmed: boolean) =>
+    priceInfo(unit, basis, confirmed).label;
 
   // Choice groups: collect their option items (by choice_group_id) to lift out
   // of normal component rendering and present as a "Choose N".
   const choiceItems: Record<string, PresentationChoiceGroup> = {};
   for (const cg of (cgs ?? []) as { id: string; section_type_id: string | null; label: string; choose_count: number; position: number }[]) {
-    choiceItems[cg.id] = { label: cg.label, chooseCount: cg.choose_count, options: [] };
+    choiceItems[cg.id] = { label: cg.label, chooseCount: cg.choose_count, layout: "vertical", options: [] };
   }
 
   // Build components, honoring translation rules.
@@ -247,9 +301,10 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     // Route choice-group items into their group, out of the normal list.
     for (const i of rawItems) {
       if (i.choice_group_id && choiceItems[i.choice_group_id]) {
+        const pi = priceInfo(i.unit_price, i.quantity_basis, i.price_confirmed, i.price_state);
         choiceItems[i.choice_group_id].options.push({
           name: i.name, description: i.description,
-          priceLabel: priceLabelFor(i.unit_price, i.quantity_basis, i.price_confirmed),
+          priceLabel: pi.label, priceStatus: pi.status,
         });
       }
     }
@@ -263,7 +318,8 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     const toItem = (i: (typeof rawItems)[number], optional: boolean): PresentationItem => ({
       name: i.name, description: i.description,
       price: null,
-      priceLabel: priceLabelFor(i.unit_price, i.quantity_basis, i.price_confirmed),
+      priceLabel: priceInfo(i.unit_price, i.quantity_basis, i.price_confirmed, i.price_state).label,
+      priceStatus: priceInfo(i.unit_price, i.quantity_basis, i.price_confirmed, i.price_state).status,
       note: i.presentation_note,
       optional,
     });
@@ -344,11 +400,24 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     // renders in description mode only; title_only shows neither.
     const compDescription = displayMode === "description" ? c.customer_description : null;
 
-    const compPriceLabel = isPackage
-      ? (visibility === "hidden" || c.package_price == null ? null
-         : !c.package_price_confirmed ? "Pricing pending"
-         : c.package_basis === "per_person" ? `${money(c.package_price)} / person` : money(c.package_price))
-      : null;
+    // v195 P1.4 — the component price now carries a typed status too.
+    const compPI = isPackage
+      ? priceInfo(c.package_price, c.package_basis, c.package_price_confirmed)
+      : { label: null, status: "none" as PriceStatus };
+
+    // v195 P1.1/P1.3 — the choice that belongs to THIS component renders inside
+    // it, not orphaned at the foot of the section. Its label is de-duplicated:
+    // a group called "Soup Course — choose one" sitting inside the "Soup
+    // Course" component was saying the same thing twice, so the component's own
+    // title wins and the card just says "Choose N".
+    const ownGroupId = (cgs ?? []).find(
+      (g: { id: string; component_id: string | null }) => g.component_id === c.id,
+    )?.id;
+    const ownChoice = ownGroupId ? choiceItems[ownGroupId] : undefined;
+    const choice: PresentationChoiceGroup | null =
+      ownChoice && ownChoice.options.length > 0
+        ? { ...ownChoice, layout: compLayout, label: dedupeChoiceLabel(ownChoice.label, c.title) }
+        : null;
 
     built.push({
       sectionId: c.section_type_id ?? "__none__",
@@ -358,9 +427,13 @@ export async function buildPresentationModel(versionId: string): Promise<Present
       comp: {
         title: c.title,
         description: compDescription, // NEVER notes; only customer_description in description mode
+        // v195 P1.2 — component-level copy, no longer welded to a proxy item.
+        note: c.presentation_note,
         isPackage,
-        priceLabel: compPriceLabel,
+        priceLabel: compPI.label,
+        priceStatus: compPI.status,
         blocks,
+        choice,
       },
     });
   }
@@ -443,14 +516,31 @@ export async function buildPresentationModel(versionId: string): Promise<Present
       bandMeta[k].minPos = Math.min(bandMeta[k].minPos, b.bandPos);
       if (!bandMeta[k].desc && b.bandDesc) bandMeta[k].desc = b.bandDesc;
     }
+    // v195 P1.8 — a component whose every item is hidden, with no description,
+    // no note, no price and no choice, has nothing to say to the customer. It
+    // printed as a bare heading over blank space. Drop it — and drop any band
+    // left empty as a result. (title_only components DO survive: a title and a
+    // price IS the intended message there.)
+    const speaks = (comp: PresentationComponent) =>
+      !!comp.description || !!comp.note || !!comp.priceLabel || !!comp.choice ||
+      comp.blocks.some((b) => b.items.length > 0);
+
     const bands: PresentationBand[] = bandKeys.sort((a, z) => bandMeta[a].minPos - bandMeta[z].minPos)
-      .map((k) => ({ label: bandMeta[k].label, description: bandMeta[k].desc, components: bandMeta[k].comps }));
+      .map((k) => ({ label: bandMeta[k].label, description: bandMeta[k].desc, components: bandMeta[k].comps.filter(speaks) }))
+      .filter((b) => b.components.length > 0);
 
     const secTotal = sumSection(sid);
 
-    const groups = (cgs ?? []).filter((cg: { section_type_id: string | null }) => (cg.section_type_id ?? "") === (sid === "__none__" ? "" : sid))
-      .map((cg: { id: string }) => choiceItems[cg.id]).filter((x): x is PresentationChoiceGroup => !!x && x.options.length > 0);
+    // v195 P1.1 — a group attached to a component already rendered INSIDE it.
+    // Only unattached (legacy) groups still fall back to section level, so
+    // nothing renders twice and old data keeps working.
+    const groups = (cgs ?? [])
+      .filter((cg: { section_type_id: string | null; component_id: string | null }) =>
+        cg.component_id == null && (cg.section_type_id ?? "") === (sid === "__none__" ? "" : sid))
+      .map((cg: { id: string }) => choiceItems[cg.id])
+      .filter((x): x is PresentationChoiceGroup => !!x && x.options.length > 0);
 
+    if (bands.length === 0 && groups.length === 0) continue;   // v195 P1.8
     sections.push({
       name: sid === "__none__" ? "More" : secName[sid],
       bands, choiceGroups: groups,
@@ -470,6 +560,30 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     }
   }
 
+  // ── v195: the ending, made intentional ─────────────────────────────────
+  // Every figure here comes from `canonical` — the same object the Studio
+  // reads. The summary decides nothing and stores nothing; it is a projection
+  // of a projection, which is why it cannot drift from the total above it.
+  let summary: PresentationSummary | null = null;
+  if (visibility === "full") {
+    const lines: { label: string; amount: string }[] = [];
+    const enhancements = canonical.itemsSubtotal - canonical.baseSubtotal;   // selected optionals
+    if (canonical.baseSubtotal > 0) lines.push({ label: "Food & Beverage", amount: money(canonical.baseSubtotal) });
+    if (enhancements > 0.005) lines.push({ label: "Enhancements", amount: money(enhancements) });
+    // Adjustments are named by the tenant — never invented, never relabelled.
+    for (const a of [...adjustments].sort((x, z) => x.position - z.position)) {
+      const amt = a.kind === "percent" ? (canonical.itemsSubtotal * a.value) / 100 : a.value;
+      if (Math.abs(amt) > 0.005) lines.push({ label: a.label, amount: money(amt) });
+    }
+    if (canonical.tax > 0.005) lines.push({ label: "Tax", amount: money(canonical.tax) });
+    summary = {
+      lines,
+      totalLabel: money(canonical.total),
+      preparedFor: prepFor,
+      preparedBy: null,   // tenant identity is Phase 3 (theming) — not invented here
+    };
+  }
+
   return {
     title: prop?.title ?? "Proposal",
     eventLine,
@@ -480,5 +594,6 @@ export async function buildPresentationModel(versionId: string): Promise<Present
     totalLabel: visibility === "full" ? money(canonical.total) : null,   // v194 P0.2: THE canonical number
     status: ver.status,
     hasUnconfirmedVisiblePrice,
+    summary,
   };
 }
