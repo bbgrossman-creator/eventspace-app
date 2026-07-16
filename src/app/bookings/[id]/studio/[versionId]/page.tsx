@@ -29,6 +29,7 @@ import DesignOutline from "@/components/studio/renderers/DesignOutline";
 import DesignStage from "@/components/studio/renderers/DesignStage";
 import { buildDesignStage, outlineFromDesignChapters, RawComp, RawItem } from "@/lib/designStageModel";
 import { sourceForIdentity } from "@/lib/library";
+import { NodePayload, DropTarget, operationFor, reorder, isNoOp, splitCatKey } from "@/lib/dragGrammar";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
 import { loadSession, Session } from "@/lib/permissions";
@@ -319,16 +320,29 @@ export default function StudioPage() {
   /** Where ↵ puts things. Predictable beats clever: the selected chapter, or
    *  the chapter of the selected component, or the last chapter. Never a guess
    *  the user cannot reconstruct — drag is there for aiming precisely. */
-  const targetChapter = useMemo(() => {
+  /** Where ↵ puts things — and where it REFUSES to guess.
+   *
+   *  The earlier fallback was "otherwise the last chapter." That is an
+   *  invisible placement mistake: the component lands somewhere the user did
+   *  not choose and did not see, and they discover it later or never. A
+   *  question is cheaper than a wrong answer nobody noticed.
+   *
+   *    explicit target → selected chapter → selected component's chapter → ASK
+   */
+  const targetChapter = useMemo<string | null>(() => {
     if (!designChapters.length) return null;
+    if (designChapters.length === 1) return designChapters[0].id;   // no ambiguity to resolve
     if (selectedId) {
       const asChapter = designChapters.find((ch) => ch.id === selectedId);
       if (asChapter) return asChapter.id;
       const owner = designChapters.find((ch) => ch.components.some((c) => c.id === selectedId));
       if (owner) return owner.id;
     }
-    return designChapters[designChapters.length - 1].id;
+    return null;   // ← ASK. Never "the last one".
   }, [designChapters, selectedId]);
+
+  /** The question, asked only when there is genuinely one to ask. */
+  const [askChapterFor, setAskChapterFor] = useState<{ identityId: string; name: string } | null>(null);
 
   const hasOptions = items.some((i) => i.item_role === "optional");
   const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
@@ -361,6 +375,62 @@ export default function StudioPage() {
       await Promise.all(r.newIds.map((id) => patchComp(id, { section_type_id: chapterId })));
     }
     setToast(`✓ "${name}" added — prices carried, awaiting confirmation`);
+    loadCanvas();
+  }
+
+  /** REARRANGE and MOVE — the only two verbs that write here. Dragging changes
+   *  position and parentage. NOTHING else: no field is touched, no row is
+   *  created, no price is confirmed. That is the first law of the grammar and
+   *  it is enforced by this function being the only place a drop lands. */
+  async function applyDrop(src: NodePayload, t: DropTarget) {
+    if (locked || !session?.perms.includes("bookings.edit")) return;
+    const op = operationFor(src, t);
+    if (op === "invalid") return;
+
+    if (src.kind === "component") {
+      const target = designChapters.find((ch) => ch.id === t.parentId);
+      if (!target) return;
+      const sameChapter = src.parentId === t.parentId;
+      const siblings = target.components.map((c) => c.id);
+      // Moving in: the id isn't a sibling yet, so seed it before reordering.
+      const base = sameChapter ? siblings : [...siblings];
+      if (sameChapter && isNoOp(base, src.id, t.beforeId)) return;   // silence, not a write
+      const { ids } = reorder(sameChapter ? base : [...base, src.id], src.id, t.beforeId);
+
+      setBusy(true);
+      await Promise.all(ids.map((id, idx) =>
+        patchComp(id, id === src.id && !sameChapter
+          ? { position: idx, section_type_id: t.parentId }   // MOVE: reparent + place
+          : { position: idx })));                            // REARRANGE: place only
+      setBusy(false);
+      setSelectedId(src.id);   // selection follows the object; the Stage scrolls to it
+      setToast(sameChapter ? "↕ Reordered" : `⇢ Moved to ${target.name}`);
+      loadCanvas();
+      return;
+    }
+
+    // ── Items ──
+    // An item is ordered inside its CATEGORY. Within one ⇒ rearrange. Across
+    // categories of the SAME component ⇒ move (it changes category_key).
+    // Across components ⇒ operationFor already returned invalid above.
+    const to = splitCatKey(t.parentId ?? "");
+    const owner = designChapters.flatMap((ch) => ch.components).find((c) => c.id === to.componentId);
+    if (!owner) return;
+    const sameCat = t.parentId === src.parentId;
+    const destCat = owner.categories.find((cat) => (cat.key ?? "_") === (to.category ?? "_"));
+    const siblings = (destCat?.items ?? []).map((i) => i.id);
+
+    if (sameCat && isNoOp(siblings, src.id, t.beforeId)) return;   // silence, not a write
+    const { ids } = reorder(sameCat ? siblings : [...siblings, src.id], src.id, t.beforeId);
+
+    setBusy(true);
+    await Promise.all(ids.map((id, idx) =>
+      patchItem(id, id === src.id && !sameCat
+        ? { position: idx, category_key: to.category }   // MOVE: recategorise + place
+        : { position: idx })));                          // REARRANGE: place only
+    setBusy(false);
+    setSelectedId(src.id);
+    setToast(sameCat ? "↕ Reordered" : `⇢ Moved to ${destCat?.label ?? "uncategorised"}`);
     loadCanvas();
   }
 
@@ -615,8 +685,32 @@ export default function StudioPage() {
       <LibraryBrowser
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
-        onInstantiate={(identityId, name) => instantiate(identityId, name, targetChapter)}
+        onInstantiate={(identityId, name) => {
+          if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
+          setAskChapterFor({ identityId, name });   // ask; never guess
+        }}
       />
+
+      {askChapterFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+             onClick={() => setAskChapterFor(null)}>
+          <div className="bg-white rounded-xl shadow-2xl p-4 w-80" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[13px] font-semibold mb-1">Where should “{askChapterFor.name}” go?</p>
+            <p className="text-[11px] text-slate-400 mb-3">Select a chapter first, or drag it to aim precisely.</p>
+            <div className="space-y-1">
+              {designChapters.map((ch) => (
+                <button key={ch.id}
+                  onClick={() => { instantiate(askChapterFor.identityId, askChapterFor.name, ch.id); setAskChapterFor(null); }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-[13px] hover:bg-[#F4F9FF]">
+                  {ch.name}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setAskChapterFor(null)}
+              className="mt-3 text-[11px] text-slate-400 hover:text-slate-700">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <div className="shrink-0 bg-white border-b border-[#E7EDF5] px-5 py-3">
@@ -748,6 +842,7 @@ export default function StudioPage() {
                 onPatchItem={(id, patch) => patchItem(id, patch as Partial<PricedItem>)}
                 onAddComponent={(chapterId) => addComponentIn(chapterId === "__none__" ? null : chapterId)}
                 money={money}
+                onDrop={applyDrop}
               />
             )}
             {lens === "customer" && (
