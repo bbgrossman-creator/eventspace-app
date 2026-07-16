@@ -76,6 +76,8 @@ export interface DesignStageProps {
   onPatchComponent: (id: string, patch: Record<string, unknown>) => void;
   onPatchItem: (id: string, patch: Record<string, unknown>) => void;
   onAddComponent?: (chapterId: string) => void;
+  /** Item creation, per category. Absent = affordance hidden (read-only). */
+  onAddItem?: (componentId: string, categoryKey: string | null) => void;
   money: (n: number) => string;
   onDrop?: (payload: NodePayload, target: DropTarget) => void;
 }
@@ -361,7 +363,7 @@ function CategoryBlock({ cat, comp, p, drag, sourceCat }: {
   if (!items.length && !legal) return null;   // empty AND not a destination ⇒ nothing to say
 
   return (
-    <div onDragEnter={enter} onDragLeave={leave}>
+    <div onDragEnter={enter} onDragLeave={leave} data-cat-header={key} data-cat-open={isOpen ? "1" : "0"}>
       {cat.label && (
         // Deliberately NOT draggable and deliberately no grip: category
         // dragging has not been designed, so the UI must not advertise it.
@@ -382,8 +384,15 @@ function CategoryBlock({ cat, comp, p, drag, sourceCat }: {
               the object's context. */}
         </div>
       )}
-      {isOpen && (
-        <>
+      {/* THE FREEZE FIX (convicted by repro S3, refined by S3-rerun): Chromium
+          delivers dragend to the ORIGINAL source node captured at dragstart.
+          Unmounting the source category's list removed that node — no dragend,
+          no cleanup, canvas frozen until refresh. Re-mounting a copy doesn't
+          help (new node ≠ captured node). So the SOURCE category collapses by
+          CSS only: same nodes, hidden — dragend always has a home. Categories
+          that never contained the in-flight node may unmount freely. */}
+      {(isOpen || isSource) && (
+        <div style={!isOpen ? { display: "none" } : undefined} data-cat-list={key}>
           {items.length > 0 && (
             <DropBand drag={drag} target={{ ...tgt, beforeId: items[0].id }} onDrop={p.onDrop} label="Drop at beginning" />
           )}
@@ -397,7 +406,18 @@ function CategoryBlock({ cat, comp, p, drag, sourceCat }: {
           ))}
           <DropBand drag={drag} target={tgt} onDrop={p.onDrop}
             label={items.length === 0 ? `Drop item into ${cat.label ?? "uncategorised"}` : "Drop at end"} />
-        </>
+          {/* Item creation was previously UNREACHABLE — addItem existed with no
+              caller. The affordance lives where the operator's eye already is:
+              at the end of the list it will join. Quiet until hovered, gone
+              when the design is read-only, hidden while anything is in flight. */}
+          {p.mayEdit && p.onAddItem && !drag.live && (
+            <button data-add-item={key}
+              onClick={(e) => { e.stopPropagation(); p.onAddItem!(comp.id, cat.key); }}
+              className="pl-8 py-0.5 text-[10px] text-slate-300 hover:text-slate-500 text-left w-full">
+              + item{cat.label ? ` in ${cat.label}` : ""}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -515,6 +535,7 @@ export default function DesignStage(p: DesignStageProps) {
     },
     end: (landedIn) => {
       setLive(null); setAwake(null); setOpen(null); setSpacer(0);
+      // (end() is idempotent: every setter above is safe to run twice)
       if (landedIn) { setLanded(landedIn); setTimeout(() => setLanded(null), 700); }
     },
     awake, wake: setAwake, open, setOpen, landed,
@@ -583,7 +604,10 @@ export default function DesignStage(p: DesignStageProps) {
   }
 
   return (
-    <div ref={rootRef} className="pb-24" style={{ paddingBottom: spacer || undefined }} onDragEnd={() => drag.end()}>
+    <div ref={rootRef} className="pb-24" style={{ paddingBottom: spacer || undefined }}
+         data-drag-live={drag.live ? drag.live.kind : undefined}
+         onDragEnd={() => drag.end()}
+         onDrop={(e) => { e.preventDefault(); drag.end(); }}>
       {readOnly && (
         <div className="mx-3 mt-2 mb-1 px-3 py-1.5 rounded-md text-[11px] font-semibold"
              style={{ background: "#F1F5F9", color: "#64748B" }}>

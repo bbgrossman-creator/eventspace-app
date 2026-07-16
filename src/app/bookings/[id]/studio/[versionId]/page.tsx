@@ -610,14 +610,15 @@ export default function StudioPage() {
     await Promise.all(ordered.map((c, i) => supabase.from("event_components").update({ position: i }).eq("id", c.id)));
     loadCanvas();
   }
-  async function addItem(compId: string) {
+  async function addItem(compId: string, categoryKey: string | null = null) {
     const name = prompt("Item name");
     if (!name?.trim()) return;
     // REROUTED (SPEC-002 §1.3): selection identity flows through the grammar.
     // One RPC transaction lands the item AND its canvas-origin move.
     const res = await submitBatch(emptyState(compId), [{
       kind: "select", instanceId: compId,
-      payload: { name: name.trim(), quantityBasis: "per_person", priceConfirmed: true, taxable: true,
+      payload: { name: name.trim(), categoryKey: categoryKey ?? undefined,
+                 quantityBasis: "per_person", priceConfirmed: true, taxable: true,
                  position: items.filter((i) => i.component_id === compId).length },
       origin: "canvas",
     }], supabasePersistAdapter);
@@ -963,6 +964,7 @@ export default function StudioPage() {
                 onPatchComponent={(id, patch) => patchComp(id, patch as Partial<CompRow>)}
                 onPatchItem={(id, patch) => patchItem(id, patch as Partial<PricedItem>)}
                 onAddComponent={(chapterId) => addComponentIn(chapterId === "__none__" ? null : chapterId)}
+                onAddItem={(compId, categoryKey) => void addItem(compId, categoryKey)}
                 money={money}
                 onDrop={applyDrop}
               />
