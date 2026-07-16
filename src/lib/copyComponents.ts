@@ -21,7 +21,7 @@ export interface CopyOptions {
 export interface CopyOutcome { ok: boolean; detail?: string; copied: number; }
 
 interface SrcComp { id: string; booking_id: string; domain: string; kind: string | null; title: string; notes: string | null;
-  customer_description: string | null; item_categories: unknown; item_layout: string | null; uncategorized_position: string | null; identity_id: string | null; }
+  customer_description: string | null; item_categories: unknown; item_layout: string | null; uncategorized_position: string | null; definition_id: string | null; }
 interface SrcItem { id: string; component_id: string; name: string; description: string | null; quantity: number | null; quantity_basis: string | null; unit_price: number | null;
   category_key: string | null; presentation_note: string | null; show_on_proposal: boolean | null; item_role: string | null; }
 interface SrcReq { component_id: string; name: string; category: string | null; notes: string | null; }
@@ -35,7 +35,7 @@ export async function copyComponentsTo(
   if (!srcComponentIds.length) return { ok: true, copied: 0 };
 
   const [{ data: srcRows, error: sErr }, { count }] = await Promise.all([
-    supabase.from("event_components").select("id,booking_id,domain,kind,title,notes,customer_description,item_categories,item_layout,uncategorized_position,identity_id").in("id", srcComponentIds),
+    supabase.from("event_components").select("id,booking_id,domain,kind,title,notes,customer_description,item_categories,item_layout,uncategorized_position,definition_id").in("id", srcComponentIds),
     opts.proposalVersionId
       ? supabase.from("event_components").select("id", { count: "exact", head: true }).eq("proposal_version_id", opts.proposalVersionId)
       : supabase.from("event_components").select("id", { count: "exact", head: true }).eq("booking_id", dest.id).is("proposal_version_id", null),
@@ -60,7 +60,7 @@ export async function copyComponentsTo(
       notes: opts.notes ? src.notes : null,
       // ── COMPONENT KNOWLEDGE — travels unconditionally ──
       // The identity is the most fundamental knowledge of all: what this IS.
-      identity_id: src.identity_id ?? null,
+      definition_id: src.definition_id ?? null,
       // This is what Sushi Station *is*: how it organises and describes itself.
       // The Rolodex is a knowledge library; a component copied out of it that
       // arrived structureless would have to be rebuilt every single time.

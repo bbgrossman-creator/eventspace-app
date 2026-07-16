@@ -4,11 +4,11 @@
 // NOT the Media Graph. This is the degenerate, single-relation case of it:
 // every photo "depicts" (implicitly — the only relation that exists) the
 // component instance it's attached to, and the instance now carries
-// identity_id (v192), so grouping by identity is a plain join over two
+// definition_id (v192), so grouping by identity is a plain join over two
 // tables that were already independently RLS-verified by v189. No new
 // column, no new table, no new policy.
 //
-//   photos.component_id -> event_components.id -> event_components.identity_id
+//   photos.component_id -> event_components.id -> event_components.definition_id
 //
 // When the real Media Graph is built (typed multi-target edges, region
 // tagging), this module's query becomes one relation among several — but the
@@ -44,11 +44,11 @@ export async function loadComponentGallery(identityId: string): Promise<GalleryR
   if (!identityId) return EMPTY;
 
   // 1. Every instance of this identity, across every event. RLS confines
-  //    this to the caller's tenant automatically — identity_id itself is
+  //    this to the caller's tenant automatically — definition_id itself is
   //    tenant-scoped (v192's unique index is per-tenant), so no explicit
   //    tenant filter is needed here, same as every other query in the app.
   const { data: comps } = await supabase.from("event_components")
-    .select("id,booking_id,title").eq("identity_id", identityId);
+    .select("id,booking_id,title").eq("definition_id", identityId);
   const compRows = (comps ?? []) as { id: string; booking_id: string; title: string }[];
   if (!compRows.length) return EMPTY;
 

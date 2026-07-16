@@ -30,7 +30,7 @@ import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { copyComponentsTo } from "@/lib/copyComponents";
 import { loadComponentGallery, GalleryResult } from "@/lib/componentGallery";
 
-interface CompRow { id: string; booking_id: string; domain: string; kind: string | null; title: string; copied_from: string | null; identity_id: string | null; }
+interface CompRow { id: string; booking_id: string; domain: string; kind: string | null; title: string; copied_from: string | null; definition_id: string | null; }
 interface DebriefHit { booking_id: string; author: string | null; text: string; field: "worked" | "didnt_work" | "would_repeat"; }
 interface ChargeRow extends ChargeLike { booking_id: string; }
 
@@ -65,7 +65,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
   const [reuse, setReuse] = useState<Record<string, number>>({});       // booking_id → times its components were copied
 
   // Component gallery (v192b — the first identity-backed media consumer).
-  // Keyed by identity_id so the panel stays open across a re-search.
+  // Keyed by definition_id so the panel stays open across a re-search.
   const [galleryFor, setGalleryFor] = useState<string | null>(null);
   const [galleryTitle, setGalleryTitle] = useState("");
   const [gallery, setGallery] = useState<GalleryResult | null>(null);
@@ -148,7 +148,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
 
     // 3. All components of shown events (context around the matches).
     const { data: allComps } = await supabase.from("event_components")
-      .select("id,booking_id,domain,kind,title,copied_from,identity_id").is("proposal_version_id", null)
+      .select("id,booking_id,domain,kind,title,copied_from,definition_id").is("proposal_version_id", null)
       .in("booking_id", shownIds).order("position");
     const byEvent: Record<string, CompRow[]> = {};
     const shownCompIds: string[] = [];
@@ -432,9 +432,9 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {shown.map((c) => (
                   <span key={c.id}
-                    onClick={mode === "explore" ? () => openGallery(c.identity_id, c.title) : undefined}
-                    title={mode === "explore" ? (c.identity_id ? "See every photo of this component, across every event" : "No identity yet — run v192 to enable galleries") : undefined}
-                    className={`inline-flex items-center gap-1.5 rounded-lg ring-1 px-1.5 py-1 text-[12px] ${matchedComp.has(c.id) ? "ring-[#4A9EFF] bg-[#F4F9FF]" : "ring-[#E7EDF5] bg-[#F6F8FB]"} ${mode === "explore" && c.identity_id ? "cursor-pointer hover:ring-[#C9A34E]" : ""} ${galleryFor && galleryFor === c.identity_id ? "ring-[#C9A34E] bg-[#FFFBEF]" : ""}`}>
+                    onClick={mode === "explore" ? () => openGallery(c.definition_id, c.title) : undefined}
+                    title={mode === "explore" ? (c.definition_id ? "See every photo of this component, across every event" : "No identity yet — run v192 to enable galleries") : undefined}
+                    className={`inline-flex items-center gap-1.5 rounded-lg ring-1 px-1.5 py-1 text-[12px] ${matchedComp.has(c.id) ? "ring-[#4A9EFF] bg-[#F4F9FF]" : "ring-[#E7EDF5] bg-[#F6F8FB]"} ${mode === "explore" && c.definition_id ? "cursor-pointer hover:ring-[#C9A34E]" : ""} ${galleryFor && galleryFor === c.definition_id ? "ring-[#C9A34E] bg-[#FFFBEF]" : ""}`}>
                     {mode === "copy" && (
                       <input type="checkbox" className="accent-[#4A9EFF]" checked={!!checked[c.id]}
                         onChange={(ev) => setChecked((p) => ({ ...p, [c.id]: ev.target.checked }))} />
@@ -453,7 +453,7 @@ export default function RolodexPanel({ embedded = false, fixedDest = null, initi
               {/* Component gallery — v192b. Renders once, in whichever event
                   card the click happened in; it shows photos across ALL
                   events for that identity, not just this one. */}
-              {shown.some((c) => c.identity_id === galleryFor) && (
+              {shown.some((c) => c.definition_id === galleryFor) && (
                 <div className="mt-3 rounded-lg ring-1 ring-[#EAD9B0] bg-[#FFFBEF] p-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="text-[11px] font-bold uppercase tracking-wide text-[#8A6D1D]">

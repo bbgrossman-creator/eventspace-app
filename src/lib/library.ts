@@ -19,7 +19,7 @@
 // per event that ever used it. That is a search over INSTANCES, and it is what
 // made the Rolodex a list of past events rather than a library.
 //
-// v192 gave us the noun. We search `component_identities` and count the
+// v192 gave us the noun (as component_identities); v200/SPEC-001 grew it into `component_definitions`. We search it and count the
 // instances behind it: **one row, "used 17×"**. That is the composability
 // keystone paying rent — the first surface where ComponentIdentity is the
 // point rather than plumbing.
@@ -87,7 +87,7 @@ export async function searchLibrary(query: string): Promise<LibraryResults> {
 
   const [ids, bks, bps] = await Promise.all([
     // ── Components: the NOUN, not its instances ──
-    supabase.from("component_identities").select("id,name").ilike("name", like).limit(8),
+    supabase.from("component_definitions").select("id,name").ilike("name", like).limit(8),
     // ── Events ──
     supabase.from("bookings")
       .select("id,contact_name,event_type,event_date,invoice_num")
@@ -105,9 +105,9 @@ export async function searchLibrary(query: string): Promise<LibraryResults> {
   const usage: Record<string, number> = {};
   if (idRows.length) {
     const { data: insts } = await supabase.from("event_components")
-      .select("identity_id").in("identity_id", idRows.map((r) => r.id));
-    for (const row of (insts ?? []) as { identity_id: string }[]) {
-      usage[row.identity_id] = (usage[row.identity_id] ?? 0) + 1;
+      .select("definition_id").in("definition_id", idRows.map((r) => r.id));
+    for (const row of (insts ?? []) as { definition_id: string }[]) {
+      usage[row.definition_id] = (usage[row.definition_id] ?? 0) + 1;
     }
   }
 
@@ -176,7 +176,7 @@ export async function sourceForIdentity(identityId: string): Promise<{ component
   const { data } = await supabase
     .from("event_components")
     .select("id,booking_id,title,created_at")
-    .eq("identity_id", identityId)
+    .eq("definition_id", identityId)
     .is("proposal_version_id", null)      // operational instances, not version copies
     .order("created_at", { ascending: false })
     .limit(1);
@@ -189,7 +189,7 @@ export async function sourceForIdentity(identityId: string): Promise<{ component
   const { data: any2 } = await supabase
     .from("event_components")
     .select("id,booking_id,title,created_at")
-    .eq("identity_id", identityId)
+    .eq("definition_id", identityId)
     .order("created_at", { ascending: false })
     .limit(1);
   const r2 = (any2 ?? []) as { id: string; booking_id: string; title: string }[];
