@@ -27,6 +27,7 @@ import ProposalRenderer from "@/components/ProposalRenderer";
 import { buildPresentationModel, PresentationModel, outlineFromModel } from "@/lib/presentation";
 import DesignOutline from "@/components/studio/renderers/DesignOutline";
 import DesignStage from "@/components/studio/renderers/DesignStage";
+import Inspector, { InspectorSelection } from "@/components/studio/Inspector";
 import { buildDesignStage, outlineFromDesignChapters, RawComp, RawItem } from "@/lib/designStageModel";
 import { sourceForIdentity } from "@/lib/library";
 import { NodePayload, DropTarget, operationFor, reorder, isNoOp, splitCatKey } from "@/lib/dragGrammar";
@@ -343,6 +344,57 @@ export default function StudioPage() {
 
   /** The question, asked only when there is genuinely one to ask. */
   const [askChapterFor, setAskChapterFor] = useState<{ identityId: string; name: string } | null>(null);
+
+  /** The selection, projected for the Inspector. Under the renderer contract
+   *  the panel queries nothing — it is handed what it renders. */
+  const inspected = useMemo<InspectorSelection | null>(() => {
+    if (!selectedId) return null;
+    const it = items.find((i) => i.id === selectedId);
+    if (it) {
+      const owner = comps.find((c) => c.id === it.component_id);
+      return {
+        kind: "item", id: it.id, name: it.name, title: it.name,
+        subtitle: owner ? owner.title : null,
+        price: {
+          amount: it.unit_price, basis: it.quantity_basis,
+          confirmed: it.price_confirmed !== false,
+          state: (it as { price_state?: string | null }).price_state ?? "quoted",
+        },
+        // The evidence, projected from the EXISTING per-item cache — the old
+        // panel already loaded exactly this. Reusing it means one loader, one
+        // cache, one truth about what an item has sold for.
+        memory: memory[it.id]
+          ? {
+              sales: memory[it.id].points.slice(0, 3).map((pt) => ({
+                amount: pt.unit_price,
+                when: pt.date ? fmtDate(pt.date) : (pt.customer ?? ""),
+              })),
+              srp: null,
+            }
+          : undefined,
+        visible: it.show_on_proposal !== false,
+        internalReason: it.show_on_proposal === false
+          ? (((it as { price_state?: string | null }).price_state ?? "quoted") === "internal"
+              ? "Operational only" : "Hidden from proposal")
+          : null,
+        counts: { requirements: 0, media: 0 },
+      } as InspectorSelection;
+    }
+    const c = comps.find((x) => x.id === selectedId);
+    if (c) {
+      return {
+        kind: "component", id: c.id, title: c.title,
+        subtitle: c.pricing_mode === "package" ? "Package" : "Itemized",
+        price: c.pricing_mode === "package"
+          ? { amount: c.package_price, basis: c.package_basis, confirmed: c.package_price_confirmed !== false, state: "quoted" }
+          : null,
+        memory: undefined,
+        counts: { requirements: 0, media: 0 },
+      } as InspectorSelection;
+    }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, items, comps, memory]);
 
   const hasOptions = items.some((i) => i.item_role === "optional");
   const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
@@ -859,6 +911,51 @@ export default function StudioPage() {
             )}
           </div>
 
+          {/* RIGHT — THE INSPECTOR. Replaces the Live Quote panel for the
+               lenses that have a Stage: that panel showed THE VERSION'S MONEY
+               where THE SELECTION'S TRUTH belongs, which left the field rule
+               enforced from one side only. The old panel survives for lenses
+               with no Stage yet. */}
+          {(lens === "design" || lens === "customer") ? (
+            <div className="border-l border-[#E7EDF5] bg-white min-h-0">
+              <Inspector
+                selection={inspected}
+                lens={lens}
+                canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                // Cost is role-gated and never reaches the Stage — a
+                // salesperson screen-shares the Stage. Perms, never role.
+                canSeeCost={!!session?.perms.includes("bookings.edit")}
+                money={money}
+                onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
+                onLoadMemory={(id) => {
+                  const it = items.find((x) => x.id === id);
+                  if (!it) return;
+                  loadPriceMemory({ name: it.name, catalog_item_id: it.catalog_item_id ?? null, component_id: it.component_id })
+                    .then((m) => setMemory((prev) => ({ ...prev, [id]: m })));
+                }}
+                designPanel={
+                  <div className="px-3 py-3">
+                    <p className="text-[11px] text-slate-400 mb-2">
+                      Guests, adjustments and totals are the Design&apos;s context.
+                    </p>
+                    <div className="flex justify-between text-[12px] mb-1">
+                      <span className="text-slate-500">Total</span>
+                      <span className="font-semibold tabular-nums" style={{ color: "#102F56" }}>{money(totals.total)}</span>
+                    </div>
+                    {(totals.unconfirmed > 0 || totals.unpriced > 0) && (
+                      <p className="text-[11px] text-amber-600 mt-2">
+                        ⚠ {totals.unconfirmed + totals.unpriced} unresolved — click ⚠ in the lens bar
+                      </p>
+                    )}
+                  </div>
+                }
+              />
+            </div>
+          ) : null}
+
+          {/* Legacy panel — only for lenses without a Stage. */}
+          {(lens !== "design" && lens !== "customer") && (
+          <>
           {/* RIGHT — persistent intelligence */}
           <div className="border-l border-[#E7EDF5] bg-white min-h-0 overflow-y-auto p-4 space-y-4">
             {/* Live Quote */}
@@ -1032,6 +1129,8 @@ export default function StudioPage() {
             })()}
             {!focusItem && <p className="text-[11px] text-slate-300">Click any item (or its ⋯) for its details — proposal visibility, heading, presentation note, and pricing history.</p>}
           </div>
+          </>
+          )}
         </div>
       )}
 

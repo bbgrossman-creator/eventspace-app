@@ -115,6 +115,47 @@ function useHoverExpand(ctx: DragCtx, key: string, legal: boolean) {
   return { enter, leave };
 }
 
+/** A category's own drop zone. It exists because the insertion line lives on
+ *  ROWS, so a category with no rows is an UNREACHABLE destination — legal in
+ *  the grammar and impossible in the fingers. Two ways that happens:
+ *
+ *    1. The category is genuinely empty ("Sauces" with nothing in it yet).
+ *    2. The category LOOKS empty because every item is hidden — Sushi's
+ *       Condiments with X-ray off. Still a legal home; still needs a target.
+ *
+ *  It also serves the append case: to put a roll LAST you need somewhere to
+ *  drop that is not "before" another roll.
+ */
+function CategoryDrop({ label, live, target, onDrop, empty }: {
+  label: string; live: NodePayload | null; target: DropTarget;
+  onDrop?: (p: NodePayload, t: DropTarget) => void; empty: boolean;
+}) {
+  const [hot, setHot] = useState(false);
+  if (!live || live.kind !== "item") return null;
+  const legal = operationFor(live, target) !== "invalid";
+  // An illegal destination stays closed and refuses visibly — it is not shown
+  // as a faint maybe.
+  if (!legal) return null;
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setHot(true); }}
+      onDragLeave={() => setHot(false)}
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setHot(false); const p = readNode(e.dataTransfer); if (p) onDrop?.(p, target); }}
+      className={`ml-10 mr-3 my-0.5 rounded-md text-[11px] text-center transition-all ${
+        empty ? "py-2" : "py-1"
+      }`}
+      style={{
+        border: `1.5px dashed ${hot ? T.gold : "#D8DEE7"}`,
+        background: hot ? "#FFFBEF" : "transparent",
+        color: hot ? "#8A6D1D" : "#94A3B8",
+      }}
+    >
+      {hot ? `Drop into ${label}` : (empty ? `Drop item into ${label}` : "")}
+    </div>
+  );
+}
+
 /** The transient insertion line. It exists only during a drag — a persistent
  *  "+ here" between every row would be 258 invitations on the benchmark, which
  *  is the clutter "denser in rows, thinner in columns" exists to prevent. */
@@ -377,10 +418,13 @@ function ComponentBlock({ c, p, chapterId, hint, setHint, ctx }: {
         ? null
         : c.categories.map((cat) => {
         const items = cat.items.filter((i) => i.visible || p.xray);
+        const tgt: DropTarget = { parentId: catKey(c.id, cat.key), beforeId: null, ownerId: c.id };
+        const draggingItemHere = ctx.live?.kind === "item" && operationFor(ctx.live, tgt) !== "invalid";
         // v195 P1.8 in the Design lens: a category whose every item is hidden
-        // still shows under X-ray (the author must see it) and vanishes without
-        // (nothing to say). Same rule, same source, two renderings.
-        if (!items.length) return null;
+        // vanishes — UNLESS an item is in flight and could legally land here.
+        // A destination you cannot see is a destination you cannot use, and
+        // "empty" is exactly when you most need to be able to drop.
+        if (!items.length && !draggingItemHere) return null;
         return (
           <div key={cat.key ?? "_"}>
             {cat.label && (
@@ -390,6 +434,11 @@ function ComponentBlock({ c, p, chapterId, hint, setHint, ctx }: {
               </div>
             )}
             {cat.items.map((it) => <ItemRow key={it.id} it={it} comp={c} p={p} hint={itemHint} setHint={setItemHint} />)}
+            {/* Empty ⇒ the only way in. Non-empty ⇒ the append target. */}
+            <CategoryDrop
+              label={cat.label ?? "uncategorised"} live={ctx.live} target={tgt}
+              onDrop={p.onDrop} empty={items.length === 0}
+            />
           </div>
         );
       })}
