@@ -22,15 +22,32 @@ const num = (o: Record<string, unknown>, f: string, kind: string): number => {
 const v = <T>(parse: (i: unknown) => T): Validator<T> => ({ parse });
 
 export function registerCoreMoves(): void {
-  registerMoveKind<{ name: string; categoryKey?: string | null; unitPrice?: number | null }>({
+  interface SelectP { name: string; categoryKey?: string | null; unitPrice?: number | null;
+    quantityBasis?: string | null; position?: number; priceConfirmed?: boolean; taxable?: boolean }
+  registerMoveKind<SelectP>({
     kind: "select", capability: "proposal.configure", boundaries: ["items"],
     schema: v((i) => { const o = obj(i, "select");
-      const out: { name: string; categoryKey?: string | null; unitPrice?: number | null } = { name: str(o, "name", "select") };
-      if (o.categoryKey !== undefined && o.categoryKey !== null) out.categoryKey = str(o, "categoryKey", "select");
-      if (o.unitPrice !== undefined && o.unitPrice !== null) out.unitPrice = num(o, "unitPrice", "select");
+      const out: SelectP = { name: str(o, "name", "select") };
+      if (o.categoryKey != null) out.categoryKey = str(o, "categoryKey", "select");
+      if (o.unitPrice != null) out.unitPrice = num(o, "unitPrice", "select");
+      if (o.quantityBasis != null) out.quantityBasis = str(o, "quantityBasis", "select");
+      if (o.position !== undefined) out.position = num(o, "position", "select");
+      if (o.priceConfirmed !== undefined) out.priceConfirmed = !!o.priceConfirmed;
+      if (o.taxable !== undefined) out.taxable = !!o.taxable;
       return out; }),
-    plan: (p) => [{ boundary: "items", mutation: { op: "add_item", categoryKey: p.categoryKey ?? null, name: p.name, unitPrice: p.unitPrice ?? null } }],
+    plan: (p) => [{ boundary: "items", mutation: { op: "add_item", categoryKey: p.categoryKey ?? null,
+      name: p.name, unitPrice: p.unitPrice ?? null, quantityBasis: p.quantityBasis ?? null,
+      position: p.position, priceConfirmed: p.priceConfirmed, taxable: p.taxable } }],
     describe: (p) => `added ${p.name}`,
+  });
+
+  registerMoveKind<{ itemId: string; name: string; prevName: string }>({
+    kind: "update_item", capability: "proposal.configure", boundaries: ["items"],
+    schema: v((i) => { const o = obj(i, "update_item");
+      return { itemId: str(o, "itemId", "update_item"), name: str(o, "name", "update_item"),
+               prevName: str(o, "prevName", "update_item") }; }),
+    plan: (p) => [{ boundary: "items", mutation: { op: "update_item", itemId: p.itemId, name: p.name } }],
+    describe: (p) => `renamed ${p.prevName} → ${p.name}`,
   });
 
   registerMoveKind<{ itemId: string; name: string }>({

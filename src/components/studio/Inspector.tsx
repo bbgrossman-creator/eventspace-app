@@ -68,6 +68,9 @@ export interface InspectorProps {
    *  an object too, and its context (guests, adjustments) has to live
    *  somewhere that isn't the menu. */
   designPanel?: React.ReactNode;
+  /** SPEC-002: the Configure facet, mounted by the page ONLY for component
+   *  selections. The Inspector renders it; it never owns it. */
+  configureFacet?: React.ReactNode;
 }
 
 function Section({ title, count, children, defaultOpen = false }: {
@@ -122,6 +125,8 @@ export default function Inspector(p: InspectorProps) {
           </p>
         )}
       </div>
+
+      {s.kind === "component" && p.configureFacet}
 
       {/* ── Price + its evidence. The whole reason this panel exists. ── */}
       {price && (

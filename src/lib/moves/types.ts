@@ -97,10 +97,11 @@ export type ConfigMutation =
   | { op: "reset_to_seed"; seed: { scalars: Record<string, ScalarState>; choices: Record<string, string> } }
   | { op: "reset_dimension"; dimension: string; seed: { scalars: Record<string, ScalarState>; choices: Record<string, string> } };
 
-export type ItemMutation =        // routed through the EXISTING item services
-  | { op: "add_item"; categoryKey: string | null; name: string; unitPrice?: number | null }
+export type ItemMutation =        // persisted by apply_move_batch, same transaction
+  | { op: "add_item"; categoryKey: string | null; name: string; unitPrice?: number | null;
+      quantityBasis?: string | null; position?: number; priceConfirmed?: boolean; taxable?: boolean }
   | { op: "remove_item"; itemId: string }
-  | { op: "substitute_item"; itemId: string; name: string };
+  | { op: "update_item"; itemId: string; name?: string; unitPrice?: number | null };
 
 export type RequirementMutation =
   | { op: "suppress"; layerKey: string; logicalKey: string }

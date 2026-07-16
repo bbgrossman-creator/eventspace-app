@@ -92,7 +92,14 @@ export function compileBatch(state: ConfigState, proposals: MoveProposal[]): {
     }
     if (m.boundary === "items") {
       const mu = m.mutation as Record<string, unknown> & { op: string };
-      items.push({ op: mu.op, item_id: mu.itemId, name: mu.name, category_key: mu.categoryKey ?? null, unit_price: mu.unitPrice ?? null });
+      items.push({ op: mu.op, item_id: (mu as { itemId?: string }).itemId,
+        name: (mu as { name?: string }).name,
+        category_key: (mu as { categoryKey?: string | null }).categoryKey ?? null,
+        unit_price: (mu as { unitPrice?: number | null }).unitPrice ?? null,
+        quantity_basis: (mu as { quantityBasis?: string | null }).quantityBasis ?? null,
+        position: (mu as { position?: number }).position ?? 0,
+        price_confirmed: (mu as { priceConfirmed?: boolean }).priceConfirmed ?? null,
+        taxable: (mu as { taxable?: boolean }).taxable ?? null });
     }
   }
 

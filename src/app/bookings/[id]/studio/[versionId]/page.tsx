@@ -15,14 +15,21 @@
 // (v180's customer layer), margin (no cost data exists — revenue only).
 // ═══════════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+// The move grammar boots once per app load (idempotent).
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+// (grammar boot lives below imports; see bootMoves())
 import { Booking, fmtDate } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { resolveTaxForTenant, TaxResolution } from "@/lib/tax";
 import StudioShell from "@/components/studio/StudioShell";
 import LibraryBrowser from "@/components/studio/LibraryBrowser";
+import ConfigureFacet from "@/components/studio/ConfigureFacet";
+import { bootMoves } from "@/lib/moves/boot";
+import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
+import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import ProposalRenderer from "@/components/ProposalRenderer";
 import { buildPresentationModel, PresentationModel, outlineFromModel } from "@/lib/presentation";
 import DesignOutline from "@/components/studio/renderers/DesignOutline";
@@ -90,6 +97,8 @@ const LAYOUT_OPTS: { v: string; label: string }[] = [
   { v: "comma", label: "Comma, inline" },
   { v: "dot", label: "Dot · inline" },
 ];
+
+bootMoves();
 
 export default function StudioPage() {
   const params = useParams<{ id: string; versionId: string }>();
@@ -347,6 +356,17 @@ export default function StudioPage() {
 
   /** The selection, projected for the Inspector. Under the renderer contract
    *  the panel queries nothing — it is handed what it renders. */
+  // SPEC-002: the selected component's configuration state (facet fuel).
+  const [cfgState, setCfgState] = useState<ConfigState | null>(null);
+  useEffect(() => {
+    let live = true;
+    const compSel = selectedId && comps.some((c) => c.id === selectedId) ? selectedId : null;
+    if (!compSel) { setCfgState(null); return; }
+    loadConfigState(compSel).then((st) => { if (live) setCfgState(st); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, comps.length]);
+
   const inspected = useMemo<InspectorSelection | null>(() => {
     if (!selectedId) return null;
     const it = items.find((i) => i.id === selectedId);
@@ -413,6 +433,27 @@ export default function StudioPage() {
   async function instantiate(identityId: string, name: string, chapterId?: string | null) {
     if (!b || locked) return;
     setBusy(true);
+    // SPEC-002 §1.4 — the fallback condition, exactly: a definition WITH a
+    // live seed configuration instantiates through instantiate_component()
+    // (one transaction: row, seed items, layer copies, config, stamps, zero
+    // moves). A definition WITHOUT one (v192-era implicit) copies from a
+    // source instance as it always has. The moment curation gives a
+    // definition a seed, the RPC path takes over — the fallback is a
+    // property of the data, never a second doctrine.
+    const seeded = await supabase.from("component_definition_config").select("id")
+      .eq("definition_id", identityId).is("superseded_by", null).is("archived_at", null)
+      .maybeSingle();
+    if (seeded.data?.id) {
+      const r = await instantiateComponent(identityId, b.id, versionId);
+      setBusy(false);
+      if (!r.ok) { setErr(r.error); return; }
+      if (chapterId && chapterId !== "__none__") {
+        await patchComp(r.componentId, { section_type_id: chapterId });
+      }
+      setToast(`✓ "${name}" added from its definition — seeded and ready`);
+      loadCanvas();
+      return;
+    }
     const src = await sourceForIdentity(identityId);
     if (!src) {
       setBusy(false);
@@ -572,20 +613,49 @@ export default function StudioPage() {
   async function addItem(compId: string) {
     const name = prompt("Item name");
     if (!name?.trim()) return;
-    const { error } = await supabase.from("component_items").insert({
-      component_id: compId, name: name.trim(), quantity_basis: "per_person",
-      price_confirmed: true, taxable: true,
-      position: items.filter((i) => i.component_id === compId).length,
-    });
-    if (error) setErr(error.message); else loadCanvas();
+    // REROUTED (SPEC-002 §1.3): selection identity flows through the grammar.
+    // One RPC transaction lands the item AND its canvas-origin move.
+    const res = await submitBatch(emptyState(compId), [{
+      kind: "select", instanceId: compId,
+      payload: { name: name.trim(), quantityBasis: "per_person", priceConfirmed: true, taxable: true,
+                 position: items.filter((i) => i.component_id === compId).length },
+      origin: "canvas",
+    }], supabasePersistAdapter);
+    if (!res.ok) setErr(res.error); else loadCanvas();
   }
   async function patchItem(id: string, patch: Partial<PricedItem>) {
+    // REROUTED for selection-semantic edits (SPEC-002 §1.3): a rename is a
+    // configuration fact ("renamed A → B") and flows through the grammar.
+    // Pricing, position, and display flags belong to their own systems and
+    // stay on the direct path — the configuration log is a log of
+    // configuration, not change-data-capture.
+    if (Object.keys(patch).length === 1 && typeof patch.name === "string") {
+      const prev = items.find((i) => i.id === id);
+      const compId = prev?.component_id;
+      if (compId && prev && patch.name.trim() && patch.name !== prev.name) {
+        const res = await submitBatch(emptyState(compId), [{
+          kind: "update_item", instanceId: compId,
+          payload: { itemId: id, name: patch.name.trim(), prevName: prev.name },
+          origin: "canvas",
+        }], supabasePersistAdapter);
+        if (!res.ok) { setErr(res.error); return; }
+        setItems((p) => p.map((i) => (i.id === id ? { ...i, name: patch.name! } : i)));
+        return;
+      }
+    }
     const { error } = await supabase.from("component_items").update(patch).eq("id", id);
     if (error) { setErr(error.message); return; }
     setItems((p) => p.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
   async function deleteItem(id: string) {
-    await supabase.from("component_items").delete().eq("id", id);
+    // REROUTED (SPEC-002 §1.3): removal is a deselect, recorded with the item.
+    const it = items.find((i) => i.id === id);
+    if (!it) return;
+    const res = await submitBatch(emptyState(it.component_id), [{
+      kind: "deselect", instanceId: it.component_id,
+      payload: { itemId: id, name: it.name }, origin: "canvas",
+    }], supabasePersistAdapter);
+    if (!res.ok) { setErr(res.error); return; }
     setItems((p) => p.filter((i) => i.id !== id));
   }
   async function saveGuests(catId: string, count: number) {
@@ -927,6 +997,16 @@ export default function StudioPage() {
                 canSeeCost={!!session?.perms.includes("bookings.edit")}
                 money={money}
                 onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
+                configureFacet={cfgState && inspected?.kind === "component" ? (
+                  <ConfigureFacet
+                    state={cfgState}
+                    onState={setCfgState}
+                    persist={supabasePersistAdapter}
+                    itemCount={items.filter((i) => i.component_id === inspected.id).length}
+                    canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                    onOpenCanvas={() => { /* the canvas is beside us */ }}
+                  />
+                ) : null}
                 onLoadMemory={(id) => {
                   const it = items.find((x) => x.id === id);
                   if (!it) return;
