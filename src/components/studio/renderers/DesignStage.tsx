@@ -115,65 +115,125 @@ function useHoverExpand(ctx: DragCtx, key: string, legal: boolean) {
   return { enter, leave };
 }
 
-/** A category's own drop zone. It exists because the insertion line lives on
- *  ROWS, so a category with no rows is an UNREACHABLE destination — legal in
- *  the grammar and impossible in the fingers. Two ways that happens:
+/** THE LANDING BAND — the hero of a drag.
  *
- *    1. The category is genuinely empty ("Sauces" with nothing in it yet).
- *    2. The category LOOKS empty because every item is hidden — Sushi's
- *       Condiments with X-ray off. Still a legal home; still needs a target.
+ *  This replaces a 2px hairline that was, in practice, invisible: the Canvas
+ *  simplified into a destination map whose destinations you could not see.
+ *  A drop target has to LOOK like somewhere you can put something down.
  *
- *  It also serves the append case: to put a roll LAST you need somewhere to
- *  drop that is not "before" another roll.
+ *  Three states, and the middle one is the one that was missing:
+ *    dormant  — nothing in flight: renders nothing at all
+ *    ready    — something is in flight and this is a legal home: a dashed
+ *               band, quietly present, saying "here is a place"
+ *    armed    — the pointer is on it: solid, gold, labelled. Drop now.
+ *
+ *  The cursor is not the hero. The LANDING POSITION is the hero — you do not
+ *  care where your mouse is, you care where the thing will end up.
  */
-function CategoryDrop({ label, live, target, onDrop, empty }: {
-  label: string; live: NodePayload | null; target: DropTarget;
-  onDrop?: (p: NodePayload, t: DropTarget) => void; empty: boolean;
+function DropBand({ live, target, onDrop, label, tall }: {
+  live: NodePayload | null;
+  target: DropTarget;
+  onDrop?: (p: NodePayload, t: DropTarget) => void;
+  label: string;
+  tall?: boolean;
 }) {
-  const [hot, setHot] = useState(false);
-  if (!live || live.kind !== "item") return null;
-  const legal = operationFor(live, target) !== "invalid";
-  // An illegal destination stays closed and refuses visibly — it is not shown
-  // as a faint maybe.
-  if (!legal) return null;
+  const [armed, setArmed] = useState(false);
+  if (!live) return null;                                   // dormant
+  if (operationFor(live, target) === "invalid") return null; // refused: not shown at all
 
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setHot(true); }}
-      onDragLeave={() => setHot(false)}
-      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setHot(false); const p = readNode(e.dataTransfer); if (p) onDrop?.(p, target); }}
-      className={`ml-10 mr-3 my-0.5 rounded-md text-[11px] text-center transition-all ${
-        empty ? "py-2" : "py-1"
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setArmed(true); }}
+      onDragLeave={() => setArmed(false)}
+      onDrop={(e) => {
+        e.preventDefault(); e.stopPropagation(); setArmed(false);
+        const p = readNode(e.dataTransfer);
+        if (p) onDrop?.(p, target);
+      }}
+      className={`mx-3 rounded-md flex items-center justify-center transition-all duration-100 ${
+        armed ? (tall ? "my-2 py-3" : "my-1.5 py-2") : (tall ? "my-1 py-1.5" : "my-0.5 py-1")
       }`}
       style={{
-        border: `1.5px dashed ${hot ? T.gold : "#D8DEE7"}`,
-        background: hot ? "#FFFBEF" : "transparent",
-        color: hot ? "#8A6D1D" : "#94A3B8",
+        border: `${armed ? 2 : 1.5}px dashed ${armed ? T.gold : "#CBD5E1"}`,
+        background: armed ? "#FFF8E6" : "transparent",
       }}
     >
-      {hot ? `Drop into ${label}` : (empty ? `Drop item into ${label}` : "")}
+      <span className={`text-[10.5px] font-semibold tracking-wide transition-opacity ${armed ? "opacity-100" : "opacity-45"}`}
+            style={{ color: armed ? "#8A6D1D" : "#94A3B8" }}>
+        {armed ? `↳ ${label}` : label}
+      </span>
     </div>
   );
 }
 
-/** The transient insertion line. It exists only during a drag — a persistent
- *  "+ here" between every row would be 258 invitations on the benchmark, which
- *  is the clutter "denser in rows, thinner in columns" exists to prevent. */
-function Insert({ on }: { on: boolean }) {
-  if (!on) return null;
-  return <div className="h-0 border-t-2 -mt-[1px] relative z-10" style={{ borderColor: T.gold }} />;
+export interface StageItem {
+  id: string;
+  name: string;
+  unitPrice: number | null;
+  basis: string | null;            // per_person | flat | per_table
+  priceState: string | null;       // quoted | included | free | internal
+  confirmed: boolean;
+  visible: boolean;                // show_on_proposal
+  optional: boolean;
+  categoryKey: string | null;
+  choiceGroupId: string | null;
+}
+export interface StageCategory { key: string | null; label: string | null; layout: string; items: StageItem[] }
+export interface StageComponent {
+  id: string;
+  title: string;
+  isPackage: boolean;
+  packagePrice: number | null;
+  packageBasis: string | null;
+  packageConfirmed: boolean;
+  display: string;                 // items | description | title_only
+  note: string | null;
+  categories: StageCategory[];
+  subtotal: number | null;
+}
+export interface StageChapter { id: string; name: string; components: StageComponent[]; subtotal: number | null }
+
+export interface DesignStageProps {
+  chapters: StageChapter[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  focusedId: string | null;
+  xray: boolean;
+  mayEdit: boolean;
+  onPatchComponent: (id: string, patch: Record<string, unknown>) => void;
+  onPatchItem: (id: string, patch: Record<string, unknown>) => void;
+  onAddComponent?: (chapterId: string) => void;
+  money: (n: number) => string;
+  /** Rearrange / Move. The Stage reports WHAT landed WHERE; the page decides
+   *  how to persist it. A renderer that wrote to the database would be a
+   *  renderer with a second opinion about the truth. */
+  onDrop?: (payload: NodePayload, target: DropTarget) => void;
+  /** Reports what is in flight so the page can restore state after. */
+  onDragLive?: (p: NodePayload | null) => void;
 }
 
+/** While a drag is live, the Canvas shows only what the drop needs. Held here
+ *  so every row can ask "am I relevant right now?" without prop-drilling. */
+interface DragCtx {
+  live: NodePayload | null;
+  /** The chapter/category temporarily opened by dwelling on it. Restores on
+   *  leave — hovering to LOOK must not become hovering to CHANGE. */
+  peek: string | null;
+  setPeek: (k: string | null) => void;
+  setLive?: (p: NodePayload | null) => void;
+  /** Flashes after a drop so the eye finds where the object landed. */
+  landed: string | null;
+}
+
+/** Dwell-to-expand. Cancels on leave; never fires while merely crossing. */
 /** Inline text. Commits on blur or Enter; Escape abandons. Never a dialog —
  *  a name is content, and content is edited where it lives. */
 function Text({ value, onCommit, className, placeholder, disabled }: {
   value: string; onCommit: (v: string) => void;
   className?: string; placeholder?: string; disabled?: boolean;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
   return (
     <input
-      ref={ref}
       defaultValue={value}
       disabled={disabled}
       placeholder={placeholder}
@@ -188,9 +248,9 @@ function Text({ value, onCommit, className, placeholder, disabled }: {
   );
 }
 
-/** Inline money. Confirming a CARRIED price is a ceremony and lives in Details;
- *  typing a NEW price is content and lives here. Typing over an amber price
- *  confirms it — you asserted it by typing it. */
+/** Inline money. Confirming a CARRIED price is a ceremony and lives in the
+ *  Inspector (it needs the evidence); typing a NEW price is content and lives
+ *  here. Typing over an amber price confirms it — you asserted it by typing. */
 function Money({ value, confirmed, onCommit, disabled }: {
   value: number | null; confirmed: boolean; onCommit: (v: number | null) => void; disabled?: boolean;
 }) {
@@ -240,7 +300,6 @@ function ItemRow({ it, comp, p, hint, setHint }: {
 
   return (
     <>
-    <Insert on={hint === it.id} />
     <div
       ref={ref}
       onClick={() => p.onSelect(it.id)}
@@ -331,7 +390,6 @@ function ComponentBlock({ c, p, chapterId, hint, setHint, ctx }: {
 
   return (
     <div ref={ref} style={{ opacity: dim ? 0.25 : 1 }} className="transition-opacity">
-      <Insert on={hint === c.id} />
       <div
         onClick={() => p.onSelect(c.id)}
         draggable={p.mayEdit}
@@ -433,11 +491,24 @@ function ComponentBlock({ c, p, chapterId, hint, setHint, ctx }: {
                 <span className="text-[9px] text-slate-300">{cat.layout}</span>
               </div>
             )}
-            {cat.items.map((it) => <ItemRow key={it.id} it={it} comp={c} p={p} hint={itemHint} setHint={setItemHint} />)}
-            {/* Empty ⇒ the only way in. Non-empty ⇒ the append target. */}
-            <CategoryDrop
-              label={cat.label ?? "uncategorised"} live={ctx.live} target={tgt}
-              onDrop={p.onDrop} empty={items.length === 0}
+            {/* Drop at the BEGINNING. */}
+            {cat.items.length > 0 && (
+              <DropBand live={ctx.live} target={{ ...tgt, beforeId: cat.items[0].id }} onDrop={p.onDrop} label="Drop at beginning" />
+            )}
+            {cat.items.map((it, ix) => (
+              <div key={it.id}>
+                <ItemRow it={it} comp={c} p={p} hint={itemHint} setHint={setItemHint} />
+                {/* BETWEEN specific items — precise placement. */}
+                {ix < cat.items.length - 1 && (
+                  <DropBand live={ctx.live} target={{ ...tgt, beforeId: cat.items[ix + 1].id }} onDrop={p.onDrop} label="Drop here" />
+                )}
+              </div>
+            ))}
+            {/* Droppable at the END of the category — and, when empty, the
+                only way in at all (the insertion bands live on rows). */}
+            <DropBand
+              live={ctx.live} target={tgt} onDrop={p.onDrop}
+              label={items.length === 0 ? `Drop item into ${cat.label ?? "uncategorised"}` : "Drop at end"}
             />
           </div>
         );
@@ -451,6 +522,7 @@ export default function DesignStage(p: DesignStageProps) {
   const [live, setLive] = useState<NodePayload | null>(null);
   const [peek, setPeek] = useState<string | null>(null);
   const [landed, setLanded] = useState<string | null>(null);
+  const [awake, setAwake] = useState<string | null>(null);
 
   // A drag must NEVER permanently rearrange the workspace. `live` and `peek`
   // are the only state the simplification touches, and both are cleared when
@@ -460,7 +532,7 @@ export default function DesignStage(p: DesignStageProps) {
   // code — there is nothing to restore.
   const ctx: DragCtx = { live, peek, setPeek, setLive, landed };
   const endDrag = (droppedIn: string | null) => {
-    setLive(null); setPeek(null); setHint(null);
+    setLive(null); setPeek(null); setHint(null); setAwake(null);
     if (droppedIn) { setLanded(droppedIn); setTimeout(() => setLanded(null), 700); }
   };
   if (!p.chapters.length) {
@@ -483,22 +555,11 @@ export default function DesignStage(p: DesignStageProps) {
     <div className="pb-24">
       {p.chapters.map((ch) => (
         <div key={ch.id} className="mb-4"
-          // Dropping into a chapter's empty space appends. This is what makes
-          // MOVE reachable: to put Sushi at the END of Late Night you must be
-          // able to drop somewhere that is not another component.
-          onDragOver={(e) => {
-            const src = readNode(e.dataTransfer);
-            if (!src || src.kind !== "component") return;
-            e.preventDefault(); e.dataTransfer.dropEffect = "move";
-            setHint(`end:${ch.id}`);
-          }}
-          onDrop={(e) => {
-            const src = readNode(e.dataTransfer);
-            setHint(null);
-            if (!src || src.kind !== "component") return;
-            e.preventDefault();
-            p.onDrop?.(src, { parentId: ch.id, beforeId: null });
-          }}
+          // WAKE on contact — instant. The 450ms timer made this read as
+          // broken: you dragged over a chapter and nothing acknowledged you.
+          // Dwell is for OPENING (a structural change); waking is just
+          // feedback, and feedback must be immediate.
+          onDragEnter={() => { if (live) setAwake(ch.id); }}
         >
           <div className={`flex items-baseline gap-2 px-3 py-1.5 sticky top-0 backdrop-blur border-b z-10 transition-all ${
                  landed === ch.id ? "ring-2 ring-[#C9A34E]" : ""}`}
@@ -507,11 +568,15 @@ export default function DesignStage(p: DesignStageProps) {
                  // Legal targets light; illegal ones grey. Your eye should know
                  // where the object may go without trying to put it there.
                  background: live
-                   ? (isLegalTarget(live, { parentId: ch.id }) ? "#FFFBEF" : "rgba(255,255,255,.95)")
+                   ? (isLegalTarget(live, { parentId: ch.id })
+                       ? (awake === ch.id ? "#FFF3D6" : "#FFFBEF")   // awake reads louder
+                       : "rgba(255,255,255,.95)")
                    : "rgba(255,255,255,.95)",
-                 opacity: live && !isLegalTarget(live, { parentId: ch.id }) ? 0.4 : 1,
+                 opacity: live && !isLegalTarget(live, { parentId: ch.id }) ? 0.35 : 1,
                }}>
-            <h3 className="font-display font-bold text-[13px] tracking-tight" style={{ color: T.navy }}>{ch.name}</h3>
+            <h3 className="font-display font-bold text-[13px] tracking-tight" style={{ color: T.navy }}>
+              {live && awake === ch.id && <span style={{ color: T.gold }}>▶ </span>}{ch.name}
+            </h3>
             <span className="flex-1" />
             {ch.subtotal != null && (
               <span className="text-[11px] font-semibold tabular-nums text-slate-400">{p.money(ch.subtotal)}</span>
@@ -521,10 +586,25 @@ export default function DesignStage(p: DesignStageProps) {
                 className="text-[10px] text-slate-400 hover:text-slate-700">+ component</button>
             )}
           </div>
-          {ch.components.map((c) => (
-            <ComponentBlock key={c.id} c={c} p={p} chapterId={ch.id} hint={hint} setHint={setHint} ctx={ctx} />
+          {/* Drop at the BEGINNING of the chapter. */}
+          {ch.components.length > 0 && (
+            <DropBand live={live} target={{ parentId: ch.id, beforeId: ch.components[0].id }}
+              onDrop={(pl, t) => { p.onDrop?.(pl, t); endDrag(ch.id); }} label={`Drop at start of ${ch.name}`} tall />
+          )}
+          {ch.components.map((c, ix) => (
+            <div key={c.id}>
+              <ComponentBlock c={c} p={p} chapterId={ch.id} hint={hint} setHint={setHint} ctx={ctx} />
+              {/* BETWEEN components. */}
+              {ix < ch.components.length - 1 && (
+                <DropBand live={live} target={{ parentId: ch.id, beforeId: ch.components[ix + 1].id }}
+                  onDrop={(pl, t) => { p.onDrop?.(pl, t); endDrag(ch.id); }} label="Drop here" tall />
+              )}
+            </div>
           ))}
-          <Insert on={hint === `end:${ch.id}`} />
+          {/* At the END — and, for an empty chapter, the only way in. */}
+          <DropBand live={live} target={{ parentId: ch.id, beforeId: null }}
+            onDrop={(pl, t) => { p.onDrop?.(pl, t); endDrag(ch.id); }}
+            label={ch.components.length === 0 ? `Drop component into ${ch.name}` : `Drop at end of ${ch.name}`} tall />
         </div>
       ))}
     </div>

@@ -91,9 +91,21 @@ export function isLegalTarget(p: NodePayload | null, target: { parentId: string;
   return operationFor(p, { parentId: target.parentId, beforeId: null, ownerId: target.ownerId }) !== "invalid";
 }
 
-/** How long a hover must dwell before a collapsed target opens. Long enough
- *  not to fire while crossing, short enough not to feel stuck. */
-export const HOVER_EXPAND_MS = 450;
+// ─── TWO DIFFERENT THINGS, TWO DIFFERENT TIMINGS ──────────────────────────
+// The 450ms "hover" was one timer doing two jobs badly, and it read as broken:
+// nothing happened for half a second and then something did.
+//
+//   WAKE  — a destination lights up and shows its drop band. This must be
+//           INSTANT. It is feedback, not a commitment: dragging over a place
+//           and seeing it respond is how you learn it is a place.
+//   OPEN  — a collapsed category expands to reveal its items. This is a
+//           STRUCTURAL change to the view, so it needs real intent — otherwise
+//           crossing three categories opens three lists and the simplification
+//           you came for is gone.
+//
+// So: wake on contact, open on dwell. And the dwell timer RESETS on leave, or
+// sweeping the pointer across a column opens every category in it.
+export const HOVER_EXPAND_MS = 700;
 
 /** Movement required before a click becomes a drag. Without it, every attempt
  *  to select a row is a potential accidental move. */

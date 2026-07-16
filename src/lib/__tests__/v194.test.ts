@@ -726,7 +726,13 @@ console.log("\n── v196b · Drag simplification & category moves ──");
   ok("another component's category is NOT", !isLegalTarget(item("i", "c1", "sig"), { parentId: catKey("c2", "x"), ownerId: "c2" }));
   ok("nothing in flight ⇒ nothing is a target", !isLegalTarget(null, { parentId: "s1" }));
 
-  ok("dwell is long enough not to fire while crossing", HOVER_EXPAND_MS >= 350 && HOVER_EXPAND_MS <= 600);
+  // The old assertion (350–600ms) encoded the BUG: one timer doing two jobs.
+  // WAKE (a destination lights up) is feedback and must be instant — it has no
+  // timer at all now. OPEN (a category expands) is a structural change to the
+  // view and needs real intent, or sweeping across a column opens every list
+  // and destroys the simplification you dragged for.
+  ok("dwell demands real intent before restructuring the view", HOVER_EXPAND_MS >= 600 && HOVER_EXPAND_MS <= 1000);
+  ok("...but not so long it reads as broken", HOVER_EXPAND_MS <= 1000);
   ok("a click needs real movement before it becomes a drag", DRAG_THRESHOLD_PX >= 4);
 }
 
