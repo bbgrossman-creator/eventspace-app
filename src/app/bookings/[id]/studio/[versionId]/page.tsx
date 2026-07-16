@@ -27,7 +27,7 @@ import ProposalRenderer from "@/components/ProposalRenderer";
 import { buildPresentationModel, PresentationModel, outlineFromModel } from "@/lib/presentation";
 import DesignOutline from "@/components/studio/renderers/DesignOutline";
 import DesignStage from "@/components/studio/renderers/DesignStage";
-import { buildDesignStage, RawComp, RawItem } from "@/lib/designStageModel";
+import { buildDesignStage, outlineFromDesignChapters, RawComp, RawItem } from "@/lib/designStageModel";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
 import { loadSession, Session } from "@/lib/permissions";
@@ -650,16 +650,28 @@ export default function StudioPage() {
             <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 sticky top-0 bg-white border-b border-[#EEF2F7]">
               Outline
             </div>
-            {stage
-              ? <DesignOutline
-                  nodes={outlineFromModel(stage)}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  focusedId={focusedId}
-                  onFocus={setFocusedId}
-                  xray={lens === "design" || xray}
-                />
-              : <p className="px-3 py-6 text-[12px] text-center text-slate-400">Nothing composed yet.</p>}
+            {/* Each lens's outline projects from THAT LENS'S model — never
+                from another's. Design's rail carries real database ids so a
+                click addresses the same object the Stage rendered; Customer's
+                carries its own. Building one from the other was the bug: two
+                projections of one truth that disagreed about identity. */}
+            {lens === "design" && designChapters.length > 0 && (
+              <DesignOutline
+                nodes={outlineFromDesignChapters(designChapters, true)}
+                selectedId={selectedId} onSelect={setSelectedId}
+                focusedId={focusedId} onFocus={setFocusedId} xray={true}
+              />
+            )}
+            {lens === "customer" && stage && (
+              <DesignOutline
+                nodes={outlineFromModel(stage)}
+                selectedId={selectedId} onSelect={setSelectedId}
+                focusedId={focusedId} onFocus={setFocusedId} xray={xray}
+              />
+            )}
+            {((lens === "design" && !designChapters.length) || (lens === "customer" && !stage)) && (
+              <p className="px-3 py-6 text-[12px] text-center text-slate-400">Nothing composed yet.</p>
+            )}
           </div>
 
           {/* CENTER — THE STAGE. One Stage; the active lens decides the

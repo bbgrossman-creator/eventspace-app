@@ -14,6 +14,8 @@ import {
 } from "../pricingEngine";
 import { resolveTax } from "../tax";
 import { deriveObligations, obligationBadge, badgeTitle } from "../obligations";
+import { outlineFromDesignChapters } from "../designStageModel";
+import { StageChapter } from "../../components/studio/renderers/DesignStage";
 import { visibleLenses, defaultLens, lensAllowed, resolveLens, LENSES } from "../lenses";
 import { Capabilities } from "../capabilities";
 import { Permission, Session } from "../permissions";
@@ -575,6 +577,74 @@ console.log("\n── v196 · designForBooking: the A1 seam ──");
   const created = [v("v1", 1, "draft"), v("v3", 3, "sent")];
   ok("'order by created_at limit 1' would have picked v1 — the rule picks v3",
      resolve(null, created).id === "v3");
+}
+
+
+console.log("\n── v196b · The rail and the Stage address the SAME objects ──");
+{
+  // Both reported bugs were one bug: the Outline was projected from the
+  // CUSTOMER model (synthetic ids, no category level) while the Stage rendered
+  // the DESIGN model (real ids). Selection matched nothing and expansion had
+  // nothing to expand — silently, because both id spaces looked fine alone.
+  // This locks the invariant: every id in the rail must exist in the Stage.
+  const chapters: StageChapter[] = [{
+    id: "sec-cocktail", name: "Cocktail Hour", subtotal: 4800,
+    components: [{
+      id: "comp-sushi", title: "Sushi Station", isPackage: true,
+      packagePrice: 2950, packageBasis: "flat", packageConfirmed: false,
+      display: "items", note: null, subtotal: null,
+      categories: [
+        { key: "signature", label: "Signature Rolls", layout: "dot", items: [
+          { id: "it-cal", name: "California Roll", unitPrice: null, basis: null, priceState: "quoted", confirmed: true, visible: true, optional: false, categoryKey: "signature", choiceGroupId: null },
+          { id: "it-spicy", name: "Spicy Tuna Roll", unitPrice: null, basis: null, priceState: "quoted", confirmed: true, visible: true, optional: false, categoryKey: "signature", choiceGroupId: null },
+        ]},
+        { key: "cond", label: "Condiments", layout: "comma", items: [
+          { id: "it-soy", name: "Soy Sauce", unitPrice: null, basis: null, priceState: "internal", confirmed: true, visible: false, optional: false, categoryKey: "cond", choiceGroupId: null },
+        ]},
+      ],
+    }],
+  }];
+
+  const outline = outlineFromDesignChapters(chapters, true);
+  const ids = (ns: typeof outline): string[] =>
+    ns.flatMap((n) => [n.id, ...(n.children ? ids(n.children) : [])]);
+  const all = ids(outline);
+
+  ok("the chapter carries its REAL id", all.includes("sec-cocktail"));
+  ok("the component carries its REAL id", all.includes("comp-sushi"));
+  ok("items carry their REAL database ids", all.includes("it-cal") && all.includes("it-spicy"));
+  ok("no synthetic ids leak in (the bug: 'c:0:1')", !all.some((i) => /^[sci]:\d/.test(i)));
+
+  // Bug 2: expanding a component must reveal its structure.
+  const comp = outline[0].children?.[0];
+  ok("the component HAS children (categories)", (comp?.children?.length ?? 0) === 2);
+  ok("categories are named", comp?.children?.[0].label === "Signature Rolls");
+  ok("categories contain their items", comp?.children?.[0].children?.length === 2);
+  ok("an item under a category is reachable", comp?.children?.[0].children?.[0].id === "it-cal");
+
+  // X-ray parity: the rail must not disagree with the Stage about what exists.
+  const noXray = outlineFromDesignChapters(chapters, false);
+  const hiddenIds = ids(noXray);
+  ok("without X-ray the internal row is ABSENT from the rail", !hiddenIds.includes("it-soy"));
+  ok("with X-ray it is present and flagged", all.includes("it-soy"));
+  ok("an all-hidden category vanishes without X-ray (v195 P1.8)",
+     !hiddenIds.some((i) => i.includes("::cond")));
+
+  // Debt rolls up — and an unconfirmed PACKAGE price counts.
+  ok("unconfirmed package price is debt on the component", (comp?.debt ?? 0) >= 1);
+  ok("...and rolls up to the chapter", (outline[0].debt ?? 0) >= 1);
+
+  // A flat component shouldn't cost two clicks to reach a roll.
+  const flat: StageChapter[] = [{ id: "s2", name: "Late Night", subtotal: null, components: [{
+    id: "c2", title: "Slider Bar", isPackage: true, packagePrice: 2100, packageBasis: "flat",
+    packageConfirmed: true, display: "items", note: null, subtotal: null,
+    categories: [{ key: null, label: null, layout: "dot", items: [
+      { id: "i2", name: "Beef Sliders", unitPrice: null, basis: null, priceState: "quoted", confirmed: true, visible: true, optional: false, categoryKey: null, choiceGroupId: null },
+    ]}],
+  }]}];
+  const f = outlineFromDesignChapters(flat, true);
+  ok("a single uncategorised group is flattened — items sit under the component",
+     f[0].children?.[0].children?.[0].id === "i2");
 }
 
 console.log(`

@@ -62,7 +62,11 @@ export interface DesignOutlineProps {
 }
 
 function Node({ node, depth, p }: { node: OutlineNode; depth: number; p: DesignOutlineProps }) {
-  const [open, setOpen] = useState(depth < 1);
+  // Chapters and components open; item groups under a component open too —
+  // depth 2 is a CATEGORY, and a category that starts closed makes the user
+  // click twice to see a roll. Only the deepest lists start closed, and they
+  // have no children anyway.
+  const [open, setOpen] = useState(depth < 3);
   const kids = node.children ?? [];
   const sel = p.selectedId === node.id;
   const focused = p.focusedId === node.id;
