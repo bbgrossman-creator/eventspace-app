@@ -103,22 +103,44 @@ interface Drag {
 function Grip({ payload, label, drag, disabled }: {
   payload: NodePayload; label: string; drag: Drag; disabled?: boolean;
 }) {
-  if (disabled) return <span className="w-4 shrink-0" />;
+  // Locked / read-only: no handle renders — only an inert spacer so rows
+  // don't shift when permission changes. Nothing advertises dragging.
+  if (disabled) return <span className="w-6 shrink-0" aria-hidden />;
   return (
     <span
       draggable
+      data-grip={payload.kind}
       onDragStart={(e) => {
         e.stopPropagation();
         e.dataTransfer.setData(MIME.node, JSON.stringify(payload));
         e.dataTransfer.effectAllowed = "move";
         setDragLabel(e, cursorLabel("rearrange", label));
-        drag.start(payload);
+        // ── THE LINE THAT KILLED EVERY DRAG ─────────────────────────────
+        // drag.start(payload) here is a React setState. Called synchronously
+        // it re-renders DURING the dragstart dispatch; the focus-mode
+        // collapse mutates the DOM around the drag source and Chromium
+        // CANCELS the drag it was starting — dragstart fired, dragend
+        // followed instantly, nothing ever moved. Proven in real Chromium:
+        // synchronous → "dragstart → dragend"; deferred → the full
+        // "dragstart → drag → dragenter → dragover → drop" lifecycle.
+        // The session must begin AFTER the browser has finished starting
+        // the drag. One tick is enough.
+        const start = payload;
+        window.setTimeout(() => drag.start(start), 0);
       }}
       onDragEnd={() => drag.end()}
       onClick={(e) => e.stopPropagation()}
       title="Drag to move"
-      className="w-4 shrink-0 text-center cursor-grab active:cursor-grabbing select-none
-                 text-slate-300 hover:text-slate-500 text-[11px] leading-none"
+      // ── The affordance: quiet until wanted, honest when shown ─────────
+      // Icon is small; the POINTER TARGET is the full 24px-wide column and
+      // the row's height. Revealed on row hover, keyboard focus within the
+      // row, or selection (the row adds `group` + data-sel) — never a field
+      // of grips at rest.
+      className="grip w-6 shrink-0 self-stretch flex items-center justify-center
+                 cursor-grab active:cursor-grabbing select-none
+                 text-slate-300 hover:text-slate-500 text-[11px] leading-none
+                 opacity-0 transition-opacity duration-100
+                 group-hover:opacity-100 group-focus-within:opacity-100"
     >⠿</span>
   );
 }
@@ -142,8 +164,13 @@ function DropBand({ drag, target, onDrop, label, tall }: {
         const p = readNode(e.dataTransfer);
         if (p) { onDrop?.(p, target); drag.end(String(target.parentId)); }
       }}
-      className={`mx-3 rounded-md flex items-center justify-center transition-all duration-100 ${
-        armed ? (tall ? "my-2 py-3" : "my-1.5 py-2") : (tall ? "my-1 py-1.5" : "my-0.5 py-1")
+      // Arming must change COLOR, never SIZE. The armed band used to grow
+      // ~12px, which shifted every row below it while a drag was in flight —
+      // measured in real Chromium as the reason a near-stationary pointer
+      // could slide off its destination (and once opened the wrong category).
+      // A drop target that moves when you approach it is a moving target.
+      className={`mx-3 rounded-md flex items-center justify-center transition-colors duration-100 ${
+        tall ? "my-1.5 py-2.5" : "my-1 py-1.5"
       }`}
       style={{
         border: `${armed ? 2 : 1.5}px dashed ${armed ? T.gold : "#CBD5E1"}`,
@@ -222,8 +249,8 @@ function ItemRow({ it, comp, p, drag }: {
     <div
       ref={ref}
       onClick={() => p.onSelect(it.id)}
-      className={`flex items-center gap-2 pl-6 pr-3 py-[3px] text-[12.5px] cursor-pointer border-l-2 ${
-        sel ? "border-l-[#C9A34E]" : "border-l-transparent hover:bg-slate-50/60"
+      className={`group flex items-center gap-2 pl-4 pr-3 py-[3px] text-[12.5px] cursor-pointer border-l-2 ${
+        sel ? "border-l-[#C9A34E] [&_.grip]:opacity-100" : "border-l-transparent hover:bg-slate-50/60"
       } ${drag.live?.id === it.id ? "opacity-35" : ""}`}
       style={{ background: sel ? T.sel : undefined, color: ghost ? T.ghost : T.ink }}
     >
@@ -271,9 +298,21 @@ function CategoryBlock({ cat, comp, p, drag, sourceCat }: {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enter = () => {
     if (!legal || drag.open === key || key === sourceCat) return;
+    // One timer, ever. Enter fires again for every child the pointer crosses;
+    // stacking a fresh timer each time leaked timers that could fire for a
+    // dwell the user had abandoned. If one is pending, the dwell is running.
+    if (timer.current) return;
     timer.current = setTimeout(() => drag.setOpen(key), HOVER_EXPAND_MS);
   };
-  const leave = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  const leave = (e: React.DragEvent) => {
+    // Crossing INTO a child raises dragleave on this wrapper with
+    // relatedTarget still inside it. That is not leaving — but it cancelled
+    // the dwell timer 59ms in (measured in real Chromium), so a hand that
+    // drifted even slightly could hover forever and never open the category.
+    // Only a genuine exit clears the timer.
+    if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+  };
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   // Which lists are open while an item is in flight:
@@ -351,8 +390,8 @@ function ComponentBlock({ c, p, chapterId, drag }: {
     <div ref={ref} style={{ opacity: dim ? 0.25 : 1 }} className="transition-opacity">
       <div
         onClick={() => p.onSelect(c.id)}
-        className={`flex items-center gap-2 pl-2 pr-3 py-1 border-l-2 cursor-pointer ${
-          sel ? "border-l-[#C9A34E]" : "border-l-transparent hover:bg-slate-50/60"
+        className={`group flex items-center gap-2 pl-1 pr-3 py-1 border-l-2 cursor-pointer ${
+          sel ? "border-l-[#C9A34E] [&_.grip]:opacity-100" : "border-l-transparent hover:bg-slate-50/60"
         } ${drag.live?.id === c.id ? "opacity-35" : ""}`}
         style={{ background: sel ? T.sel : undefined }}
       >
