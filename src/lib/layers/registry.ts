@@ -77,7 +77,7 @@ export interface LayerRegistration<T = unknown> {
   emptyState: () => T;
   label: { singular: string; icon: string };
   // Consumption is declared here too; no lens or feature ever switches on key.
-  // (Optional in SPEC-001; the Production lens plugs in via SPEC-002.)
+  // (Optional in SPEC-001; the Production lens plugs in via SPEC-003.)
   lens?: unknown;
   libraryProjection?: (def: ComponentDefinition, layer: T) => Record<string, unknown>;
 }
