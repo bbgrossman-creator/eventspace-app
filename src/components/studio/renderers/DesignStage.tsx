@@ -38,7 +38,7 @@
 // Simplification: while something is in flight the Canvas shows only the level
 // the DECISION needs. Wake is INSTANT (feedback); Open is a DWELL (structural).
 // ═══════════════════════════════════════════════════════════════════════════
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   MIME, NodePayload, DropTarget, operationFor, cursorLabel, readNode, setDragLabel,
   catKey, simplifyFor, isLegalTarget, HOVER_EXPAND_MS,
@@ -93,6 +93,19 @@ interface Drag {
   open: string | null;
   setOpen: (k: string | null) => void;
   landed: string | null;
+}
+
+/** The Canvas is the nearest scrollable ancestor of the Stage. Resolved at
+ *  runtime so the Stage stays page-agnostic — and so viewport corrections can
+ *  only ever touch the center Canvas, never the Outline, Inspector or window
+ *  (each of those is its own scroller, so the walk stops before them). */
+function scrollParentOf(el: Element | null): HTMLElement | null {
+  let n = el?.parentElement ?? null;
+  while (n) {
+    if (/(auto|scroll|overlay)/.test(getComputedStyle(n).overflowY)) return n;
+    n = n.parentElement;
+  }
+  return null;
 }
 
 /** THE DRAG HANDLE — the drag source, and the only one.
@@ -269,6 +282,7 @@ function ItemRow({ it, comp, p, drag }: {
   return (
     <div
       ref={ref}
+      data-node-id={it.id}
       onClick={() => p.onSelect(it.id)}
       className={`group flex items-center gap-2 pl-4 pr-3 py-[3px] text-[12.5px] cursor-pointer border-l-2 ${
         sel ? "border-l-[#C9A34E] [&_.grip]:opacity-100" : "border-l-transparent hover:bg-slate-50/60"
@@ -410,6 +424,7 @@ function ComponentBlock({ c, p, chapterId, drag }: {
   return (
     <div ref={ref} style={{ opacity: dim ? 0.25 : 1 }} className="transition-opacity">
       <div
+        data-node-id={c.id}
         onClick={() => p.onSelect(c.id)}
         className={`group flex items-center gap-2 pl-1 pr-3 py-1 border-l-2 cursor-pointer ${
           sel ? "border-l-[#C9A34E] [&_.grip]:opacity-100" : "border-l-transparent hover:bg-slate-50/60"
@@ -469,19 +484,86 @@ export default function DesignStage(p: DesignStageProps) {
   const [awake, setAwake] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [landed, setLanded] = useState<string | null>(null);
+  // In-flight bottom spacer: the anchor correction is a scrollTop write, and
+  // a collapsed Canvas can be SHORTER than its viewport — the write clamps and
+  // the anchor silently fails (measured: 42px residual drift). One viewport of
+  // slack during flight guarantees the correction always has room. Render-only,
+  // like every flight state: it vanishes when the gesture ends.
+  const [spacer, setSpacer] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // ── THE DRAG ANCHOR ────────────────────────────────────────────────────
+  // Focus-mode collapse removes everything ABOVE the source that isn't a
+  // destination — which shrinks the content and, with scrollTop unchanged,
+  // teleports the user to a different part of the proposal the instant they
+  // pick something up. So: capture the source row's viewport position before
+  // the collapse renders, and correct the Canvas scroll after it does. The
+  // thing in your hand stays under your hand.
+  const anchor = useRef<{ id: string; top: number } | null>(null);
 
   // A drag must never permanently rearrange the workspace. All of this state
   // clears when the gesture ends — and the user's own expansion was never
   // touched, because the collapse is a RENDER decision, not a stored one.
   // That is why "restore previous state" needs no code.
   const drag: Drag = {
-    live, start: (n) => setLive(n),
+    live,
+    start: (n) => {
+      const el = document.querySelector(`[data-node-id="${CSS.escape(n.id)}"]`);
+      anchor.current = el ? { id: n.id, top: el.getBoundingClientRect().top } : null;
+      setSpacer(scrollParentOf(rootRef.current)?.clientHeight ?? 0);
+      setLive(n);
+    },
     end: (landedIn) => {
-      setLive(null); setAwake(null); setOpen(null);
+      setLive(null); setAwake(null); setOpen(null); setSpacer(0);
       if (landedIn) { setLanded(landedIn); setTimeout(() => setLanded(null), 700); }
     },
     awake, wake: setAwake, open, setOpen, landed,
   };
+
+  // Apply the anchor correction in the SAME frame the collapsed view renders,
+  // so the jump is never painted.
+  useLayoutEffect(() => {
+    if (!live || !anchor.current || anchor.current.id !== live.id) return;
+    const el = document.querySelector(`[data-node-id="${CSS.escape(live.id)}"]`);
+    const sc = scrollParentOf(rootRef.current);
+    if (el && sc) {
+      const drift = el.getBoundingClientRect().top - anchor.current.top;
+      if (Math.abs(drift) > 1) sc.scrollTop += drift;
+    }
+    anchor.current = null;
+  }, [live]);
+
+  // ── EDGE AUTO-SCROLL ───────────────────────────────────────────────────
+  // Native HTML5 drag does not scroll an overflow container for you, so any
+  // destination outside the Canvas viewport was simply unreachable. While a
+  // drag is live: a 56px zone at the Canvas's top and bottom edges scrolls
+  // it, speed ramping toward the edge. Pointer position comes from the
+  // document-level dragover stream (drags suppress mousemove). The loop is a
+  // single rAF, cancelled when the drag ends — drop, dragend, Escape and
+  // unmount all land in this effect's cleanup because they all clear `live`.
+  useEffect(() => {
+    if (!live) return;
+    const sc = scrollParentOf(rootRef.current);
+    if (!sc) return;
+    let y = -1;
+    const onOver = (e: DragEvent) => { y = e.clientY; };
+    document.addEventListener("dragover", onOver, true);
+    const ZONE = 56, MAX_PX_PER_FRAME = 16;
+    let raf = 0;
+    const tick = () => {
+      if (y >= 0) {
+        const r = sc.getBoundingClientRect();
+        if (y < r.top + ZONE) {
+          sc.scrollTop -= MAX_PX_PER_FRAME * Math.min(1, (r.top + ZONE - y) / ZONE);
+        } else if (y > r.bottom - ZONE) {
+          sc.scrollTop += MAX_PX_PER_FRAME * Math.min(1, (y - (r.bottom - ZONE)) / ZONE);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); document.removeEventListener("dragover", onOver, true); };
+  }, [live]);
 
   // A read-only Stage is a legitimate state (an approved version, a viewer).
   // A read-only Stage that LOOKS editable and silently ignores you is not —
@@ -501,7 +583,7 @@ export default function DesignStage(p: DesignStageProps) {
   }
 
   return (
-    <div className="pb-24" onDragEnd={() => drag.end()}>
+    <div ref={rootRef} className="pb-24" style={{ paddingBottom: spacer || undefined }} onDragEnd={() => drag.end()}>
       {readOnly && (
         <div className="mx-3 mt-2 mb-1 px-3 py-1.5 rounded-md text-[11px] font-semibold"
              style={{ background: "#F1F5F9", color: "#64748B" }}>
