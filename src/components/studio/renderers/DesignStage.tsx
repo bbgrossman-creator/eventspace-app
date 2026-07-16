@@ -254,7 +254,9 @@ function CategoryBlock({ cat, comp, p, drag, sourceCat }: {
   return (
     <div onDragEnter={enter} onDragLeave={leave}>
       {cat.label && (
-        <div className="pl-8 py-0.5 flex items-center gap-2">
+        // Deliberately NOT draggable and deliberately no grip: category
+        // dragging has not been designed, so the UI must not advertise it.
+        <div className="pl-8 py-0.5 flex items-center gap-2 select-none">
           <span className="text-[9.5px] font-semibold tracking-wide"
                 style={{ color: legal && !isOpen ? T.gold : T.gold, opacity: itemDrag && !legal ? 0.3 : 1 }}>
             {cat.label}
@@ -263,7 +265,12 @@ function CategoryBlock({ cat, comp, p, drag, sourceCat }: {
           {isSource && drag.open && drag.open !== key && (
             <span className="text-[8.5px] italic text-slate-400">Moving from {cat.label}</span>
           )}
-          {isOpen && <span className="text-[9px] text-slate-300">{cat.layout}</span>}
+          {/* The layout value ("dot" / "comma" / "vertical") USED to render
+              here. It is configuration, not content — a small grey token beside
+              a label, unexplained, which reads as a grab handle. Removed: a
+              category row must advertise nothing, because category dragging has
+              not been designed. Layout belongs in the Inspector with the rest of
+              the object's context. */}
         </div>
       )}
       {isOpen && (
@@ -390,6 +397,11 @@ export default function DesignStage(p: DesignStageProps) {
     awake, wake: setAwake, open, setOpen, landed,
   };
 
+  // A read-only Stage is a legitimate state (an approved version, a viewer).
+  // A read-only Stage that LOOKS editable and silently ignores you is not —
+  // it is indistinguishable from a bug, which is exactly what happened here.
+  const readOnly = !p.mayEdit;
+
   if (!p.chapters.length) {
     return (
       <div className="py-16 text-center">
@@ -404,6 +416,12 @@ export default function DesignStage(p: DesignStageProps) {
 
   return (
     <div className="pb-24" onDragEnd={() => drag.end()}>
+      {readOnly && (
+        <div className="mx-3 mt-2 mb-1 px-3 py-1.5 rounded-md text-[11px] font-semibold"
+             style={{ background: "#F1F5F9", color: "#64748B" }}>
+          Read-only — you can look, but not compose. (No edit permission on this event, or the version is approved.)
+        </div>
+      )}
       {p.chapters.map((ch) => {
         const legal = isLegalTarget(live, { parentId: ch.id });
         const dropIn = (pl: NodePayload, t: DropTarget) => { p.onDrop?.(pl, t); };
