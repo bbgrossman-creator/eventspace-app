@@ -28,6 +28,7 @@ import { buildPresentationModel, PresentationModel, outlineFromModel } from "@/l
 import DesignOutline from "@/components/studio/renderers/DesignOutline";
 import DesignStage from "@/components/studio/renderers/DesignStage";
 import { buildDesignStage, outlineFromDesignChapters, RawComp, RawItem } from "@/lib/designStageModel";
+import { sourceForIdentity } from "@/lib/library";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
 import { loadSession, Session } from "@/lib/permissions";
@@ -133,6 +134,7 @@ export default function StudioPage() {
   const [stageBusy, setStageBusy] = useState(false);
   // Selection and focus are SHELL state: the rail, the Stage and Details must
   // agree, and three components cannot each own that (renderer contract).
+  const [dropChapter, setDropChapter] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [xray, setXray] = useState(true);   // authors default to seeing the truth
@@ -314,6 +316,20 @@ export default function StudioPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [comps, items, vSections, sectionTypes, activeItems, guestCounts, choiceGroups, tax]);
 
+  /** Where ↵ puts things. Predictable beats clever: the selected chapter, or
+   *  the chapter of the selected component, or the last chapter. Never a guess
+   *  the user cannot reconstruct — drag is there for aiming precisely. */
+  const targetChapter = useMemo(() => {
+    if (!designChapters.length) return null;
+    if (selectedId) {
+      const asChapter = designChapters.find((ch) => ch.id === selectedId);
+      if (asChapter) return asChapter.id;
+      const owner = designChapters.find((ch) => ch.components.some((c) => c.id === selectedId));
+      if (owner) return owner.id;
+    }
+    return designChapters[designChapters.length - 1].id;
+  }, [designChapters, selectedId]);
+
   const hasOptions = items.some((i) => i.item_role === "optional");
   const totalGuests = guestCounts.reduce((x, g) => x + g.count, 0);
   // "$0.00" would be a lie of precision: per-person items aren't zero, they're
@@ -323,6 +339,31 @@ export default function StudioPage() {
     packageLines.some((pk) => pk.package_basis === "per_person" && pk.package_price != null));
 
   // ── Mutations ──
+  /** INSTANTIATE — the Library's verb, made real. Resolves the identity to its
+   *  freshest instance and copies it through copyIntoVersion: the SAME path
+   *  blueprints and source events use, so the copy semantics (what travels,
+   *  what arrives amber) live in exactly one place. `chapterId` is the aim:
+   *  a drag names it precisely; ↵ uses the selection's chapter. */
+  async function instantiate(identityId: string, name: string, chapterId?: string | null) {
+    if (!b || locked) return;
+    setBusy(true);
+    const src = await sourceForIdentity(identityId);
+    if (!src) {
+      setBusy(false);
+      setErr(`"${name}" is in the Library but has no instance to copy — it may have been deleted.`);
+      return;
+    }
+    const r = await copyIntoVersion(b, versionId, [src.componentId], `Library · ${name}`);
+    setBusy(false);
+    if (!r.ok) { setErr(r.detail ?? "Instantiate failed."); return; }
+    // Aim it, if we were told where. Copy lands it; this places it.
+    if (chapterId && chapterId !== "__none__" && r.newIds?.length) {
+      await Promise.all(r.newIds.map((id) => patchComp(id, { section_type_id: chapterId })));
+    }
+    setToast(`✓ "${name}" added — prices carried, awaiting confirmation`);
+    loadCanvas();
+  }
+
   async function addFromSource(componentIds: string[], sourceLabel: string) {
     if (!b || locked) return;
     setBusy(true);
@@ -574,13 +615,7 @@ export default function StudioPage() {
       <LibraryBrowser
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
-        onInstantiate={(identityId, name) =>
-          // Instantiate lands in slice 4 with the drag grammar (it must arrive
-          // amber — carried facts are unconfirmed by construction). Naming the
-          // identity now proves the wiring end-to-end without pretending the
-          // ceremony exists yet.
-          setToast(`"${name}" — instantiate arrives with the drag grammar (identity ${identityId.slice(0, 8)}…)`)
-        }
+        onInstantiate={(identityId, name) => instantiate(identityId, name, targetChapter)}
       />
 
       {/* ── Header ── */}
@@ -681,10 +716,19 @@ export default function StudioPage() {
                to sit ABOVE 700 lines of component forms, so the page scrolled
                and the Stage never did. */}
           <div className="min-h-0 overflow-y-auto bg-white"
-            onDragOver={(e) => { if (e.dataTransfer.types.includes("text/eventcore-component")) { e.preventDefault(); setDropHot(true); } }}
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes("text/eventcore-identity")
+                || e.dataTransfer.types.includes("text/eventcore-component")) { e.preventDefault(); setDropHot(true); }
+            }}
             onDragLeave={() => setDropHot(false)}
             onDrop={(e) => {
               setDropHot(false);
+              const ident = e.dataTransfer.getData("text/eventcore-identity");
+              if (ident) {
+                e.preventDefault();
+                try { const d = JSON.parse(ident); instantiate(d.identityId, d.name, dropChapter); } catch {}
+                return;
+              }
               const raw = e.dataTransfer.getData("text/eventcore-component");
               if (!raw) return;
               e.preventDefault();

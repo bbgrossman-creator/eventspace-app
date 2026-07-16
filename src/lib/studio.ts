@@ -93,14 +93,18 @@ export async function copyIntoVersion(
   versionId: string,
   srcComponentIds: string[],
   sourceLabel: string,
-): Promise<{ ok: boolean; detail?: string; copied: number }> {
-  if (!srcComponentIds.length) return { ok: true, copied: 0 };
+  // v196b: returns the NEW component ids so a caller can AIM the copy — an
+  // instantiate that lands in the wrong chapter is a move the user then has to
+  // undo, which is the opposite of composition.
+): Promise<{ ok: boolean; detail?: string; copied: number; newIds: string[] }> {
+  const newIds: string[] = [];
+  if (!srcComponentIds.length) return { ok: true, copied: 0, newIds };
   const { count } = await supabase.from("event_components")
     .select("id", { count: "exact", head: true }).eq("proposal_version_id", versionId);
   let pos = count ?? 0;
   const { data: srcRows, error } = await supabase.from("event_components")
     .select("id,domain,kind,title,notes,section_type_id,pricing_mode,package_price,package_basis,package_taxable,package_cost,customer_description,group_label,group_position,group_description,proposal_display,item_categories,item_layout,uncategorized_position,identity_id").in("id", srcComponentIds);
-  if (error) return { ok: false, detail: error.message, copied: 0 };
+  if (error) return { ok: false, detail: error.message, copied: 0, newIds };
   const [{ data: its }, { data: rqs }] = await Promise.all([
     supabase.from("component_items").select("*").in("component_id", srcComponentIds).order("position"),
     supabase.from("component_requirements").select("component_id,name,category,notes").in("component_id", srcComponentIds),
@@ -131,7 +135,7 @@ export async function copyIntoVersion(
       uncategorized_position: src.uncategorized_position ?? "bottom",
       package_price_confirmed: src.package_price == null,
     }).select("id").single();
-    if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "?"}`, copied };
+    if (cErr || !nc) return { ok: false, detail: `"${src.title}": ${cErr?.message ?? "?"}`, copied, newIds };
     const rows = ((its ?? []) as Record<string, unknown>[]).filter((i) => i.component_id === src.id);
     if (rows.length) {
       const { error: iErr } = await supabase.from("component_items").insert(rows.map((i, idx) => ({
@@ -148,17 +152,18 @@ export async function copyIntoVersion(
         selected: (i.selected as boolean | null) ?? true,
         position: idx,
       })));
-      if (iErr) return { ok: false, detail: `"${src.title}" items: ${iErr.message}`, copied };
+      if (iErr) return { ok: false, detail: `"${src.title}" items: ${iErr.message}`, copied, newIds };
     }
     const reqs = ((rqs ?? []) as { component_id: string; name: string; category: string | null; notes: string | null }[])
       .filter((r) => r.component_id === src.id);
     if (reqs.length) await supabase.from("component_requirements").insert(
       reqs.map((r) => ({ component_id: nc.id, name: r.name, category: r.category, notes: r.notes })));
+    newIds.push(nc.id);
     copied++;
   }
   await logActivity(booking.id, booking.invoice_num, "Studio Copy",
     `🎨 ${copied} component${copied === 1 ? "" : "s"} from ${sourceLabel} → proposal`);
-  return { ok: true, copied };
+  return { ok: true, copied, newIds };
 }
 
 // ── Version comparison: the revision-call changelist ──

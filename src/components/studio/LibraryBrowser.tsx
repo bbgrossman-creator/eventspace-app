@@ -99,6 +99,14 @@ export default function LibraryBrowser({ open, onClose, onInstantiate }: Library
               key={`${r.kind}-${r.id}`}
               onMouseEnter={() => setCursor(idx)}
               onClick={() => go(r)}
+              // Drag is the fast path; ↵ is the click path. Both instantiate.
+              draggable={r.kind === "component" && !!r.identityId}
+              onDragStart={(e) => {
+                if (r.kind !== "component" || !r.identityId) return;
+                e.dataTransfer.setData("text/eventcore-identity",
+                  JSON.stringify({ identityId: r.identityId, name: r.title }));
+                e.dataTransfer.effectAllowed = "copy";
+              }}
               className={`w-full flex items-baseline gap-2 px-3 py-2 text-left ${on ? "bg-[#F4F9FF]" : ""}`}
             >
               <span style={{ color: T.gold }}>{KIND_ICON[r.kind]}</span>
