@@ -122,19 +122,48 @@ async function main() {
   console.log("\n─── rendered HTML (first 600 chars) ───");
   console.log(document.getElementById("root")?.innerHTML.slice(0, 600) || "(EMPTY ROOT)");
   console.log("\n═══ 1 · RENDERED DOM ATTRIBUTES ═══");
+  // ─── THE ASSERTION THAT WOULD HAVE CAUGHT THE REAL BUG ───────────────────
+  // The last version of this test passed while the product was unusable:
+  // draggable="true" rendered on 142 rows, and NOT ONE could be picked up,
+  // because an <input> filled each row and browsers refuse to start a drag
+  // from inside one. jsdom happily dispatches dragstart on the div, so the
+  // harness never noticed.
+  //
+  // jsdom cannot simulate "would a browser start this drag?" — so assert the
+  // STRUCTURAL property that guarantees it instead: a drag source must not
+  // contain a text input, and must not BE one.
+  {
+    const bad = draggables().filter((el) =>
+      el.querySelector("input, select, textarea") !== null || el.tagName === "INPUT");
+    ok("NO drag source contains an input (a row full of inputs cannot be dragged)",
+       bad.length === 0,
+       bad.length ? `${bad.length} unusable source(s): ${bad.map((b) => rowText(b).slice(0, 40)).join(" | ")}` : "");
+    ok("every drag source is a dedicated handle", draggables().every((el) => (el.textContent ?? "").trim() === "⠿"));
+  }
   ok("something renders", text().includes("Sushi Station"));
   ok("rows render draggable=\"true\" (the gate on EVERY drag)", draggables().length > 0,
      `found ${draggables().length}; draggable="false": ${$('[draggable="false"]').length}`);
-  ok("the component row is draggable", draggables().some((el) => rowText(el).includes("Sushi Station")));
-  ok("item rows are draggable", draggables().some((el) => rowText(el).includes("California Roll")));
+  ok("the component's HANDLE is the drag source",
+     draggables().some((el) => rowText(el.parentElement!).includes("Sushi Station")));
+  ok("the item's HANDLE is the drag source (items previously had none)",
+     draggables().some((el) => rowText(el.parentElement!).includes("California Roll")));
 
   console.log("\n═══ 2 · CATEGORY AFFORDANCES (must advertise nothing) ═══");
-  const grips = Array.from($("span")).filter((el) => (el.textContent ?? "").includes("⠿"));
-  ok("grips exist only on components, never categories", grips.length === 2,
-     `${grips.length} grips for 2 components`);
-  ok("no category row is draggable",
+  const grips = Array.from($("span")).filter((el) => (el.textContent ?? "").trim() === "⠿");
+  ok("every draggable row has a handle (2 components + 3 items)", grips.length === 5, `${grips.length} grips`);
+  // A category LABEL row must contain no handle. (Checking ancestors is
+  // meaningless — a container holds both the label and its items' grips.)
+  ok("NO category label row has a handle — category dragging is not designed",
+     !Array.from($("div")).some((el) => {
+       const kids = Array.from(el.children);
+       const isLabelRow = kids.some((k) => (k.textContent ?? "").trim() === "Signature Rolls");
+       return isLabelRow && kids.some((k) => (k.textContent ?? "").trim() === "⠿");
+     }));
+  ok("the layout token ('dot') no longer sits beside category labels — it is",
+     !(text().includes("Signature Rolls") && (document.body.textContent ?? "").includes("dot")));
+  ok("no category is draggable",
      !draggables().some((el) => {
-       const t = rowText(el).trim();
+       const t = rowText(el.parentElement ?? el).trim();
        return t.startsWith("Signature Rolls") || t.startsWith("Classic Rolls");
      }));
 
@@ -155,7 +184,7 @@ async function main() {
         money: (n: number) => `$${n}`, onDrop: () => {},
       }));
     });
-    const off = probe.querySelectorAll('[draggable="true"]').length;
+    const off = probe.querySelectorAll("[draggable]").length;
     ok("mayEdit=false ⇒ NOTHING is draggable (the regression, reproduced)", off === 0, `${off} draggable`);
     ok("...and the Stage SAYS it is read-only", (probe.textContent ?? "").toLowerCase().includes("read-only"),
        "a silently read-only Stage is indistinguishable from a broken one");
@@ -164,7 +193,11 @@ async function main() {
   }
 
   console.log("\n═══ 3 · DRAG A COMPONENT ═══");
-  const compRow = draggables().find((el) => rowText(el).includes("Sushi Station"))!;
+  // Start the drag where a real browser can: on the handle.
+  const compRow = Array.from($('[draggable]')).find((el) => {
+    const row = el.parentElement;
+    return !!row && rowText(row).includes("Sushi Station");
+  })!;
   const dt = new FakeDataTransfer();
 
   await act(async () => {
@@ -218,7 +251,10 @@ async function main() {
 
   console.log("\n═══ 5 · DRAG AN ITEM ═══");
   drops.length = 0;
-  const itemRow = draggables().find((el) => rowText(el).includes("California Roll"))!;
+  const itemRow = Array.from($('[draggable]')).find((el) => {
+    const row = el.parentElement;
+    return !!row && rowText(row).includes("California Roll");
+  })!;
   const dt2 = new FakeDataTransfer();
   await act(async () => {
     const ev = new dom.window.Event("dragstart", { bubbles: true }) as Event & { dataTransfer?: unknown };

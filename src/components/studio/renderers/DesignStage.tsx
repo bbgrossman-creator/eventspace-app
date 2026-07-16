@@ -21,7 +21,20 @@
 // Inline is the object's CONTENT. The Inspector is its CONTEXT. Denser in
 // rows, thinner in columns.
 //
-// ─── DRAG ─────────────────────────────────────────────────────────────────
+// ─── DRAG: BY HANDLE, NOT BY ROW ──────────────────────────────────────────
+// A row cannot be draggable when an <input> fills it. Browsers give inputs
+// their own mousedown for text selection and REFUSE to start the ancestor's
+// drag — so `draggable="true"` rendered on 142 rows and not one of them could
+// be picked up. The attribute was present; the gesture was impossible.
+//
+// (A jsdom test cannot catch this: dispatching `dragstart` on the div works
+// there, because jsdom never asks whether a browser WOULD have started one.
+// The harness passed while the product was unusable.)
+//
+// So the HANDLE is the drag source. It is a real target — not a 9px hint — and
+// it appears on components AND items, because an item whose name field spans
+// the row previously had nowhere to grab at all.
+//
 // Simplification: while something is in flight the Canvas shows only the level
 // the DECISION needs. Wake is INSTANT (feedback); Open is a DWELL (structural).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -80,6 +93,34 @@ interface Drag {
   open: string | null;
   setOpen: (k: string | null) => void;
   landed: string | null;
+}
+
+/** THE DRAG HANDLE — the drag source, and the only one.
+ *
+ *  `draggable` lives HERE, never on the row: a row full of inputs cannot start
+ *  a drag no matter what the attribute says. The handle is also the honest
+ *  affordance — it marks exactly the pixels that work. */
+function Grip({ payload, label, drag, disabled }: {
+  payload: NodePayload; label: string; drag: Drag; disabled?: boolean;
+}) {
+  if (disabled) return <span className="w-4 shrink-0" />;
+  return (
+    <span
+      draggable
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.dataTransfer.setData(MIME.node, JSON.stringify(payload));
+        e.dataTransfer.effectAllowed = "move";
+        setDragLabel(e, cursorLabel("rearrange", label));
+        drag.start(payload);
+      }}
+      onDragEnd={() => drag.end()}
+      onClick={(e) => e.stopPropagation()}
+      title="Drag to move"
+      className="w-4 shrink-0 text-center cursor-grab active:cursor-grabbing select-none
+                 text-slate-300 hover:text-slate-500 text-[11px] leading-none"
+    >⠿</span>
+  );
 }
 
 // ── Landing band: the hero of a drag ──────────────────────────────────────
@@ -181,21 +222,15 @@ function ItemRow({ it, comp, p, drag }: {
     <div
       ref={ref}
       onClick={() => p.onSelect(it.id)}
-      draggable={p.mayEdit}
-      onDragStart={(e) => {
-        e.stopPropagation();
-        e.dataTransfer.setData(MIME.node, JSON.stringify(me));
-        e.dataTransfer.effectAllowed = "move";
-        setDragLabel(e, cursorLabel("rearrange", it.name));
-        drag.start(me);                       // ← local. Nothing to wire.
-      }}
-      onDragEnd={() => drag.end()}
-      className={`flex items-center gap-2 pl-10 pr-3 py-[3px] text-[12.5px] cursor-pointer border-l-2 ${
+      className={`flex items-center gap-2 pl-6 pr-3 py-[3px] text-[12.5px] cursor-pointer border-l-2 ${
         sel ? "border-l-[#C9A34E]" : "border-l-transparent hover:bg-slate-50/60"
       } ${drag.live?.id === it.id ? "opacity-35" : ""}`}
       style={{ background: sel ? T.sel : undefined, color: ghost ? T.ghost : T.ink }}
     >
-      <span className="w-3 shrink-0 text-[8px]" style={{ color: T.gold }}>·</span>
+      {/* The handle. Previously an item had NO grip and its name input spanned
+          the row — there was nowhere to grab it at all. */}
+      <Grip payload={me} label={it.name} drag={drag} disabled={!p.mayEdit} />
+      <span className="w-2 shrink-0 text-[8px]" style={{ color: T.gold }}>·</span>
       <Text value={it.name} disabled={!p.mayEdit}
         className={`flex-1 min-w-0 ${ghost ? "line-through decoration-slate-300" : ""}`}
         onCommit={(v) => p.onPatchItem(it.id, { name: v })} />
@@ -316,21 +351,12 @@ function ComponentBlock({ c, p, chapterId, drag }: {
     <div ref={ref} style={{ opacity: dim ? 0.25 : 1 }} className="transition-opacity">
       <div
         onClick={() => p.onSelect(c.id)}
-        draggable={p.mayEdit}
-        onDragStart={(e) => {
-          e.stopPropagation();
-          e.dataTransfer.setData(MIME.node, JSON.stringify(me));
-          e.dataTransfer.effectAllowed = "move";
-          setDragLabel(e, cursorLabel("rearrange", c.title));
-          drag.start(me);
-        }}
-        onDragEnd={() => drag.end()}
-        className={`flex items-center gap-2 pl-5 pr-3 py-1 border-l-2 cursor-pointer ${
+        className={`flex items-center gap-2 pl-2 pr-3 py-1 border-l-2 cursor-pointer ${
           sel ? "border-l-[#C9A34E]" : "border-l-transparent hover:bg-slate-50/60"
         } ${drag.live?.id === c.id ? "opacity-35" : ""}`}
         style={{ background: sel ? T.sel : undefined }}
       >
-        <span className="text-[9px] text-slate-300 shrink-0" title="Drag to move">⠿</span>
+        <Grip payload={me} label={c.title} drag={drag} disabled={!p.mayEdit} />
         <Text value={c.title} disabled={!p.mayEdit}
           className="flex-1 min-w-0 text-[13.5px] font-semibold text-[#1F2A37]"
           onCommit={(v) => p.onPatchComponent(c.id, { title: v })} />
