@@ -80,6 +80,9 @@ export interface LayerRegistration<T = unknown> {
   // (Optional in SPEC-001; the Production lens plugs in via SPEC-003.)
   lens?: unknown;
   libraryProjection?: (def: ComponentDefinition, layer: T) => Record<string, unknown>;
+  /** SPEC-002: what a configuration choice means FOR THIS LAYER. Each rule's
+   *  emissions are bound to this registration's key — enforced at recompute. */
+  consequenceRules?: unknown[];   // typed as ConsequenceRule[] at the wiring site
 }
 
 export interface CanFn { (capability: string): boolean; }

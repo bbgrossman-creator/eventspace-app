@@ -102,7 +102,11 @@ export function planBatch(
   const mutations: OwnedMutation[] = [];
   const descriptions: string[] = [];
   for (const { p, reg, payload } of validated) {
-    const planned = reg.compound ? [] : reg.plan(payload, ctx);   // parents describe; children do
+    const planned = reg.plan(payload, ctx);   // parents AND children plan —
+    // a compound parent may carry its own mutation (apply_scheme carries
+    // set_scheme). Skipping parent plans lost the scheme id; caught by the
+    // real browser (test 17), half-missed by a unit test that asserted the
+    // children's effects but never the parent's.
     for (const m of planned) {
       if (!reg.boundaries.includes(m.boundary))
         throw new MoveError(p.kind, `mutation crossed its boundary: "${m.boundary}" not in [${reg.boundaries.join(",")}]`);
@@ -144,6 +148,27 @@ export function applyConfigMutations(config: ConfigV1, mutations: OwnedMutation[
       case "set_substitution": c.substitutions[mu.slot] = { from: mu.from, to: mu.to }; break;
       case "clear_substitution": delete c.substitutions[mu.slot]; break;
       case "set_display_name": c.display.name = mu.name ?? undefined; break;
+      case "reset_to_seed":
+        c.schemeId = null; c.customized = []; c.substitutions = {}; c.display = {};
+        c.scalars = JSON.parse(JSON.stringify(mu.seed.scalars));
+        c.choices = { ...mu.seed.choices };
+        break;
+      case "reset_dimension": {
+        const [t, key] = mu.dimension.split(":");
+        if (t === "choice" && key) {
+          if (mu.seed.choices[key] !== undefined) c.choices[key] = mu.seed.choices[key];
+          else delete c.choices[key];
+        }
+        if (t === "scalar" && key) {
+          if (mu.seed.scalars[key]) c.scalars[key] = JSON.parse(JSON.stringify(mu.seed.scalars[key]));
+          else delete c.scalars[key];
+        }
+        if (t === "scheme") { c.schemeId = null; c.customized = []; }
+        if (t === "sub" && key) delete c.substitutions[key];
+        if (t === "display") c.display = {};
+        c.customized = c.customized.filter((d) => d !== mu.dimension);
+        break;
+      }
     }
   }
   return c;
@@ -152,13 +177,26 @@ export function applyConfigMutations(config: ConfigV1, mutations: OwnedMutation[
 // ── Consequence recompute (logical keys; SPEC-002 Rev B change 4) ───────────
 
 export type ConsequenceRule = (view: ConfigView) => DerivedRequirement[];
-const consequenceRules: ConsequenceRule[] = [];
-export function registerConsequenceRule(r: ConsequenceRule): void { consequenceRules.push(r); }
+
+// Rules are BOUND to the layer that registered them (SPEC-001 §1.6 invariant 2:
+// the registration owns everything about its layer — including what a choice
+// means for it). One choice fans into many layers by MANY layers each reacting,
+// never by one layer writing another's domain. A rule emitting a row tagged
+// with a foreign layer_key is refused at recompute, before persistence.
+const consequenceRules: { layerKey: string; rule: ConsequenceRule }[] = [];
+export function registerConsequenceRule(layerKey: string, rule: ConsequenceRule): void {
+  consequenceRules.push({ layerKey, rule });
+}
 export function recomputeConsequences(config: ConfigV1): DerivedRequirement[] {
   const view = viewOf(config);
   const out: DerivedRequirement[] = [];
   const seen = new Set<string>();
-  for (const rule of consequenceRules) for (const d of rule(view)) {
+  for (const { layerKey, rule } of consequenceRules) for (const d of rule(view)) {
+    if (d.layerKey !== layerKey)
+      throw new MoveError("consequences",
+        `rule registered by "${layerKey}" emitted into "${d.layerKey}" — a layer declares what a choice means FOR IT, never for another layer`);
+    if (!d.logicalKey.startsWith(layerKey + "."))
+      throw new MoveError("consequences", `logical key "${d.logicalKey}" must be namespaced under its layer`);
     const k = `${d.layerKey}::${d.logicalKey}`;
     if (seen.has(k)) throw new MoveError("consequences", `duplicate logical key ${k}`);
     seen.add(k); out.push(d);

@@ -22,6 +22,25 @@ const num = (o: Record<string, unknown>, f: string, kind: string): number => {
 const v = <T>(parse: (i: unknown) => T): Validator<T> => ({ parse });
 
 export function registerCoreMoves(): void {
+  registerMoveKind<{ name: string; categoryKey?: string | null; unitPrice?: number | null }>({
+    kind: "select", capability: "proposal.configure", boundaries: ["items"],
+    schema: v((i) => { const o = obj(i, "select");
+      const out: { name: string; categoryKey?: string | null; unitPrice?: number | null } = { name: str(o, "name", "select") };
+      if (o.categoryKey !== undefined && o.categoryKey !== null) out.categoryKey = str(o, "categoryKey", "select");
+      if (o.unitPrice !== undefined && o.unitPrice !== null) out.unitPrice = num(o, "unitPrice", "select");
+      return out; }),
+    plan: (p) => [{ boundary: "items", mutation: { op: "add_item", categoryKey: p.categoryKey ?? null, name: p.name, unitPrice: p.unitPrice ?? null } }],
+    describe: (p) => `added ${p.name}`,
+  });
+
+  registerMoveKind<{ itemId: string; name: string }>({
+    kind: "deselect", capability: "proposal.configure", boundaries: ["items"],
+    schema: v((i) => { const o = obj(i, "deselect");
+      return { itemId: str(o, "itemId", "deselect"), name: str(o, "name", "deselect") }; }),
+    plan: (p) => [{ boundary: "items", mutation: { op: "remove_item", itemId: p.itemId } }],
+    describe: (p) => `removed ${p.name}`,
+  });
+
   registerMoveKind<{ key: string; value: string }>({
     kind: "set_choice", capability: "proposal.configure", boundaries: ["config"],
     schema: v((i) => { const o = obj(i, "set_choice"); return { key: str(o, "key", "set_choice"), value: str(o, "value", "set_choice") }; }),
@@ -109,6 +128,22 @@ export function registerCoreMoves(): void {
       return out; }),
     plan: (p) => [{ boundary: "requirements", mutation: { op: "add_manual", layerKey: p.layerKey, name: p.name, category: p.category } }],
     describe: (p) => `requires: ${p.name}`,
+  });
+
+  registerMoveKind<Record<string, never>>({
+    kind: "reset_all", capability: "proposal.configure", boundaries: ["config"],
+    schema: v((i) => { obj(i, "reset_all"); return {}; }),
+    plan: (_p, ctx: PlanCtx) => [{ boundary: "config",
+      mutation: { op: "reset_to_seed", seed: { scalars: ctx.seed.scalars, choices: ctx.seed.choices } } }],
+    describe: () => "reset everything to the definition",
+  });
+
+  registerMoveKind<{ dimension: string }>({
+    kind: "reset_dimension", capability: "proposal.configure", boundaries: ["config"],
+    schema: v((i) => ({ dimension: str(obj(i, "reset_dimension"), "dimension", "reset_dimension") })),
+    plan: (p, ctx: PlanCtx) => [{ boundary: "config",
+      mutation: { op: "reset_dimension", dimension: p.dimension, seed: { scalars: ctx.seed.scalars, choices: ctx.seed.choices } } }],
+    describe: (p) => `reset ${p.dimension.split(":").pop()!.replace(/_/g, " ")} — was the definition's`,
   });
 
   registerMoveKind<{ layerKey: string; text: string }>({

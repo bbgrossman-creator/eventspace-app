@@ -102,6 +102,7 @@ t("scheme children set choices without marking customized; operator edits mark i
   const b = planBatch([P("apply_scheme", { schemeId: "black_slate" })], ctx(emptyConfig()), allCan);
   let c = applyConfigMutations(emptyConfig(), b.mutations);
   eq(c.choices.linen, "dark", "scheme applied");
+  eq(c.schemeId, "black_slate", "the PARENT's mutation applied (set_scheme)");
   eq(c.customized, [], "scheme does not customize");
   const edit = planBatch([P("set_choice", { key: "linen", value: "ivory" })], ctx(c), allCan);
   c = applyConfigMutations(c, edit.mutations);
@@ -138,21 +139,41 @@ t("scalar override shows its work; clear_override returns to suggestion", () => 
   eq(computeDivergence(c, seed).some((l) => l.dimension === "scalar:pieces"), false, "no divergence line");
 });
 
-console.log("consequence recompute (logical keys)");
-t("rules emit deterministic keys; duplicates across rules are refused", () => {
+console.log("consequence recompute: ONE choice, MANY layers (each owning its reaction)");
+t("live_chef fans into kitchen, warehouse, and staffing — each layer's own rule, each row its own layer_key", () => {
   _resetConsequenceRulesForTests();
-  registerConsequenceRule((v) => v.choice("service") === "live_chef"
-    ? [{ layerKey: "kitchen", logicalKey: "kitchen.live_chef.handwash_station", name: "Handwash station", category: "equipment" }] : []);
-  registerConsequenceRule(() =>
-    [{ layerKey: "kitchen", logicalKey: "kitchen.base.serving_tongs", name: "Serving tongs", category: "supply" }]);
+  const ifLive = (v: { choice: (k: string) => string | undefined }) => v.choice("service") === "live_chef";
+  registerConsequenceRule("kitchen", (v) => ifLive(v)
+    ? [{ layerKey: "kitchen", logicalKey: "kitchen.live_chef.handwash_station", name: "Handwash station", category: "equipment" },
+       { layerKey: "kitchen", logicalKey: "kitchen.live_chef.prep_table", name: "Prep table", category: "equipment" }] : []);
+  registerConsequenceRule("warehouse", (v) => ifLive(v)
+    ? [{ layerKey: "warehouse", logicalKey: "warehouse.live_chef.chef_station_kit", name: "Chef station kit", category: "rental" }] : []);
+  registerConsequenceRule("staffing", (v) => ifLive(v)
+    ? [{ layerKey: "staffing", logicalKey: "staffing.live_chef.sushi_chef", name: "Sushi chef", category: "staff" }] : []);
   let c = emptyConfig();
-  eq(recomputeConsequences(c).map((d) => d.logicalKey), ["kitchen.base.serving_tongs"], "base only");
+  eq(recomputeConsequences(c).length, 0, "no live chef, no fan-out");
   c = applyConfigMutations(c, planBatch([P("set_choice", { key: "service", value: "live_chef" })], ctx(c), allCan).mutations);
-  eq(recomputeConsequences(c).map((d) => d.logicalKey).sort(),
-     ["kitchen.base.serving_tongs", "kitchen.live_chef.handwash_station"], "choice adds its consequence");
-  registerConsequenceRule(() =>
-    [{ layerKey: "kitchen", logicalKey: "kitchen.base.serving_tongs", name: "dupe", category: "supply" }]);
-  throws(() => recomputeConsequences(c), "duplicate logical key");
+  const out = recomputeConsequences(c);
+  eq(out.map((d) => d.layerKey).sort(), ["kitchen", "kitchen", "staffing", "warehouse"], "rows span three layers");
+  eq(out.every((d) => d.logicalKey.startsWith(d.layerKey + ".")), true, "keys namespaced per layer");
+});
+t("a rule emitting into a FOREIGN layer is refused (kitchen cannot write warehouse's domain)", () => {
+  _resetConsequenceRulesForTests();
+  registerConsequenceRule("kitchen", () =>
+    [{ layerKey: "warehouse", logicalKey: "warehouse.sneaky.thing", name: "sneak", category: "rental" }]);
+  throws(() => recomputeConsequences(emptyConfig()), 'emitted into "warehouse"');
+});
+t("duplicate logical keys across rules are refused; foreign-namespaced keys are refused", () => {
+  _resetConsequenceRulesForTests();
+  registerConsequenceRule("kitchen", () =>
+    [{ layerKey: "kitchen", logicalKey: "kitchen.base.tongs", name: "Tongs", category: "supply" }]);
+  registerConsequenceRule("kitchen", () =>
+    [{ layerKey: "kitchen", logicalKey: "kitchen.base.tongs", name: "dupe", category: "supply" }]);
+  throws(() => recomputeConsequences(emptyConfig()), "duplicate logical key");
+  _resetConsequenceRulesForTests();
+  registerConsequenceRule("kitchen", () =>
+    [{ layerKey: "kitchen", logicalKey: "base.tongs", name: "Tongs", category: "supply" }]);
+  throws(() => recomputeConsequences(emptyConfig()), "namespaced under its layer");
 });
 
 console.log("invert foundations (not undo — the foundation)");

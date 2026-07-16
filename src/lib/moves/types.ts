@@ -93,7 +93,9 @@ export type ConfigMutation =
   | { op: "mark_customized"; dimension: string }
   | { op: "set_substitution"; slot: string; from: string; to: string }
   | { op: "clear_substitution"; slot: string }
-  | { op: "set_display_name"; name: string | null };
+  | { op: "set_display_name"; name: string | null }
+  | { op: "reset_to_seed"; seed: { scalars: Record<string, ScalarState>; choices: Record<string, string> } }
+  | { op: "reset_dimension"; dimension: string; seed: { scalars: Record<string, ScalarState>; choices: Record<string, string> } };
 
 export type ItemMutation =        // routed through the EXISTING item services
   | { op: "add_item"; categoryKey: string | null; name: string; unitPrice?: number | null }
