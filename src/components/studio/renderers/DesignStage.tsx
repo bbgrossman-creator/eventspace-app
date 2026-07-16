@@ -139,7 +139,7 @@ function Grip({ payload, label, drag, disabled }: {
       className="grip w-6 shrink-0 self-stretch flex items-center justify-center
                  cursor-grab active:cursor-grabbing select-none
                  text-slate-300 hover:text-slate-500 text-[11px] leading-none
-                 opacity-0 transition-opacity duration-100
+                 opacity-0 transition-opacity duration-75
                  group-hover:opacity-100 group-focus-within:opacity-100"
     >⠿</span>
   );
@@ -155,8 +155,15 @@ function DropBand({ drag, target, onDrop, label, tall }: {
   if (!drag.live) return null;
   if (operationFor(drag.live, target) === "invalid") return null;   // refused: not shown
 
+  // A destination with no rows to insert between MUST still say what it is —
+  // a bare line on an empty chapter or category is undiscoverable. Everything
+  // else stays quiet until approached.
+  const emptyHint = label.startsWith("Drop component into") || label.startsWith("Drop item into");
+
   return (
     <div
+      data-band
+      data-band-label={label}
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setArmed(true); }}
       onDragLeave={() => setArmed(false)}
       onDrop={(e) => {
@@ -164,23 +171,37 @@ function DropBand({ drag, target, onDrop, label, tall }: {
         const p = readNode(e.dataTransfer);
         if (p) { onDrop?.(p, target); drag.end(String(target.parentId)); }
       }}
-      // Arming must change COLOR, never SIZE. The armed band used to grow
-      // ~12px, which shifted every row below it while a drag was in flight —
-      // measured in real Chromium as the reason a near-stationary pointer
-      // could slide off its destination (and once opened the wrong category).
-      // A drop target that moves when you approach it is a moving target.
-      className={`mx-3 rounded-md flex items-center justify-center transition-colors duration-100 ${
-        tall ? "my-1.5 py-2.5" : "my-1 py-1.5"
+      // ── An insertion GUIDE, not a box ─────────────────────────────────────
+      // The dashed boxes read as the interface: five stacked "Drop here"
+      // rectangles between four rows of sushi is a wireframe, not an editor.
+      // So the band is a thin line that brightens gold and thickens as you
+      // approach; the label appears only when armed (or on an empty parent).
+      //
+      // Geometry is CONSTANT — fixed height, and the line is absolutely
+      // positioned so nothing here can shift the rows while a drag is in
+      // flight. That invariant is what made the drag reliable; the visual
+      // quieting must not spend it.
+      className={`relative mx-3 flex items-center justify-center ${
+        tall ? "h-6 my-1" : "h-5 my-0.5"
       }`}
-      style={{
-        border: `${armed ? 2 : 1.5}px dashed ${armed ? T.gold : "#CBD5E1"}`,
-        background: armed ? "#FFF8E6" : "transparent",
-      }}
     >
-      <span className={`text-[10.5px] font-semibold tracking-wide ${armed ? "opacity-100" : "opacity-45"}`}
-            style={{ color: armed ? "#8A6D1D" : "#94A3B8" }}>
-        {armed ? `↳ ${label}` : label}
-      </span>
+      <span aria-hidden
+        className="absolute left-2 right-2 top-1/2 -translate-y-1/2 rounded-full transition-all duration-100"
+        style={{
+          height: armed ? 3 : 2,
+          background: armed ? T.gold : "#CBD5E1",
+          opacity: armed ? 1 : emptyHint ? 0.7 : 0.45,
+        }} />
+      {(armed || emptyHint) && (
+        <span className="relative z-10 px-2 py-px rounded-full text-[10px] font-semibold tracking-wide"
+              style={{
+                background: armed ? "#FFF8E6" : "rgba(255,255,255,.92)",
+                color: armed ? "#8A6D1D" : "#94A3B8",
+                boxShadow: armed ? `0 0 0 1px ${T.gold}` : "none",
+              }}>
+          {armed ? `↳ ${label}` : label}
+        </span>
+      )}
     </div>
   );
 }
