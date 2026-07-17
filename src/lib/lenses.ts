@@ -33,14 +33,35 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { Capabilities } from "./capabilities";
 import { Permission, Session } from "./permissions";
+import { currentCan } from "./featureCapabilities";
 
 /** Stable identifiers. Code-side only — a lens is NEVER stored as an
  *  entitlement (Workspace Architecture R3: workspaces and lenses are derived
  *  from modules ∩ jobs, never purchased). */
-export type LensKey = "design" | "customer" | "production" | "operations" | "photography";
+export type LensKey = "design" | "customer" | "production" | "operations" | "photography"
+  // SPEC-003 §1: the registry grows by registration, so the key type must
+  // admit keys it hasn't met. `string & {}` keeps autocomplete for the known
+  // keys while accepting a registered sixth — the union stays documentation,
+  // not a gate (gates are capability × permission, §5).
+  | (string & {});
 
 export interface LensDef {
   key: LensKey;
+  /** SPEC-003 §1: the declared operational concern — the graph, turned for
+   *  one kind of work (KA §10). Documentation, not a gate. */
+  concern?: string;
+  /** SPEC-003 §5: feature-licensing capability (currentCan()), the
+   *  constitutional gate (KA §10). During the one transitional release both
+   *  this AND the business-model `cap` are checked (fail-closed); `cap` is
+   *  then removed. null = available wherever the Studio is. */
+  capability?: string | null;
+  /** SPEC-003 §6: move kinds this lens may speak. [] = read-only, and
+   *  read-only is structural (shell computes mayEdit=false unconditionally).
+   *  `editable` remains authoritative for the grandfathered editing lenses
+   *  until sheet lenses gain their first verb. */
+  verbs?: string[];
+  /** SPEC-003 §7: which frame hosts it. Absent = "editing" (grandfathered). */
+  anatomy?: "editing" | "sheet";
   /** What the UI prints. Architecture speaks Greek; the interface speaks
    *  English (event-studio-design.md naming table). */
   label: string;
@@ -59,40 +80,76 @@ export interface LensDef {
   editable: boolean;
 }
 
+/** SPEC-003 §1: registration by declaration; duplicate key = build error —
+ *  the registerLayer/registerMoveKind idiom, one level up. The seed rows
+ *  below register through the same door the sixth lens will use. */
+const lensRegistry = new Map<string, LensDef>();
+export function registerLens(def: LensDef): void {
+  if (lensRegistry.has(def.key))
+    throw new Error(`lens '${def.key}' already registered`);
+  lensRegistry.set(def.key, def);
+  LENSES.push(def);
+}
+/** Harness-only: the fixture lens registers and unregisters around its own
+ *  suite. Never called in production code — enforced by review. */
+export function _unregisterLensForTests(key: string): void {
+  lensRegistry.delete(key);
+  const i = LENSES.findIndex((l) => l.key === key);
+  if (i >= 0) LENSES.splice(i, 1);
+}
+
 /** THE registry. One place. Adding a lens is a row here, never a new tab in a
  *  component — that is the difference between a lens bar and a nav bar. */
-export const LENSES: LensDef[] = [
+export const LENSES: LensDef[] = [];
+const SEED_LENSES: LensDef[] = [
   {
     key: "design", label: "Design",
     blurb: "The maker's view — every truth, nothing hidden.",
     cap: null, perm: "bookings.edit", module: "events", editable: true,
+    concern: "authoring the design", capability: null, verbs: [], anatomy: "editing",
   },
   {
     key: "customer", label: "Customer",
     blurb: "Exactly what the client receives.",
     cap: "proposals", perm: "bookings.view", module: "events", editable: false,
+    concern: "what the client receives", capability: "proposal.customer_view",
+    verbs: [], anatomy: "editing",
   },
   {
     key: "production", label: "Production",
     blurb: "Quantities, prep, and fulfilment — internal, vendor, or both.",
     cap: "requirements", perm: "ops.view", module: "production", editable: false,
+    concern: "producing the event (kitchen)", capability: "lens.production",
+    verbs: [], anatomy: "sheet",
   },
   {
+    // SPEC-003 §9 Rev A: survives untouched until Warehouse AND Staffing are
+    // registered and shipping; then one release as a deprecated alias
+    // (?lens=operations → warehouse); then retired — never reused.
     key: "operations", label: "Operations",
     blurb: "Staffing, equipment, timing, logistics.",
     cap: "requirements", perm: "ops.view", module: "operations", editable: false,
+    concern: "operations (superseded-in-place per SPEC-003 §9)",
+    capability: "lens.operations", verbs: [], anatomy: "sheet",
   },
   {
     key: "photography", label: "Photography",
     blurb: "Shot list derived from the design.",
     cap: "photos_retrieval", perm: "knowledge.view", module: "photography", editable: false,
+    concern: "photographing the event (evidence-side)",
+    capability: "lens.photography", verbs: [], anatomy: "sheet",
   },
 ];
+for (const l of SEED_LENSES) registerLens(l);
 
 /** Config shape. An OBJECT (condition 2) so that adding `modules` later is a
  *  field, not a signature change. */
 export interface LensConfig {
   caps: Capabilities;
+  /** SPEC-003 §5: the feature-licensing checker (KA §10). Defaults to
+   *  currentCan() so no caller changes — condition 2's object shape doing
+   *  exactly the job it was built for. */
+  featureCan?: (capability: string) => boolean;
   /** Phase B: `modules?: ModuleKey[]` lands here and visibleLenses gains one
    *  clause. No caller changes. That is the entire point of taking an object. */
 }
@@ -108,10 +165,15 @@ export interface LensConfig {
  */
 export function visibleLenses(config: LensConfig, session: Session | null): LensDef[] {
   if (!session) return [];
+  const can = config.featureCan ?? currentCan();
   return LENSES.filter((lens) => {
     const capOk = lens.cap === null || config.caps[lens.cap] === true;
+    // SPEC-003 §5: the constitutional gate. Transitional release: both this
+    // AND `cap` are checked (fail-closed); `cap` is then removed.
+    const featOk = lens.capability === undefined || lens.capability === null
+      || can(lens.capability);
     const permOk = session.perms.includes(lens.perm);   // ← condition 1
-    return capOk && permOk;
+    return capOk && featOk && permOk;
   });
 }
 

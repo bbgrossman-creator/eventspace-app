@@ -23,6 +23,8 @@
  * own items, props, staffing, and everything else. Definition-layer data is
  * seed knowledge — copied at instantiation, then owned by the instance.
  */
+import { LayerLensContribution } from "../lensSections";
+
 export interface ComponentDefinition {
   id: string;
   tenantId: string | null;              // null = EventCore global starter
@@ -77,8 +79,9 @@ export interface LayerRegistration<T = unknown> {
   emptyState: () => T;
   label: { singular: string; icon: string };
   // Consumption is declared here too; no lens or feature ever switches on key.
-  // (Optional in SPEC-001; the Production lens plugs in via SPEC-003.)
-  lens?: unknown;
+  // (Reserved by SPEC-001 §5; made concrete by SPEC-003 §3: the registration
+  // owns the layer AND its contribution — the lens composes, the layer parses.)
+  lens?: LayerLensContribution<T>;
   libraryProjection?: (def: ComponentDefinition, layer: T) => Record<string, unknown>;
   /** SPEC-002: what a configuration choice means FOR THIS LAYER. Each rule's
    *  emissions are bound to this registration's key — enforced at recompute. */

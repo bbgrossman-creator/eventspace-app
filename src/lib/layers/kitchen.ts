@@ -63,6 +63,43 @@ export function registerKitchenLayer(): void {
     migrations: {},                      // v1 is first; upgraders arrive with v2
     emptyState: () => ({ requirements: [], equipment: [], staffing: [], prepNotes: null }),
     label: { singular: "Kitchen", icon: "🍳" },
+    // SPEC-003 §3 — the contribution: how kitchen content is SEEN, declared
+    // beside how it is stored, by the same owner. The proof-of-life of the
+    // typed socket (v200's emptyState pattern, one level up): pure, DOM-free,
+    // parsed nowhere else. The Production lens (its own slice) composes these
+    // sections; nothing else may parse KitchenLayerV1.
+    lens: {
+      sections(payload: KitchenLayerV1, ctx) {
+        const rows: { label: string; value: string; why?: string }[] = [];
+        for (const s of payload.staffing)
+          rows.push({ label: s.role, value: `× ${s.count}`,
+            why: ctx.guests !== null ? `for ${ctx.guests} guests` : undefined });
+        const out = [];
+        out.push({
+          id: "kitchen.staffing", title: "Kitchen — staffing", rows,
+          missing: payload.staffing.length === 0
+            ? "No staffing recorded — curate the kitchen layer to add roles." : null,
+        });
+        out.push({
+          id: "kitchen.requirements", title: "Kitchen — requirements",
+          rows: payload.requirements.map((r) => ({ label: r, value: "required" })),
+          missing: payload.requirements.length === 0
+            ? "No kitchen requirements recorded on this layer." : null,
+        });
+        out.push({
+          id: "kitchen.equipment", title: "Kitchen — equipment",
+          rows: payload.equipment.map((e) => ({ label: e, value: "stage" })),
+          missing: payload.equipment.length === 0
+            ? "No equipment recorded on this layer." : null,
+        });
+        out.push({
+          id: "kitchen.notes", title: "Kitchen — notes", rows: [],
+          note: payload.prepNotes,
+          missing: payload.prepNotes ? null : "No prep notes.",
+        });
+        return out;
+      },
+    },
     // What configuration choices mean FOR THE KITCHEN. Bound to this layer at
     // boot; emissions outside "kitchen.*" are refused at recompute.
     consequenceRules: [
