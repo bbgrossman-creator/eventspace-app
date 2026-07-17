@@ -21,7 +21,14 @@ import { Validator } from "../layers/registry";
 export interface PlanCtx {
   view: ConfigView;
   /** definition seed (already copied at instantiation; schemes read the copy) */
-  seed: { schemes: Record<string, SchemeDef>; scalars: Record<string, ScalarState>; choices: Record<string, string> };
+  seed: {
+    schemes: Record<string, SchemeDef>;
+    scalars: Record<string, ScalarState>;
+    choices: Record<string, string>;
+    /** choice dimensions with their option sets — the facet renders THESE,
+     *  never hardcoded lists; the definition declares what is choosable. */
+    dimensions?: Record<string, { label: string; options: string[] }>;
+  };
 }
 
 export interface SchemeDef {

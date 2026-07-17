@@ -31,18 +31,33 @@ export async function loadConfigState(componentId: string): Promise<ConfigState>
       .select("id,layer_key,logical_key,name,category,notes,derived,suppressed_at").eq("component_id", componentId),
   ]);
   const state = emptyState(componentId);
+  const applySeed = (d: Record<string, unknown>) => {
+    const dd = d as { schemes?: Record<string, unknown>; dimensions?: Record<string, unknown>;
+      instanceDefaults?: { scalars?: Record<string, unknown>; choices?: Record<string, unknown> } };
+    state.seed.schemes = (dd.schemes ?? {}) as typeof state.seed.schemes;
+    state.seed.dimensions = (dd.dimensions ?? {}) as typeof state.seed.dimensions;
+    state.seed.scalars = (dd.instanceDefaults?.scalars ?? {}) as typeof state.seed.scalars;
+    state.seed.choices = (dd.instanceDefaults?.choices ?? {}) as typeof state.seed.choices;
+  };
   if (cfg.data?.data) {
     state.config = cfg.data.data;
     state.configUpdatedAt = cfg.data.updated_at;
-    // the seed for schemes/derivations rides on the stamped definition-config revision
-    if (cfg.data.seed_config_revision) {
-      const seed = await supabase.from("component_definition_config")
-        .select("data").eq("id", cfg.data.seed_config_revision).maybeSingle();
-      if (seed.data?.data) {
-        state.seed.schemes = seed.data.data.schemes ?? {};
-        state.seed.scalars = seed.data.data.instanceDefaults?.scalars ?? {};
-        state.seed.choices = seed.data.data.instanceDefaults?.choices ?? {};
-      }
+  }
+  if (cfg.data?.seed_config_revision) {
+    // instantiated: the seed is the exact stamped revision, forever
+    const seed = await supabase.from("component_definition_config")
+      .select("data").eq("id", cfg.data.seed_config_revision).maybeSingle();
+    if (seed.data?.data) applySeed(seed.data.data);
+  } else {
+    // LEGACY components (pre-v201, no stamp): the definition's LIVE config is
+    // the seed, so curation lights up existing events the moment it exists.
+    const comp = await supabase.from("event_components")
+      .select("definition_id").eq("id", componentId).maybeSingle();
+    if (comp.data?.definition_id) {
+      const live = await supabase.from("component_definition_config").select("data")
+        .eq("definition_id", comp.data.definition_id)
+        .is("superseded_by", null).is("archived_at", null).maybeSingle();
+      if (live.data?.data) applySeed(live.data.data);
     }
   }
   type ReqDbRow = { id: string; layer_key: string | null; logical_key: string | null; name: string;

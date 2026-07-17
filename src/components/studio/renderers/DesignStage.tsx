@@ -367,11 +367,21 @@ function CategoryBlock({ cat, comp, p, drag, sourceCat }: {
       {cat.label && (
         // Deliberately NOT draggable and deliberately no grip: category
         // dragging has not been designed, so the UI must not advertise it.
-        <div className="pl-8 py-0.5 flex items-center gap-2 select-none">
+        <div className="pl-8 py-0.5 flex items-center gap-2 select-none group/cathdr">
           <span className="text-[9.5px] font-semibold tracking-wide"
                 style={{ color: legal && !isOpen ? T.gold : T.gold, opacity: itemDrag && !legal ? 0.3 : 1 }}>
             {cat.label}
           </span>
+          {/* Discoverability at the bottom, efficiency at the top: the header
+              hover reveals the SAME command — two entry points, one move. In a
+              40-item category nobody should scroll to the end to add the 41st. */}
+          {p.mayEdit && p.onAddItem && drag.live?.kind !== "item" && (
+            <button data-add-item-header={key}
+              onClick={(e) => { e.stopPropagation(); p.onAddItem!(comp.id, cat.key); }}
+              className="text-[9.5px] text-slate-300 hover:text-slate-500 opacity-0 group-hover/cathdr:opacity-100 focus:opacity-100 transition-opacity">
+              + item
+            </button>
+          )}
           {!isOpen && legal && <span className="text-[8.5px] text-slate-400">— hover to open</span>}
           {isSource && drag.open && drag.open !== key && (
             <span className="text-[8.5px] italic text-slate-400">Moving from {cat.label}</span>
@@ -410,7 +420,9 @@ function CategoryBlock({ cat, comp, p, drag, sourceCat }: {
               caller. The affordance lives where the operator's eye already is:
               at the end of the list it will join. Quiet until hovered, gone
               when the design is read-only, hidden while anything is in flight. */}
-          {p.mayEdit && p.onAddItem && !drag.live && (
+          {/* Hidden only while an ITEM is in flight — a component drag three
+              chapters away is no reason to disable creation here. */}
+          {p.mayEdit && p.onAddItem && drag.live?.kind !== "item" && (
             <button data-add-item={key}
               onClick={(e) => { e.stopPropagation(); p.onAddItem!(comp.id, cat.key); }}
               className="pl-8 py-0.5 text-[10px] text-slate-300 hover:text-slate-500 text-left w-full">

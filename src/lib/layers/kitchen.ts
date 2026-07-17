@@ -63,5 +63,22 @@ export function registerKitchenLayer(): void {
     migrations: {},                      // v1 is first; upgraders arrive with v2
     emptyState: () => ({ requirements: [], equipment: [], staffing: [], prepNotes: null }),
     label: { singular: "Kitchen", icon: "🍳" },
+    // What configuration choices mean FOR THE KITCHEN. Bound to this layer at
+    // boot; emissions outside "kitchen.*" are refused at recompute.
+    consequenceRules: [
+      (view: { choice: (k: string) => string | undefined }) => {
+        const out: { layerKey: string; logicalKey: string; name: string; category?: string }[] = [];
+        const service = view.choice("service");
+        if (service) {
+          out.push({ layerKey: "kitchen", logicalKey: "kitchen.service.refrigeration", name: "Refrigeration", category: "equipment" });
+          out.push({ layerKey: "kitchen", logicalKey: "kitchen.service.power", name: "Power drop", category: "equipment" });
+        }
+        if (service === "live_chef") {
+          out.push({ layerKey: "kitchen", logicalKey: "kitchen.live_chef.handwash_station", name: "Handwash station", category: "equipment" });
+          out.push({ layerKey: "kitchen", logicalKey: "kitchen.live_chef.prep_table", name: "Prep table", category: "equipment" });
+        }
+        return out;
+      },
+    ],
   });
 }

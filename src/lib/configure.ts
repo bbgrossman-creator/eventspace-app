@@ -43,7 +43,7 @@ export function emptyState(componentId: string, seed?: Partial<PlanCtx["seed"]>)
     config: emptyConfig(),
     configUpdatedAt: null,
     requirements: [],
-    seed: { schemes: {}, scalars: {}, choices: {}, ...seed },
+    seed: { schemes: {}, scalars: {}, choices: {}, dimensions: {}, ...seed },
     annotations: {},
     log: [],
   };

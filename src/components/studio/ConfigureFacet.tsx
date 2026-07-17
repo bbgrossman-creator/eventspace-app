@@ -198,19 +198,30 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
         ))}
       </Row>
 
-      {/* ── Service: choices ── */}
-      <Row id="service" label="Service" summary={(choices.service ?? "—").replace(/_/g, " ")}>
-        <div className="flex gap-2">
-          {["attended", "live_chef", "self_serve"].map((v) => (
-            <button key={v} data-service-choice={v} disabled={!p.canEdit}
-              className="rounded border px-2 py-1 text-[11px]"
-              style={{ borderColor: choices.service === v ? T.gold : T.rule, fontWeight: choices.service === v ? 600 : 400 }}
-              onClick={() => void submit([P("set_choice", { key: "service", value: v })])}>
-              {v.replace(/_/g, " ")}
-            </button>
-          ))}
-        </div>
-      </Row>
+      {/* ── Dimensions: rendered FROM THE SEED — the definition declares what
+             is choosable; the facet never hardcodes an option list. Service
+             keeps a fallback so config-less components remain editable. ── */}
+      {Object.entries(
+        Object.keys(p.state.seed.dimensions ?? {}).length > 0
+          ? p.state.seed.dimensions!
+          : { service: { label: "Service", options: ["attended", "live_chef", "self_serve"] } }
+      ).map(([dim, def]) => (
+        <Row key={dim} id={dim === "service" ? "service" : `dim-${dim}`} label={def.label}
+             summary={(choices[dim] ?? "—").replace(/_/g, " ")}>
+          <div className="flex flex-wrap gap-2">
+            {def.options.map((v) => (
+              <button key={v}
+                {...(dim === "service" ? { "data-service-choice": v } : { "data-dim-choice": `${dim}:${v}` })}
+                disabled={!p.canEdit}
+                className="rounded border px-2 py-1 text-[11px]"
+                style={{ borderColor: choices[dim] === v ? T.gold : T.rule, fontWeight: choices[dim] === v ? 600 : 400 }}
+                onClick={() => void submit([P("set_choice", { key: dim, value: v })])}>
+                {v.replace(/_/g, " ")}
+              </button>
+            ))}
+          </div>
+        </Row>
+      ))}
 
       {/* ── Requires: whisper, strike-through, restore ── */}
       <Row id="requires" label="Requires"
