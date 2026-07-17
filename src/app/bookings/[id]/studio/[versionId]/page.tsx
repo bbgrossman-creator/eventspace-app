@@ -46,6 +46,9 @@ import { buildDesignStage, outlineFromDesignChapters, RawComp, RawItem } from "@
 import { sourceForIdentity } from "@/lib/library";
 import { NodePayload, DropTarget, operationFor, reorder, isNoOp, splitCatKey } from "@/lib/dragGrammar";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
+import ProductionSheet from "@/components/studio/renderers/ProductionSheet";
+import { loadProductionModel } from "@/lib/productionLensSupabase";
+import { ProductionModel } from "@/lib/productionLens";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
 import { loadSession, Session } from "@/lib/permissions";
 import { PRICING } from "@/lib/pricing";
@@ -394,6 +397,10 @@ export default function StudioPage() {
 
   // SPEC-002: the selected component's configuration state (facet fuel).
   const [cfgState, setCfgState] = useState<ConfigState | null>(null);
+  // v212 (SPEC-003): the Production sheet's model — projected fresh whenever
+  // the lens opens or the version's data changes; a disposable projection,
+  // never persisted (SPEC-003 §8).
+  const [prodModel, setProdModel] = useState<ProductionModel | null>(null);
   // v210: the definition's promotion acts, for the back-reference (read-only).
   const [backRefs, setBackRefs] = useState<PromotionActRef[]>([]);
   useEffect(() => {
@@ -409,6 +416,16 @@ export default function StudioPage() {
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, comps.length]);
+
+  useEffect(() => {
+    let live = true;
+    if (lens !== "production") { setProdModel(null); return; }
+    loadProductionModel(bookingId, versionId, locked)
+      .then((m) => { if (live) setProdModel(m); })
+      .catch(() => { if (live) setProdModel(null); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lens, versionId, comps.length, items.length, cfgState]);
 
   const inspected = useMemo<InspectorSelection | null>(() => {
     if (!selectedId) return null;
@@ -1055,7 +1072,12 @@ export default function StudioPage() {
                   : <p className="text-center text-[12px] text-slate-400 py-8">Nothing to show on this lens yet.</p>}
               </div>
             )}
-            {lens !== "design" && lens !== "customer" && (
+            {lens === "production" && (
+              prodModel
+                ? <ProductionSheet model={prodModel} />
+                : <p className="text-center text-[12px] text-slate-400 py-16">Loading production…</p>
+            )}
+            {lens !== "design" && lens !== "customer" && lens !== "production" && (
               <p className="text-center text-[12px] text-slate-400 py-16">
                 This lens has no renderer yet.
               </p>
