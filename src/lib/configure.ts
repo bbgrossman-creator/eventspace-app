@@ -27,6 +27,12 @@ export interface RequirementRow {
   suppressedAt: string | null;
 }
 
+export type BaselineProvenance =
+  | "instantiation_stamp"                // copied & stamped at instantiation
+  | "legacy_initialized_from_definition" // a person initialized it later (dated)
+  | "reconstructed_from_instance"        // first edit froze the pre-edit state
+  | "baseline_unknown";                  // no honest baseline exists
+
 export interface ConfigState {
   componentId: string;
   config: ConfigV1;
@@ -35,6 +41,12 @@ export interface ConfigState {
   seed: PlanCtx["seed"];
   annotations: Record<string, string>; // per layer (instance-layer notes field)
   log: { kind: string; origin: string; description: string; parentIx?: number }[];
+  /** The FROZEN comparison point. Never a pointer to anything mutable. */
+  baseline: { config: ConfigV1 | null; provenance: BaselineProvenance | "none"; at: string | null };
+  /** Live legacy component with curated definition available: offer deliberate init. */
+  offerInitialize: boolean;
+  /** Executed/archived/cancelled event: evidence — never editable here. */
+  evidence: boolean;
 }
 
 export function emptyState(componentId: string, seed?: Partial<PlanCtx["seed"]>): ConfigState {
@@ -46,6 +58,9 @@ export function emptyState(componentId: string, seed?: Partial<PlanCtx["seed"]>)
     seed: { schemes: {}, scalars: {}, choices: {}, dimensions: {}, ...seed },
     annotations: {},
     log: [],
+    baseline: { config: null, provenance: "none", at: null },
+    offerInitialize: false,
+    evidence: false,
   };
 }
 
@@ -61,6 +76,10 @@ export interface BatchPayload {
   manualAdd: { layer_key: string; name: string; category?: string | null; notes?: string | null }[];
   items: Record<string, unknown>[];
   moves: { kind: string; payload: unknown; origin: string; parent_ix?: number; cause?: string }[];
+  /** FIRST write only: the frozen baseline this act establishes, with named
+   *  provenance. The RPC refuses a baseline-less first write (BASELINE_REQUIRED). */
+  baseline?: ConfigV1;
+  baselineProvenance?: Exclude<BaselineProvenance, "instantiation_stamp">;
 }
 
 export interface PersistAdapter {
@@ -103,9 +122,20 @@ export function compileBatch(state: ConfigState, proposals: MoveProposal[]): {
     }
   }
 
+  const firstWrite = state.configUpdatedAt === null && configChanged;
   const payload: BatchPayload = {
     componentId: state.componentId,
     expectedUpdatedAt: state.configUpdatedAt,
+    ...(firstWrite ? {
+      // The pre-edit state is the honest reconstructed baseline — unless a
+      // deliberate initialization already staged its own (set by the caller).
+      baseline: state.baseline.provenance === "legacy_initialized_from_definition"
+        ? (state.baseline.config ?? state.config)
+        : state.config,
+      baselineProvenance: state.baseline.provenance === "legacy_initialized_from_definition"
+        ? "legacy_initialized_from_definition" as const
+        : "reconstructed_from_instance" as const,
+    } : {}),
     config: configChanged ? nextConfig : null,
     configSchemaVersion: CONFIG_SCHEMA_VERSION,
     derived: derived?.map((d) => ({ layer_key: d.layerKey, logical_key: d.logicalKey, name: d.name, category: d.category ?? null, notes: d.notes ?? null })) ?? null,
@@ -132,14 +162,39 @@ export async function submitBatch(
   let compiled;
   try { compiled = compileBatch(state, proposals); }
   catch (e) { return { ok: false, error: (e as Error).message, next: state }; }
+  if (state.evidence) return { ok: false, error: "This event is historical evidence — configuration is read-only.", next: state };
   const res = await persist(compiled.payload);
   if (!res.ok) return { ok: false, error: res.error, next: state };  // NOTHING applied
-  return { ok: true, next: { ...compiled.next, configUpdatedAt: new Date().toISOString() } };
+  const wasFirst = state.configUpdatedAt === null && compiled.payload.config !== null;
+  return { ok: true, next: {
+    ...compiled.next,
+    configUpdatedAt: new Date().toISOString(),
+    baseline: wasFirst && compiled.payload.baseline
+      ? { config: compiled.payload.baseline, provenance: compiled.payload.baselineProvenance!, at: new Date().toISOString() }
+      : compiled.next.baseline,
+    offerInitialize: wasFirst ? false : compiled.next.offerInitialize,
+  } };
 }
 
 export function divergenceOf(state: ConfigState) {
+  // Divergence is measured against the FROZEN baseline when one exists —
+  // never against the live definition (whose improvement must not rewrite a
+  // past comparison). A stamped/initialized baseline compares choices+scalars
+  // from its snapshot; only a baseline-less state falls back to the seed
+  // (pre-first-edit rendering of a live legacy component).
+  const b = state.baseline.config;
+  if (b) return computeDivergence(state.config,
+    { schemes: state.seed.schemes, scalars: b.scalars, choices: b.choices });
   return computeDivergence(state.config, state.seed);
 }
+
+export const BASELINE_LABEL: Record<string, string> = {
+  instantiation_stamp: "vs. definition at instantiation",
+  legacy_initialized_from_definition: "vs. definition (initialized later — dated)",
+  reconstructed_from_instance: "vs. state when configuration began",
+  baseline_unknown: "baseline unknown",
+  none: "",
+};
 
 // ── internals ────────────────────────────────────────────────────────────────
 import { viewOf } from "./moves/types";
@@ -180,7 +235,13 @@ function applyAnnotations(a: Record<string, string>, mutations: OwnedMutation[])
  *  append-only log so tests can assert the vocabulary. */
 export function memoryAdapter() {
   const persisted: BatchPayload[] = [];
+  let hasRow = false;
   const adapter: PersistAdapter = async (batch) => {
+    if (batch.config !== null && batch.expectedUpdatedAt === null && !hasRow) {
+      if (!batch.baseline || !batch.baselineProvenance)
+        return { ok: false, error: "BASELINE_REQUIRED: first write must state its baseline and provenance" };
+      hasRow = true;
+    }
     for (const m of batch.moves)
       if (!["facet","canvas","scheme","intent.deterministic","intent.model","intent.replay"].includes(m.origin))
         return { ok: false, error: `ITEMS/ORIGIN check violated: ${m.origin}` };

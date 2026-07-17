@@ -18,7 +18,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import {
-  ConfigState, submitBatch, divergenceOf, compileBatch, PersistAdapter,
+  ConfigState, submitBatch, divergenceOf, compileBatch, PersistAdapter, BASELINE_LABEL,
 } from "@/lib/configure";
 import { MoveProposal } from "@/lib/moves/types";
 
@@ -41,6 +41,7 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
   const [err, setErr] = useState<string | null>(null);
 
   const div = useMemo(() => divergenceOf(p.state), [p.state]);
+  const canEdit = p.canEdit && !p.state.evidence;
   const reqs = p.state.requirements;
   const reqLive = reqs.filter((r) => r.suppressedAt === null);
   const byLayer = useMemo(() => {
@@ -97,11 +98,54 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
           {div.length === 0 ? "no changes" : `${div.length} change${div.length > 1 ? "s" : ""} from definition`}
         </button>
       </div>
+      {/* the comparison point, named — history never pretends (SPEC-002
+          baseline amendment) */}
+      {p.state.baseline.provenance !== "none" && (
+        <div className="px-3 -mt-1 pb-1 text-[9.5px] text-slate-400" data-baseline-provenance={p.state.baseline.provenance}>
+          {BASELINE_LABEL[p.state.baseline.provenance]}
+          {p.state.baseline.provenance === "legacy_initialized_from_definition" && p.state.baseline.at &&
+            ` · ${new Date(p.state.baseline.at).toLocaleDateString()}`}
+        </div>
+      )}
+      {p.state.evidence && (
+        <div className="mx-3 mb-1 rounded border px-2 py-1 text-[10px] text-slate-500"
+             style={{ borderColor: T.rule }} data-evidence-note>
+          Historical event — configuration is evidence and reads as it was.
+        </div>
+      )}
+      {p.state.offerInitialize && !p.state.evidence && canEdit && (
+        <div className="mx-3 mb-1 rounded border px-2 py-1 text-[10.5px]" style={{ borderColor: T.rule }} data-offer-initialize>
+          This component predates configuration. Its definition offers one —
+          <button data-initialize-baseline className="ml-1 underline text-slate-600"
+            onClick={async () => {
+              // Deliberate, dated, and it never pretends the seed existed at
+              // creation: provenance says initialized-later, the date says when.
+              const seeded = {
+                ...p.state.config,
+                scalars: JSON.parse(JSON.stringify(p.state.seed.scalars)),
+                choices: { ...p.state.seed.choices },
+              };
+              const staged: ConfigState = {
+                ...p.state,
+                config: seeded,
+                baseline: { config: seeded, provenance: "legacy_initialized_from_definition", at: new Date().toISOString() },
+              };
+              const res = await submitBatch(
+                { ...staged, config: p.state.config },   // plan FROM current toward seeded
+                Object.entries(p.state.seed.choices).map(([key, value]) =>
+                  ({ kind: "set_choice", instanceId: p.state.componentId, payload: { key, value }, origin: "facet" as const })),
+                p.persist);
+              if (res.ok) p.onState(res.next); else setErr(res.error);
+            }}>
+            initialize from definition
+          </button>
+        </div>
+      )}
       {open.diff && (
         <div className="mx-3 mb-2 rounded border px-3 py-2" style={{ borderColor: T.rule }} data-divergence-list>
           {div.length === 0 && <div className="text-slate-400">Exactly the definition's seed.</div>}
           {div.map((l) => <div key={l.dimension} className="py-0.5" data-diff-line={l.dimension}>{l.text}</div>)}
-          {div.length > 0 && p.canEdit && (
+          {div.length > 0 && canEdit && (
             <button data-reset-all className="mt-2 text-[11px] underline text-slate-500"
               onClick={() => setResetStage(div.map((l) => l.text))}>Reset to definition…</button>
           )}
@@ -176,7 +220,7 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
           <div key={k} className="py-1" data-scalar={k}>
             <div className="flex items-center gap-2">
               <span className="w-24 text-slate-500">{k}</span>
-              {p.canEdit ? (
+              {canEdit ? (
                 <input data-scalar-input={k} type="number" defaultValue={s.value} key={`${k}:${s.value}`}
                   className="w-24 rounded border px-2 py-0.5" style={{ borderColor: T.rule }}
                   onBlur={(e) => {
@@ -212,7 +256,7 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
             {def.options.map((v) => (
               <button key={v}
                 {...(dim === "service" ? { "data-service-choice": v } : { "data-dim-choice": `${dim}:${v}` })}
-                disabled={!p.canEdit}
+                disabled={!canEdit}
                 className="rounded border px-2 py-1 text-[11px]"
                 style={{ borderColor: choices[dim] === v ? T.gold : T.rule, fontWeight: choices[dim] === v ? 600 : 400 }}
                 onClick={() => void submit([P("set_choice", { key: dim, value: v })])}>
@@ -238,7 +282,7 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
                            color: r.suppressedAt ? "#94A3B8" : T.ink }}>
               {r.name}{r.derived ? "" : " (added)"}
             </span>
-            {p.canEdit && r.logicalKey && (r.suppressedAt
+            {canEdit && r.logicalKey && (r.suppressedAt
               ? <button data-restore-req={r.logicalKey} className="text-[10px] underline text-slate-400"
                   onClick={() => void submit([P("restore_requirement", { layerKey: r.layerKey, logicalKey: r.logicalKey! })])}>restore</button>
               : <button data-suppress-req={r.logicalKey} className="text-[10px] underline text-slate-400"
@@ -254,7 +298,7 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
           <div key={layer} className="my-1 border-l-4 pl-2 py-1" style={{ borderColor: "#E7DFC9", background: "#FDFBF5" }}
                data-note-block={layer}>
             <div className="text-[10px] uppercase tracking-wide text-slate-400">{layer}</div>
-            {p.canEdit ? (
+            {canEdit ? (
               <textarea data-note-input={layer} defaultValue={p.state.annotations[layer] ?? ""}
                 className="w-full bg-transparent text-[11px] outline-none resize-none" rows={2}
                 placeholder="The thing the model didn't anticipate…"
