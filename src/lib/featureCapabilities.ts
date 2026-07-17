@@ -23,7 +23,7 @@ export type FeatureCapabilitySet = ReadonlySet<string>;
 /** A tier is nothing but a named bundle. These are DATA — edit freely. */
 export const TIER_BUNDLES: Record<string, string[]> = {
   starter:      ["proposal.customer_view", "library.search"],
-  professional: ["proposal.customer_view", "library.search", "production.kitchen"],
+  professional: ["proposal.customer_view", "library.search", "production.kitchen", "knowledge.curate"],
   enterprise:   ["*"],
 };
 

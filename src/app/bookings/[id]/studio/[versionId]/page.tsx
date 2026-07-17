@@ -30,6 +30,10 @@ import ConfigureFacet from "@/components/studio/ConfigureFacet";
 import { bootMoves } from "@/lib/moves/boot";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
+import DefinitionView from "@/components/studio/DefinitionView";
+import { loadDefinition, supabaseAuthorAdapter, LedgerEntry } from "@/lib/curationSupabase";
+import { RevisionDoc } from "@/lib/curation";
+import { currentCan } from "@/lib/featureCapabilities";
 import ProposalRenderer from "@/components/ProposalRenderer";
 import { buildPresentationModel, PresentationModel, outlineFromModel } from "@/lib/presentation";
 import DesignOutline from "@/components/studio/renderers/DesignOutline";
@@ -356,6 +360,17 @@ export default function StudioPage() {
 
   /** The selection, projected for the Inspector. Under the renderer contract
    *  the panel queries nothing — it is handed what it renders. */
+  // v207: the Definition view (Executive Curation surface).
+  const [defView, setDefView] = useState<{
+    definitionId: string; name: string; liveRevisionId: string | null;
+    liveDoc: RevisionDoc | null; schemaVersion: number; ledger: LedgerEntry[];
+  } | null>(null);
+  async function openDefinition(definitionId: string, name: string) {
+    const d = await loadDefinition(definitionId);
+    setDefView({ definitionId, name: d.name === "(definition)" ? name : d.name,
+      liveRevisionId: d.liveRevisionId, liveDoc: d.liveDoc, schemaVersion: d.schemaVersion, ledger: d.ledger });
+  }
+
   // SPEC-002: the selected component's configuration state (facet fuel).
   const [cfgState, setCfgState] = useState<ConfigState | null>(null);
   useEffect(() => {
@@ -805,9 +820,26 @@ export default function StudioPage() {
         />
       </div>
 
+      {defView && (
+        <div className="fixed inset-0 z-50 bg-black/20 flex items-start justify-center pt-10"
+             onClick={() => setDefView(null)}>
+          <div className="w-[520px] max-h-[80vh] overflow-y-auto rounded-lg shadow-xl"
+               onClick={(e) => e.stopPropagation()}>
+            <DefinitionView
+              definitionId={defView.definitionId} name={defView.name}
+              liveRevisionId={defView.liveRevisionId} liveDoc={defView.liveDoc}
+              schemaVersion={defView.schemaVersion} ledger={defView.ledger}
+              canCurate={!locked && currentCan()("knowledge.curate")}
+              author={supabaseAuthorAdapter}
+              onAuthored={() => void openDefinition(defView.definitionId, defView.name)}
+              onClose={() => setDefView(null)} />
+          </div>
+        </div>
+      )}
       <LibraryBrowser
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
+        onViewDefinition={(definitionId, name) => void openDefinition(definitionId, name)}
         onInstantiate={(identityId, name) => {
           if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
           setAskChapterFor({ identityId, name });   // ask; never guess

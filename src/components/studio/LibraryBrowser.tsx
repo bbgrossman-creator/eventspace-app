@@ -36,9 +36,11 @@ export interface LibraryBrowserProps {
   /** Instantiate this identity into the current event. Absent = no event in
    *  context (the Library is browsable from anywhere), so the action hides. */
   onInstantiate?: (identityId: string, name: string) => void;
+  /** v207: open the definition (curation surface) for a component result. */
+  onViewDefinition?: (definitionId: string, name: string) => void;
 }
 
-export default function LibraryBrowser({ open, onClose, onInstantiate }: LibraryBrowserProps) {
+export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDefinition }: LibraryBrowserProps) {
   const [q, setQ] = useState("");
   const [res, setRes] = useState<LibraryResults>({ components: [], events: [], blueprints: [], idle: true });
   const [busy, setBusy] = useState(false);
@@ -113,6 +115,14 @@ export default function LibraryBrowser({ open, onClose, onInstantiate }: Library
               <span className="text-[13.5px] font-medium" style={{ color: T.ink }}>{r.title}</span>
               {/* The WHY — a hit is only useful if you can see why it's here. */}
               {r.subtitle && <span className="text-[12px] text-slate-400 truncate">{r.subtitle}</span>}
+              {r.kind === "component" && r.identityId && onViewDefinition && (
+                <span data-view-definition={r.identityId}
+                  className="ml-auto text-[10px] text-slate-300 hover:text-slate-500 cursor-pointer shrink-0"
+                  onClick={(e) => { e.stopPropagation(); onViewDefinition(r.identityId!, r.title); }}
+                  title="View definition — the organizational knowledge behind this component">
+                  definition
+                </span>
+              )}
               <span className="flex-1" />
               {on && (
                 <span className="text-[10px] text-slate-400">
