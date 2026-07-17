@@ -21,6 +21,7 @@ import {
   ConfigState, submitBatch, divergenceOf, compileBatch, PersistAdapter, BASELINE_LABEL,
 } from "@/lib/configure";
 import { MoveProposal } from "@/lib/moves/types";
+import { PromotionActRef, matchBackReferences, backReferenceText } from "@/lib/backReference";
 
 const T = { ink: "#1F2A37", navy: "#102F56", gold: "#C9A34E", rule: "#EEF2F7" } as const;
 
@@ -32,6 +33,10 @@ export interface ConfigureFacetProps {
   onOpenCanvas?: () => void;
   /** v208: opens the Promotion review for this component's definition. */
   onPromote?: () => void;
+  /** v210: the definition's promotion acts (read-only). The facet derives the
+   *  back-reference lines per render — matched against CURRENT divergence and
+   *  the frozen baseline; purely informational; no write path exists. */
+  backRefs?: PromotionActRef[];
   canEdit: boolean;
 }
 
@@ -43,6 +48,11 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
   const [err, setErr] = useState<string | null>(null);
 
   const div = useMemo(() => divergenceOf(p.state), [p.state]);
+  // v210: derived fresh from current divergence — a reverted change stops
+  // being "one of these changes" because the diff wins over history.
+  const backRefs = useMemo(
+    () => matchBackReferences(div, p.backRefs ?? [], p.state.baseline.at ?? null),
+    [div, p.backRefs, p.state.baseline.at]);
   const canEdit = p.canEdit && !p.state.evidence;
   const reqs = p.state.requirements;
   const reqLive = reqs.filter((r) => r.suppressedAt === null);
@@ -147,6 +157,24 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
         <div className="mx-3 mb-2 rounded border px-3 py-2" style={{ borderColor: T.rule }} data-divergence-list>
           {div.length === 0 && <div className="text-slate-400">Exactly the definition's seed.</div>}
           {div.map((l) => <div key={l.dimension} className="py-0.5" data-diff-line={l.dimension}>{l.text}</div>)}
+          {/* v210 — the back-reference: informational, changes no computation.
+              Renders only for promoted keys; the note is the act's own. */}
+          {backRefs.map((r) => (
+            <div key={r.actId} data-back-reference={r.actId}
+                 className="mt-1 pt-1 border-t text-[10.5px] text-slate-500" style={{ borderColor: T.rule }}>
+              {backReferenceText(r, div.length)}
+              <button data-back-reference-note className="ml-1 underline"
+                onClick={() => setOpen((o) => ({ ...o, [`brnote:${r.actId}`]: !o[`brnote:${r.actId}`] }))}>
+                view note
+              </button>
+              {open[`brnote:${r.actId}`] && (
+                <div data-back-reference-note-text
+                     className="mt-0.5 pl-2 border-l-2 italic text-slate-400" style={{ borderColor: T.gold }}>
+                  {r.note || "(no note recorded)"}
+                </div>
+              )}
+            </div>
+          ))}
           {div.length > 0 && canEdit && (
             <button data-reset-all className="mt-2 text-[11px] underline text-slate-500"
               onClick={() => setResetStage(div.map((l) => l.text))}>Reset to definition…</button>

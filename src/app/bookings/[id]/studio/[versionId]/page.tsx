@@ -33,7 +33,8 @@ import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@
 import DefinitionView from "@/components/studio/DefinitionView";
 import PromotionReview from "@/components/studio/PromotionReview";
 import { loadDefinitionEvidence, DefinitionEvidence } from "@/lib/promotionSupabase";
-import { loadDefinition, supabaseAuthorAdapter, LedgerEntry } from "@/lib/curationSupabase";
+import { loadDefinition, supabaseAuthorAdapter, LedgerEntry, loadPromotionBackRefs } from "@/lib/curationSupabase";
+import { PromotionActRef } from "@/lib/backReference";
 import { RevisionDoc } from "@/lib/curation";
 import { currentCan } from "@/lib/featureCapabilities";
 import ProposalRenderer from "@/components/ProposalRenderer";
@@ -393,11 +394,18 @@ export default function StudioPage() {
 
   // SPEC-002: the selected component's configuration state (facet fuel).
   const [cfgState, setCfgState] = useState<ConfigState | null>(null);
+  // v210: the definition's promotion acts, for the back-reference (read-only).
+  const [backRefs, setBackRefs] = useState<PromotionActRef[]>([]);
   useEffect(() => {
     let live = true;
     const compSel = selectedId && comps.some((c) => c.id === selectedId) ? selectedId : null;
-    if (!compSel) { setCfgState(null); return; }
+    if (!compSel) { setCfgState(null); setBackRefs([]); return; }
     loadConfigState(compSel).then((st) => { if (live) setCfgState(st); });
+    const defId = comps.find((c) => c.id === compSel)?.definition_id ?? null;
+    if (defId) loadPromotionBackRefs(defId)
+      .then((r) => { if (live) setBackRefs(r); })
+      .catch(() => { if (live) setBackRefs([]); });   // informational — absence changes nothing
+    else setBackRefs([]);
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, comps.length]);
@@ -1081,6 +1089,7 @@ export default function StudioPage() {
                       const c = comps.find((x) => x.id === inspected.id);
                       if (c?.definition_id) void openPromotion(c.definition_id, c.title);
                     } : undefined}
+                    backRefs={backRefs}
                     onOpenCanvas={() => { /* the canvas is beside us */ }}
                   />
                 ) : null}

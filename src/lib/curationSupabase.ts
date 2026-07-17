@@ -66,3 +66,22 @@ export async function loadDefinition(definitionId: string): Promise<{
     }),
   };
 }
+
+// ── v210: the back-reference read (IMPLEMENTATION-004, final slice) ─────────
+// READ-ONLY: one select, no write path exists for this feature anywhere.
+// Returns every promotion act for the definition with its cited keys; the
+// newer-than-baseline filter and the divergence intersection are pure client
+// computation (backReference.ts) so the panel derives them per render.
+import { PromotionActRef } from "./backReference";
+
+export async function loadPromotionBackRefs(definitionId: string): Promise<PromotionActRef[]> {
+  const res = await supabase.from("definition_revision_acts")
+    .select("id,note,created_at,promotion_citations(dimension_key)")
+    .eq("definition_id", definitionId).eq("origin", "promotion");
+  type Row = { id: string; note: string | null; created_at: string;
+    promotion_citations: { dimension_key: string }[] | null };
+  return ((res.data ?? []) as Row[]).map((r) => ({
+    actId: r.id, note: r.note ?? "", createdAt: r.created_at,
+    keys: (r.promotion_citations ?? []).map((c) => c.dimension_key),
+  }));
+}
