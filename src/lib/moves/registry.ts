@@ -214,18 +214,23 @@ export function _resetConsequenceRulesForTests(): void { consequenceRules.length
 
 // ── Divergence: deterministic state-vs-seed; never narrated from the log ────
 
-export interface DivergenceLine { dimension: string; text: string }
+export interface DivergenceLine {
+  dimension: string;                 // kind:identifier (READINESS F-3 grammar)
+  text: string;
+  from?: unknown;                    // v208: structured values for citations
+  to?: unknown;
+}
 export function computeDivergence(current: ConfigV1, seed: PlanCtx["seed"]): DivergenceLine[] {
   const lines: DivergenceLine[] = [];
   for (const [k, v] of Object.entries(current.choices)) {
     const s = seed.choices[k];
-    if (s !== undefined && s !== v) lines.push({ dimension: `choice:${k}`, text: `${k}: ${s} → ${v}` });
-    if (s === undefined) lines.push({ dimension: `choice:${k}`, text: `${k}: set to ${v}` });
+    if (s !== undefined && s !== v) lines.push({ dimension: `choice:${k}`, text: `${k}: ${s} → ${v}`, from: s, to: v });
+    if (s === undefined) lines.push({ dimension: `choice:${k}`, text: `${k}: set to ${v}`, to: v });
   }
   for (const [k, v] of Object.entries(current.scalars)) {
     if (v.overridden) {
       const sug = v.derivation ? ` · suggested ${v.derivation.suggested}` : "";
-      lines.push({ dimension: `scalar:${k}`, text: `${k}: you set ${v.value}${sug}` });
+      lines.push({ dimension: `scalar:${k}`, text: `${k}: you set ${v.value}${sug}`, from: v.derivation?.suggested, to: v.value });
     }
   }
   if (current.schemeId !== null) {

@@ -31,6 +31,8 @@ import { bootMoves } from "@/lib/moves/boot";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
+import PromotionReview from "@/components/studio/PromotionReview";
+import { loadDefinitionEvidence, DefinitionEvidence } from "@/lib/promotionSupabase";
 import { loadDefinition, supabaseAuthorAdapter, LedgerEntry } from "@/lib/curationSupabase";
 import { RevisionDoc } from "@/lib/curation";
 import { currentCan } from "@/lib/featureCapabilities";
@@ -70,6 +72,7 @@ interface CompRow {
   item_layout: string | null;
   uncategorized_position: string | null;
   package_audience: string[] | null;
+  definition_id: string | null;   // v208: identity travels to the Promote entry
 }
 interface CanvasGroup { sectionTypeId: string | null; name: string; comps: CompRow[]; }
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -188,7 +191,7 @@ export default function StudioPage() {
       loadGuestCategories(),
       supabase.from("version_guests").select("category_id,count").eq("version_id", versionId),
       supabase.from("version_adjustments").select("*").eq("version_id", versionId).order("position"),
-      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description,proposal_display,item_categories,item_layout,uncategorized_position,package_audience").eq("proposal_version_id", versionId).order("position"),
+      supabase.from("event_components").select("id,title,domain,position,notes,section_type_id,group_label,group_position,group_description,pricing_mode,package_price,package_basis,package_taxable,package_price_confirmed,package_cost,customer_description,proposal_display,item_categories,item_layout,uncategorized_position,package_audience,definition_id").eq("proposal_version_id", versionId).order("position"),
       loadSectionTypes().catch(() => [] as SectionType[]),
       supabase.from("version_sections").select("section_type_id,position").eq("version_id", versionId).order("position"),
       // v194 P0.1
@@ -369,6 +372,18 @@ export default function StudioPage() {
     const d = await loadDefinition(definitionId);
     setDefView({ definitionId, name: d.name === "(definition)" ? name : d.name,
       liveRevisionId: d.liveRevisionId, liveDoc: d.liveDoc, schemaVersion: d.schemaVersion, ledger: d.ledger });
+  }
+
+  // v208: the Promotion review overlay.
+  const [promoView, setPromoView] = useState<{
+    definitionId: string; name: string; liveRevisionId: string | null;
+    liveDoc: RevisionDoc; schemaVersion: number; evidence: DefinitionEvidence;
+  } | null>(null);
+  async function openPromotion(definitionId: string, name: string) {
+    const [d, ev] = await Promise.all([loadDefinition(definitionId), loadDefinitionEvidence(definitionId)]);
+    if (!d.liveDoc) { setToast("This definition has no configuration yet — curate it first."); return; }
+    setPromoView({ definitionId, name: d.name === "(definition)" ? name : d.name,
+      liveRevisionId: d.liveRevisionId, liveDoc: d.liveDoc, schemaVersion: d.schemaVersion, evidence: ev });
   }
 
   // SPEC-002: the selected component's configuration state (facet fuel).
@@ -820,6 +835,23 @@ export default function StudioPage() {
         />
       </div>
 
+      {promoView && (
+        <div className="fixed inset-0 z-50 bg-black/20 flex items-start justify-center pt-8"
+             onClick={() => setPromoView(null)}>
+          <div className="w-[600px] max-h-[85vh] overflow-y-auto rounded-lg shadow-xl"
+               onClick={(e) => e.stopPropagation()}>
+            <PromotionReview
+              definitionId={promoView.definitionId} name={promoView.name}
+              liveRevisionId={promoView.liveRevisionId} liveDoc={promoView.liveDoc}
+              schemaVersion={promoView.schemaVersion}
+              eventCount={promoView.evidence.eventCount}
+              lines={promoView.evidence.lines} annotations={promoView.evidence.annotations}
+              author={supabaseAuthorAdapter}
+              onAuthored={() => { setPromoView(null); setToast("✓ Promoted — the definition carries it forward; no event moved."); }}
+              onClose={() => setPromoView(null)} />
+          </div>
+        </div>
+      )}
       {defView && (
         <div className="fixed inset-0 z-50 bg-black/20 flex items-start justify-center pt-10"
              onClick={() => setDefView(null)}>
@@ -832,6 +864,7 @@ export default function StudioPage() {
               canCurate={!locked && currentCan()("knowledge.curate")}
               author={supabaseAuthorAdapter}
               onAuthored={() => void openDefinition(defView.definitionId, defView.name)}
+              onOpenPromotion={() => { const dv = defView; setDefView(null); void openPromotion(dv.definitionId, dv.name); }}
               onClose={() => setDefView(null)} />
           </div>
         </div>
@@ -1038,6 +1071,10 @@ export default function StudioPage() {
                     persist={supabasePersistAdapter}
                     itemCount={items.filter((i) => i.component_id === inspected.id).length}
                     canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                    onPromote={currentCan()("knowledge.curate") ? () => {
+                      const c = comps.find((x) => x.id === inspected.id);
+                      if (c?.definition_id) void openPromotion(c.definition_id, c.title);
+                    } : undefined}
                     onOpenCanvas={() => { /* the canvas is beside us */ }}
                   />
                 ) : null}

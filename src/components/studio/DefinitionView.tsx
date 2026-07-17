@@ -30,6 +30,8 @@ export interface DefinitionViewProps {
   canCurate: boolean;                   // knowledge.curate, resolved by the page
   author: AuthorAdapter;
   onAuthored?: (revisionId: string) => void;
+  /** v208: opens the Promotion review — divergence across every event. */
+  onOpenPromotion?: () => void;
   onClose?: () => void;
 }
 
@@ -73,6 +75,10 @@ export default function DefinitionView(p: DefinitionViewProps) {
         <span className="font-semibold" style={{ color: T.navy }}>{p.name}</span>
         <span className="text-[10px] text-slate-400">definition</span>
         {p.liveRevisionId === null && <span className="text-[10px] text-slate-400" data-no-revision>no configuration yet</span>}
+        {p.canCurate && p.onOpenPromotion && p.liveRevisionId !== null && (
+          <button data-review-divergence className="text-[10px] underline" style={{ color: T.gold }}
+            onClick={p.onOpenPromotion}>Review divergence across events…</button>
+        )}
         {p.canCurate && dirty && !staging && (
           <button data-stage className="ml-auto rounded px-2 py-1 text-[11px] text-white" style={{ background: T.navy }}
             onClick={() => setStaging(true)}>Stage {changes.length} change{changes.length > 1 ? "s" : ""}…</button>

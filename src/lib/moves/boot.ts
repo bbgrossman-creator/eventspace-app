@@ -2,6 +2,7 @@
 import { bootLayers, layerRegistry } from "../layers";
 import { registerCoreMoves } from "./core";
 import { moveRegistry, registerConsequenceRule, ConsequenceRule } from "./registry";
+import { registerCorePromotionKinds } from "../promotion";
 
 let booted = false;
 export function bootMoves(): void {
@@ -9,6 +10,7 @@ export function bootMoves(): void {
   booted = true;
   bootLayers();
   registerCoreMoves();
+  registerCorePromotionKinds();
   // Layer-declared consequence rules, bound to their declaring layer — the
   // binding is what lets recompute refuse foreign emissions.
   for (const reg of layerRegistry.all()) {

@@ -30,6 +30,8 @@ export interface ConfigureFacetProps {
   persist: PersistAdapter;
   itemCount: number;
   onOpenCanvas?: () => void;
+  /** v208: opens the Promotion review for this component's definition. */
+  onPromote?: () => void;
   canEdit: boolean;
 }
 
@@ -148,6 +150,10 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
           {div.length > 0 && canEdit && (
             <button data-reset-all className="mt-2 text-[11px] underline text-slate-500"
               onClick={() => setResetStage(div.map((l) => l.text))}>Reset to definition…</button>
+          )}
+          {div.length > 0 && p.onPromote && (
+            <button data-open-promotion className="mt-2 ml-3 text-[11px] underline" style={{ color: T.gold }}
+              onClick={p.onPromote}>Promote…</button>
           )}
         </div>
       )}
