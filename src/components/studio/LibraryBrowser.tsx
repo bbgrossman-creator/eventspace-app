@@ -33,6 +33,13 @@ const KIND_ICON: Record<string, string> = { component: "◆", event: "◈", blue
 export interface LibraryBrowserProps {
   open: boolean;
   onClose: () => void;
+  /** v213 (Studio shell): render docked as the Knowledge strip — expands in
+   *  place beneath the top bar, THE CANVAS STAYS VISIBLE (UI_GRAMMAR §12's
+   *  own words, now honored better than the covering overlay did). The v196
+   *  header's overlay argument stands corrected by the shell slice: the
+   *  Library remains global and learned-tense; only its physical treatment
+   *  changed, and expansion state is a render decision, never persisted. */
+  docked?: boolean;
   /** Instantiate this identity into the current event. Absent = no event in
    *  context (the Library is browsable from anywhere), so the action hides. */
   onInstantiate?: (identityId: string, name: string) => void;
@@ -40,7 +47,7 @@ export interface LibraryBrowserProps {
   onViewDefinition?: (definitionId: string, name: string) => void;
 }
 
-export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDefinition }: LibraryBrowserProps) {
+export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDefinition, docked }: LibraryBrowserProps) {
   const [q, setQ] = useState("");
   const [res, setRes] = useState<LibraryResults>({ components: [], events: [], blueprints: [], idle: true });
   const [busy, setBusy] = useState(false);
@@ -136,11 +143,13 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
     );
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/20" onClick={onClose}>
+  const body = (
       <div
-        className="w-full max-w-xl bg-white rounded-xl shadow-2xl ring-1 overflow-hidden"
-        style={{ borderColor: T.rule }}
+        data-knowledge-strip={docked ? "true" : undefined}
+        className={docked
+          ? "w-full bg-white overflow-hidden"
+          : "w-full max-w-xl bg-white rounded-xl shadow-2xl ring-1 overflow-hidden"}
+        style={docked ? undefined : { borderColor: T.rule }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: T.rule }}>
@@ -180,6 +189,11 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
           <span>↑↓ navigate</span><span>↵ select</span><span>esc close</span>
         </div>
       </div>
+  );
+  if (docked) return <div className="border-b" style={{ borderColor: T.rule }}>{body}</div>;
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/20" onClick={onClose}>
+      {body}
     </div>
   );
 }

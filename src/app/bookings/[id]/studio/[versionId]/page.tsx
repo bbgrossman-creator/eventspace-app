@@ -47,6 +47,7 @@ import { sourceForIdentity } from "@/lib/library";
 import { NodePayload, DropTarget, operationFor, reorder, isNoOp, splitCatKey } from "@/lib/dragGrammar";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import ProductionSheet from "@/components/studio/renderers/ProductionSheet";
+import LiveLensPanel from "@/components/studio/LiveLensPanel";
 import { loadProductionModel } from "@/lib/productionLensSupabase";
 import { ProductionModel } from "@/lib/productionLens";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
@@ -397,6 +398,21 @@ export default function StudioPage() {
 
   // SPEC-002: the selected component's configuration state (facet fuel).
   const [cfgState, setCfgState] = useState<ConfigState | null>(null);
+  // v213 (Studio shell): the Live Lens's model — the CUSTOMER projection kept
+  // fresh beside the Canvas while the maker builds. A second derivation of
+  // the same graph (xray off: the artifact, not the maker's chrome); nothing
+  // synchronizes it because there is nothing to synchronize.
+  const [liveStage, setLiveStage] = useState<Awaited<ReturnType<typeof buildPresentationModel>> | null>(null);
+  useEffect(() => {
+    if (!versionId || lens !== "design") { setLiveStage(null); return; }
+    let dead = false;
+    buildPresentationModel(versionId, { xray: false })
+      .then((m) => { if (!dead) setLiveStage(m); })
+      .catch(() => { if (!dead) setLiveStage(null); });
+    return () => { dead = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versionId, lens, items, comps, guests, adjs]);
+
   // v212 (SPEC-003): the Production sheet's model — projected fresh whenever
   // the lens opens or the version's data changes; a disposable projection,
   // never persisted (SPEC-003 §8).
@@ -851,6 +867,11 @@ export default function StudioPage() {
            (event-scoped). The existing header below is untouched — it already
            carries title/version/contact/date, and a second event strip would
            be one truth rendered twice. ── */}
+      {/* ── v213 KNOWLEDGE — across the top. The Library, docked: expands in
+           place, the Canvas stays visible (UI_GRAMMAR §12). Collapsed at rest;
+           expansion is a render decision and dies with the page — never
+           persisted (ENGINEERING_PRINCIPLES). Same browser, same projection,
+           new physical treatment; ownership of the region is this block's. ── */}
       <div className="shrink-0">
         <StudioShell
           session={session}
@@ -861,9 +882,23 @@ export default function StudioPage() {
           onXray={setXray}
           debtCount={totals.unconfirmed + totals.unpriced}
           obligations={obligations}
-          onOpenLibrary={() => setLibraryOpen(true)}
+          onOpenLibrary={() => setLibraryOpen((o) => !o)}
         />
       </div>
+      {libraryOpen && (
+        <div className="shrink-0 max-h-[42vh] overflow-y-auto shadow-sm" data-knowledge-region>
+          <LibraryBrowser
+            docked
+            open={libraryOpen}
+            onClose={() => setLibraryOpen(false)}
+            onViewDefinition={(definitionId, name) => void openDefinition(definitionId, name)}
+            onInstantiate={(identityId, name) => {
+              if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
+              setAskChapterFor({ identityId, name });   // ask; never guess
+            }}
+          />
+        </div>
+      )}
 
       {promoView && (
         <div className="fixed inset-0 z-50 bg-black/20 flex items-start justify-center pt-8"
@@ -900,15 +935,6 @@ export default function StudioPage() {
           </div>
         </div>
       )}
-      <LibraryBrowser
-        open={libraryOpen}
-        onClose={() => setLibraryOpen(false)}
-        onViewDefinition={(definitionId, name) => void openDefinition(definitionId, name)}
-        onInstantiate={(identityId, name) => {
-          if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
-          setAskChapterFor({ identityId, name });   // ask; never guess
-        }}
-      />
 
       {askChapterFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
@@ -1089,7 +1115,55 @@ export default function StudioPage() {
                where THE SELECTION'S TRUTH belongs, which left the field rule
                enforced from one side only. The old panel survives for lenses
                with no Stage yet. */}
-          {(lens === "design" || lens === "customer") ? (
+          {lens === "design" ? (
+            <div className="border-l border-[#E7EDF5] bg-white min-h-0 flex flex-col" data-right-region>
+              {/* v213 — INSPECTOR FOLLOWS SELECTION: present exactly when a
+                  selection exists; the Live Lens holds the region otherwise
+                  and beneath. Layout and ownership only — the Inspector's
+                  interior is untouched. */}
+              {inspected && (
+                <div className="shrink-0 max-h-[55%] overflow-y-auto border-b" style={{ borderColor: "#E7EDF5" }}
+                     data-inspector-dock>
+                  <Inspector
+                    selection={inspected}
+                    lens={lens}
+                    canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                    canSeeCost={!!session?.perms.includes("bookings.edit")}
+                    money={money}
+                    onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
+                    configureFacet={cfgState && inspected?.kind === "component" ? (
+                      <ConfigureFacet
+                        state={cfgState}
+                        onState={setCfgState}
+                        persist={supabasePersistAdapter}
+                        itemCount={items.filter((i) => i.component_id === inspected.id).length}
+                        canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                        onPromote={currentCan()("knowledge.curate") ? () => {
+                          const c = comps.find((x) => x.id === inspected.id);
+                          if (c?.definition_id) void openPromotion(c.definition_id, c.title);
+                        } : undefined}
+                        backRefs={backRefs}
+                        onOpenCanvas={() => { /* the canvas is beside us */ }}
+                      />
+                    ) : null}
+                    onLoadMemory={(id) => {
+                      const it = items.find((x) => x.id === id);
+                      if (!it) return;
+                      loadPriceMemory({ name: it.name, catalog_item_id: it.catalog_item_id ?? null, component_id: it.component_id })
+                        .then((m) => setMemory((prev) => ({ ...prev, [id]: m })));
+                    }}
+                    designPanel={null}
+                  />
+                </div>
+              )}
+              <LiveLensPanel lensLabel="Customer"
+                emptyReason={"Nothing composed yet — the proposal appears here as you build."}>
+                {liveStage ? <div className="shadow rounded-lg overflow-hidden bg-white">
+                  <ProposalRenderer model={liveStage} xray={false} draftRibbon />
+                </div> : null}
+              </LiveLensPanel>
+            </div>
+          ) : (lens === "customer") ? (
             <div className="border-l border-[#E7EDF5] bg-white min-h-0">
               <Inspector
                 selection={inspected}
