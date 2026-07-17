@@ -35,11 +35,19 @@ export interface Citation {
   baseline_revision?: string | null;
 }
 
+export interface LayerRevisionPlan {
+  layer_key: string;
+  expected_live: string | null;          // null ONLY for the key's first revision
+  schema_version: number;
+  data: unknown;
+}
+
 export interface AuthorArgs {
   definitionId: string;
   expectedLiveRevision: string | null;   // null ONLY for a definition's first revision
-  data: RevisionDoc;
+  data: RevisionDoc | null;              // null for a LAYER-ONLY act (v209, F-2)
   schemaVersion: number;
+  layers?: LayerRevisionPlan[];
   origin: "promotion" | "executive_curation";
   note: string;
   citations?: Citation[];
@@ -60,7 +68,8 @@ export function validateAuthorArgs(a: AuthorArgs): string | null {
   if (a.origin === "executive_curation" && a.citations && a.citations.length > 0)
     return "CITATIONS_FORBIDDEN: executive curation cites a decision, not events";
   if (!a.note || a.note.trim() === "") return "NOTE_REQUIRED: the act must state its reason";
-  if (!a.data) return "NO_ARTIFACTS: an act must produce at least one artifact";
+  if (!a.data && (!a.layers || a.layers.length === 0))
+    return "NO_ARTIFACTS: an act must produce at least one artifact";
   return null;
 }
 
@@ -122,13 +131,15 @@ export function memoryCurationAdapter() {
       liveRevision = `rev-race-${acts.length}`;
       return { ok: false, error: "REVISION_SUPERSEDED: the revision you staged against is no longer live" };
     }
-    if (a.expectedLiveRevision !== liveRevision)
+    // mirror the RPC: the config staging check applies only when a config
+    // document is present — a layer-only act (data:null, F-2) skips it
+    if (a.data !== null && a.expectedLiveRevision !== liveRevision)
       return { ok: false, error: liveRevision === null
         ? "REVISION_SUPERSEDED: the revision you staged against is no longer live"
         : "EXPECTED_REQUIRED: a live revision exists; stage against it" };
-    const rec = { ...JSON.parse(JSON.stringify(a)), actId: `act-${acts.length + 1}`, revisionId: `rev-${acts.length + 1}` };
+    const rec = { ...JSON.parse(JSON.stringify(a)), actId: `act-${acts.length + 1}`, revisionId: a.data !== null ? `rev-${acts.length + 1}` : null };
     acts.push(rec);
-    liveRevision = rec.revisionId;
+    if (a.data !== null) liveRevision = rec.revisionId!;
     return { ok: true, actId: rec.actId, revisionId: rec.revisionId };
   };
   return { adapter, acts,

@@ -23,6 +23,12 @@ export interface EvidenceLine {
   baselineKind: BaselineProvenance | "none";
   baselineRevision: string | null;
   noItemBaseline?: boolean;          // §0a: item line on a non-stamped instance
+  /** v209: a layer line — the instance's layer content vs its copied_from.
+   *  Layer lines compose into p_layers, never into the config document. */
+  layer?: { layerKey: string; data: unknown; expectedLive: string | null; schemaVersion: number };
+  /** v209: for a choice value outside its dimension's options, the operator
+   *  may deliberately formalize it as a new option in the same act. */
+  formalizeOption?: boolean;
 }
 
 export interface EvidenceAnnotation {
@@ -49,8 +55,21 @@ export function _resetPromotionKindsForTests(): void { kinds.clear(); }
 export function registerCorePromotionKinds(): void {
   registerPromotionKind({
     prefix: "choice",
-    whereItLands: (l) => `becomes the default ${l.key.split(":")[1]}`,
-    compose: (doc, l) => { doc.instanceDefaults.choices[l.key.split(":")[1]] = String(l.to); },
+    whereItLands: (l) => `becomes the default ${l.key.split(":")[1]}${l.formalizeOption ? " (and a new option)" : ""}`,
+    compose: (doc, l) => {
+      const k = l.key.split(":")[1];
+      const v = String(l.to);
+      doc.instanceDefaults.choices[k] = v;
+      // formalization is DELIBERATE: without the flag, an out-of-options value
+      // stays incoherent and the coherence check blocks by name (P-4)
+      if (l.formalizeOption && doc.dimensions?.[k] && !doc.dimensions[k].options.includes(v))
+        doc.dimensions[k].options.push(v);
+    },
+  });
+  registerPromotionKind({
+    prefix: "layer",
+    whereItLands: (l) => `revises the ${l.key.split(":")[1]} layer`,
+    compose: () => { /* layer lines land via composeLayers, never in the doc */ },
   });
   registerPromotionKind({
     prefix: "scalar",
@@ -96,15 +115,48 @@ export function aggregateEvidence(lines: EvidenceLine[], eventCount: number): Ma
   return m;
 }
 
-// ── composition: fold SELECTED lines into a deep copy of the live document ──
-export function composeRevision(live: RevisionDoc, selected: EvidenceLine[]): RevisionDoc {
+// ── composition: fold SELECTED lines into a deep copy of the live document.
+//    v209 framing: choice lines may compose into a NEW SCHEME instead of the
+//    defaults — the ceremony's first question (SPEC-004 review question 2).
+export interface SchemeFraming { id: string; label: string }
+export function composeRevision(live: RevisionDoc, selected: EvidenceLine[], framing?: SchemeFraming): RevisionDoc {
   const doc: RevisionDoc = JSON.parse(JSON.stringify(live));
+  const asScheme: Record<string, string> = {};
   for (const l of selected) {
     const kind = promotionKindFor(l.key);
     if (!kind) throw new Error(`NO_HOME: '${l.key}' has no promotion home — that is a spec change, not a promotion`);
+    if (framing && l.key.startsWith("choice:")) {
+      const k = l.key.split(":")[1];
+      asScheme[k] = String(l.to);
+      // formalization still applies under scheme framing — the option must
+      // exist for the scheme to be coherent
+      if (l.formalizeOption && doc.dimensions?.[k] && !doc.dimensions[k].options.includes(String(l.to)))
+        doc.dimensions[k].options.push(String(l.to));
+      continue;
+    }
     kind.compose(doc, l);
   }
+  if (framing && Object.keys(asScheme).length > 0) {
+    doc.schemes = { ...(doc.schemes ?? {}),
+      [framing.id]: { id: framing.id, label: framing.label, sets: { choices: asScheme } } };
+  }
   return doc;
+}
+
+/** v209: layer lines → the act's p_layers. One plan per layer key; a second
+ *  selected line for the same key is a selection error, named. */
+export function composeLayers(selected: EvidenceLine[]): { layer_key: string; expected_live: string | null; schema_version: number; data: unknown }[] {
+  const seen = new Set<string>();
+  const out: { layer_key: string; expected_live: string | null; schema_version: number; data: unknown }[] = [];
+  for (const l of selected) {
+    if (!l.layer) continue;
+    if (seen.has(l.layer.layerKey))
+      throw new Error(`LAYER_CONFLICT: two selected lines both revise the ${l.layer.layerKey} layer — choose one`);
+    seen.add(l.layer.layerKey);
+    out.push({ layer_key: l.layer.layerKey, expected_live: l.layer.expectedLive,
+      schema_version: l.layer.schemaVersion, data: l.layer.data });
+  }
+  return out;
 }
 
 // ── coherence: named findings, never repairs ──
@@ -114,6 +166,12 @@ export function checkCoherence(doc: RevisionDoc): string[] {
   for (const [k, v] of Object.entries(doc.instanceDefaults.choices)) {
     if (dims[k] && !dims[k].options.includes(v))
       out.push(`default ${k} is '${v}', which is not among its options (${dims[k].options.join(", ")})`);
+  }
+  for (const sch of Object.values(doc.schemes ?? {})) {
+    for (const [k, v] of Object.entries(sch.sets.choices ?? {})) {
+      if (dims[k] && !dims[k].options.includes(v))
+        out.push(`scheme '${sch.label}' sets ${k} to '${v}', which is not among its options`);
+    }
   }
   const itemNames = new Set((doc.defaultItems ?? []).map((i) => i.name));
   for (const s of Object.values(doc.schemes ?? {})) {

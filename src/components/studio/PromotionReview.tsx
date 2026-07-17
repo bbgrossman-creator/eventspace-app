@@ -12,7 +12,7 @@
 import { useMemo, useState } from "react";
 import {
   EvidenceLine, EvidenceAnnotation, aggregateEvidence, composeRevision,
-  checkCoherence, citationsFor, promotionKindFor,
+  composeLayers, checkCoherence, citationsFor, promotionKindFor, SchemeFraming,
 } from "@/lib/promotion";
 import { RevisionDoc, AuthorAdapter, authorRevision, diffDocs } from "@/lib/curation";
 import { BASELINE_LABEL } from "@/lib/configure";
@@ -29,35 +29,56 @@ export interface PromotionReviewProps {
   annotations: EvidenceAnnotation[];
   schemaVersion: number;
   author: AuthorAdapter;
+  /** v209: the season-review grouping — an annotation on the acts, never a transaction. */
+  sessionKey?: string | null;
   onAuthored?: (revisionId: string) => void;
   onClose?: () => void;
 }
 
 export default function PromotionReview(p: PromotionReviewProps) {
   const [sel, setSel] = useState<Set<number>>(new Set());   // nothing pre-checked
+  const [formalized, setFormalized] = useState<Set<number>>(new Set());
+  const [framing, setFraming] = useState<"defaults" | "scheme">("defaults");
+  const [schemeLabel, setSchemeLabel] = useState("");
   const [staging, setStaging] = useState(false);
   const [note, setNote] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const freq = useMemo(() => aggregateEvidence(p.lines, p.eventCount), [p.lines, p.eventCount]);
-  const selected = useMemo(() => Array.from(sel).map((i) => p.lines[i]), [sel, p.lines]);
+  const selected = useMemo(() => Array.from(sel).map((i) => ({
+    ...p.lines[i], formalizeOption: formalized.has(i) || p.lines[i].formalizeOption,
+  })), [sel, p.lines, formalized]);
+  const choiceCount = useMemo(() => selected.filter((l) => l.key.startsWith("choice:")).length, [selected]);
+  const layerPlans = useMemo(() => {
+    try { return { plans: composeLayers(selected), error: null as string | null }; }
+    catch (e) { return { plans: [], error: (e as Error).message }; }
+  }, [selected]);
+  const schemeFraming: SchemeFraming | undefined =
+    framing === "scheme" && choiceCount > 0 && schemeLabel.trim()
+      ? { id: schemeLabel.trim().toLowerCase().replace(/\s+/g, "_"), label: schemeLabel.trim() }
+      : undefined;
 
   const composed = useMemo(() => {
     if (selected.length === 0) return null;
-    try { return { doc: composeRevision(p.liveDoc, selected), error: null as string | null }; }
+    try { return { doc: composeRevision(p.liveDoc, selected, schemeFraming), error: null as string | null }; }
     catch (e) { return { doc: null, error: (e as Error).message }; }
-  }, [selected, p.liveDoc]);
+  }, [selected, p.liveDoc, schemeFraming]);
   const findings = useMemo(() => composed?.doc ? checkCoherence(composed.doc) : [], [composed]);
   const changes = useMemo(() => composed?.doc ? diffDocs(p.liveDoc, composed.doc) : [], [composed, p.liveDoc]);
 
   async function confirm() {
     if (!composed?.doc) return;
     setBusy(true); setErr(null);
+    const configChanged = JSON.stringify(composed.doc) !== JSON.stringify(p.liveDoc);
     const res = await authorRevision({
-      definitionId: p.definitionId, expectedLiveRevision: p.liveRevisionId,
-      data: composed.doc, schemaVersion: p.schemaVersion,
+      definitionId: p.definitionId,
+      expectedLiveRevision: configChanged ? p.liveRevisionId : null,
+      data: configChanged ? composed.doc : null,          // layer-only acts send null (F-2)
+      schemaVersion: p.schemaVersion,
+      layers: layerPlans.plans.length ? layerPlans.plans : undefined,
       origin: "promotion", note, citations: citationsFor(selected),
+      sessionKey: p.sessionKey ?? null,
     }, p.author);
     setBusy(false);
     if (!res.ok) { setErr(res.error); return; }
@@ -99,9 +120,20 @@ export default function PromotionReview(p: PromotionReviewProps) {
                 </div>
                 {on && kind && (
                   <div className="text-[10px]" style={{ color: T.gold }} data-where-lands={l.key}>
-                    → {kind.whereItLands(l)}
+                    → {kind.whereItLands({ ...l, formalizeOption: formalized.has(i) })}
                   </div>
                 )}
+                {on && l.key.startsWith("choice:") && (() => {
+                  const dk = l.key.split(":")[1];
+                  const opts = p.liveDoc.dimensions?.[dk]?.options;
+                  return opts && !opts.includes(String(l.to)) ? (
+                    <label className="text-[10px] text-slate-500 block">
+                      <input type="checkbox" data-formalize={i} checked={formalized.has(i)}
+                        onChange={() => setFormalized((f) => { const n = new Set(f); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />
+                      {" "}'{String(l.to)}' is not an option yet — formalize it as one in this act
+                    </label>
+                  ) : null;
+                })()}
               </div>
               {f && f.count > 1 && (
                 <span className="text-[10px] text-slate-400 shrink-0" data-frequency={l.key}>
@@ -127,6 +159,23 @@ export default function PromotionReview(p: PromotionReviewProps) {
         </div>
       )}
 
+      {/* ── the framing question (SPEC-004 review question 2): defaults or a scheme? ── */}
+      {choiceCount >= 2 && (
+        <div className="mx-3 my-2 rounded border px-3 py-2" style={{ borderColor: T.rule }} data-framing>
+          <div className="text-[11px] font-semibold mb-1">These choices should become…</div>
+          <label className="mr-3 text-[11px]"><input type="radio" data-framing-defaults checked={framing === "defaults"}
+            onChange={() => setFraming("defaults")} /> the new defaults</label>
+          <label className="text-[11px]"><input type="radio" data-framing-scheme checked={framing === "scheme"}
+            onChange={() => setFraming("scheme")} /> a named scheme</label>
+          {framing === "scheme" && (
+            <input data-scheme-label value={schemeLabel} onChange={(e) => setSchemeLabel(e.target.value)}
+              placeholder="Scheme name — e.g. Modern Display"
+              className="ml-2 rounded border px-2 py-0.5 text-[11px]" style={{ borderColor: T.rule }} />
+          )}
+        </div>
+      )}
+      {layerPlans.error && <div className="mx-3 my-1 text-[11px] text-red-600" data-layer-conflict>{layerPlans.error}</div>}
+
       {/* ── coherence: findings block, by name ── */}
       {findings.length > 0 && (
         <div className="mx-3 my-2 rounded border px-3 py-2" style={{ borderColor: "#FECACA", background: "#FEF2F2" }}
@@ -140,7 +189,8 @@ export default function PromotionReview(p: PromotionReviewProps) {
       {/* ── staging + signed confirm ── */}
       <div className="px-3 py-2 border-t" style={{ borderColor: T.rule }}>
         {!staging ? (
-          <button data-open-staging disabled={sel.size === 0 || findings.length > 0 || !!composed?.error}
+          <button data-open-staging disabled={sel.size === 0 || findings.length > 0 || !!composed?.error || !!layerPlans.error
+              || (framing === "scheme" && choiceCount > 0 && !schemeLabel.trim())}
             className="rounded px-2 py-1 text-[11px] text-white disabled:opacity-40" style={{ background: T.navy }}
             onClick={() => setStaging(true)}>
             Stage revision from {sel.size} line{sel.size === 1 ? "" : "s"}…
@@ -149,6 +199,11 @@ export default function PromotionReview(p: PromotionReviewProps) {
           <div className="rounded border-2 px-3 py-2" style={{ borderColor: T.gold }} data-promotion-staging>
             <div className="font-semibold mb-1">The new revision will change:</div>
             {changes.map((c, i) => <div key={i} className="py-0.5" data-staged-change>{c}</div>)}
+            {layerPlans.plans.map((lp) => (
+              <div key={lp.layer_key} className="py-0.5" data-staged-layer={lp.layer_key}>
+                {lp.layer_key} layer: revised{lp.expected_live === null ? " (first revision)" : ""}
+              </div>
+            ))}
             <textarea data-promotion-note value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="Why this is the standard now — signed with the act (required)"
               className="w-full mt-2 rounded border px-2 py-1 text-[11px]" style={{ borderColor: T.rule }} rows={2} />

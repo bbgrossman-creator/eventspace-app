@@ -96,5 +96,43 @@ throws(() => composeRevision(liveDoc(), [line("prose:sales_copy", "Great station
   eq(c[0].baseline_revision, "rev-18", "revision cited");
   eq(c[1].baseline_kind, "no_item_baseline", "§0a marker cited, never overstating the comparison");
 }
-console.log(`${passed} passed, ${failed} failed`);
+// (summary moved below v209 additions)
+
+// ═══ v209 additions ═══
+import { composeLayers, SchemeFraming } from "../promotion";
+// scheme framing: same selection, different documents — both honest
+{
+  const sel = [line("choice:presentation", "acrylic", "black_slate"), line("choice:service", "attended", "attended")];
+  const asDefaults = composeRevision(liveDoc(), sel);
+  const asScheme = composeRevision(liveDoc(), sel, { id: "modern_display", label: "Modern Display" });
+  eq(asDefaults.instanceDefaults.choices.presentation, "acrylic", "framing=defaults: lands as default");
+  eq(asDefaults.schemes!.modern_display, undefined, "framing=defaults: no scheme");
+  eq(asScheme.instanceDefaults.choices.presentation, "black_slate", "framing=scheme: default UNTOUCHED");
+  eq(asScheme.schemes!.modern_display.sets.choices.presentation, "acrylic", "framing=scheme: scheme carries it");
+}
+// formalization is deliberate: without the flag, coherence blocks; with it, the option exists
+{
+  const bad = composeRevision(liveDoc(), [line("choice:presentation", "boat_display")]);
+  eq(checkCoherence(bad).length, 1, "unformalized ad-hoc value: coherence blocks");
+  const good = composeRevision(liveDoc(), [line("choice:presentation", "boat_display", undefined, { formalizeOption: true })]);
+  eq(checkCoherence(good).length, 0, "formalized: coherent");
+  eq(good.dimensions!.presentation.options.includes("boat_display"), true, "option added");
+}
+// scheme framing + formalization: the scheme's value must be an option too
+{
+  const doc = composeRevision(liveDoc(), [line("choice:presentation", "boat_display")], { id: "x", label: "X" });
+  eq(checkCoherence(doc).some((f) => f.includes("boat_display")), true, "unformalized scheme value: named finding");
+}
+// layer lines: compose into plans, never into the doc; duplicate keys refuse
+{
+  const lay = line("layer:kitchen", null, null, { layer: { layerKey: "kitchen",
+    data: { staffing: ["1 chef", "1 runner"] }, expectedLive: "lrev-1", schemaVersion: 1 } });
+  const doc = composeRevision(liveDoc(), [lay]);
+  eq(JSON.stringify(doc.instanceDefaults), JSON.stringify(liveDoc().instanceDefaults), "layer line leaves the doc alone");
+  const plans = composeLayers([lay]);
+  eq(plans, [{ layer_key: "kitchen", expected_live: "lrev-1", schema_version: 1, data: { staffing: ["1 chef", "1 runner"] } }], "layer plan");
+  throws(() => composeLayers([lay, line("layer:kitchen", null, null, { layer: { layerKey: "kitchen", data: {}, expectedLive: "lrev-1", schemaVersion: 1 } })]),
+    "LAYER_CONFLICT", "two lines for one layer refuse by name");
+}
+console.log(`${passed} passed, ${failed} failed (with v209)`);
 process.exit(failed ? 1 : 0);

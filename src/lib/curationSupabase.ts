@@ -11,7 +11,7 @@ export const supabaseAuthorAdapter: AuthorAdapter = async (a) => {
     p_origin: a.origin,
     p_note: a.note,
     p_citations: a.citations && a.citations.length ? a.citations : null,
-    p_layers: null,
+    p_layers: a.layers && a.layers.length ? a.layers : null,
     p_session_key: a.sessionKey ?? null,
   });
   if (error) return { ok: false, error: error.message };

@@ -374,6 +374,11 @@ export default function StudioPage() {
       liveRevisionId: d.liveRevisionId, liveDoc: d.liveDoc, schemaVersion: d.schemaVersion, ledger: d.ledger });
   }
 
+  // v209: one review session per Studio visit — an annotation grouping the
+  // afternoon's promotions in provenance; never a transaction.
+  const [reviewSessionKey] = useState(() =>
+    `review-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 6)}`);
+
   // v208: the Promotion review overlay.
   const [promoView, setPromoView] = useState<{
     definitionId: string; name: string; liveRevisionId: string | null;
@@ -847,6 +852,7 @@ export default function StudioPage() {
               eventCount={promoView.evidence.eventCount}
               lines={promoView.evidence.lines} annotations={promoView.evidence.annotations}
               author={supabaseAuthorAdapter}
+              sessionKey={reviewSessionKey}
               onAuthored={() => { setPromoView(null); setToast("✓ Promoted — the definition carries it forward; no event moved."); }}
               onClose={() => setPromoView(null)} />
           </div>

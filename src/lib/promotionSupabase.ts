@@ -34,7 +34,7 @@ export async function loadDefinitionEvidence(definitionId: string): Promise<Defi
   if (rows.length === 0) return { eventCount: 0, lines: [], annotations: [] };
   const ids = rows.map((r) => r.id);
 
-  const [cfgs, items, notes] = await Promise.all([
+  const [cfgs, items, notes, instLayers] = await Promise.all([
     supabase.from("event_component_config")
       .select("component_id,data,baseline,baseline_provenance,seed_config_revision")
       .in("component_id", ids),
@@ -42,10 +42,37 @@ export async function loadDefinitionEvidence(definitionId: string): Promise<Defi
       .select("component_id,name,unit_price,quantity_basis").in("component_id", ids),
     supabase.from("configuration_moves")
       .select("component_id,payload,created_at").eq("kind", "annotate").in("component_id", ids),
+    supabase.from("component_instance_layers")
+      .select("component_id,layer_key,schema_version,data,copied_from").in("component_id", ids),
   ]);
   type CfgRow = { component_id: string; data: ConfigV1; baseline: ConfigV1 | null;
     baseline_provenance: string | null; seed_config_revision: string | null };
   const cfgRows = (cfgs.data ?? []) as CfgRow[];
+
+  // v209: definition-side live layers (the staging targets) + the copied_from
+  // revisions instance layers were copied from (the honest comparison points)
+  type InstLayerRow = { component_id: string; layer_key: string; schema_version: number;
+    data: unknown; copied_from: string | null };
+  const instLayerRows = (instLayers.data ?? []) as InstLayerRow[];
+  const liveLayers = new Map<string, { id: string; data: unknown; schema_version: number }>();
+  const copiedFrom = new Map<string, unknown>();
+  {
+    const defLayers = await supabase.from("component_layers")
+      .select("id,layer_key,data,schema_version,superseded_by,archived_at")
+      .eq("definition_id", definitionId);
+    const copyIds = Array.from(new Set(instLayerRows.map((l) => l.copied_from).filter(Boolean))) as string[];
+    for (const r of (defLayers.data ?? []) as { id: string; layer_key: string; data: unknown;
+        schema_version: number; superseded_by: string | null; archived_at: string | null }[]) {
+      if (r.superseded_by === null && r.archived_at === null)
+        liveLayers.set(r.layer_key, { id: r.id, data: r.data, schema_version: r.schema_version });
+      if (copyIds.includes(r.id)) copiedFrom.set(r.id, r.data);
+    }
+    const missing = copyIds.filter((id) => !copiedFrom.has(id));
+    if (missing.length) {
+      const extra = await supabase.from("component_layers").select("id,data").in("id", missing);
+      for (const r of (extra.data ?? []) as { id: string; data: unknown }[]) copiedFrom.set(r.id, r.data);
+    }
+  }
 
   // stamped revisions fetched once each — the stamp is the item baseline (§0a)
   const stamps = new Map<string, RevisionDoc>();
@@ -99,6 +126,23 @@ export async function loadDefinitionEvidence(definitionId: string): Promise<Defi
           to: { unit_price: it.unit_price, quantity_basis: it.quantity_basis },
           componentId: comp.id, eventLabel: label, isEvidence,
           baselineKind, baselineRevision: null, noItemBaseline: true });
+    }
+
+    // v209: layer lines — instance layer content vs its copied_from revision.
+    // Only copied (stamped) instance layers can diverge honestly; hand-created
+    // instance layers have no comparison point and contribute no line.
+    for (const il of instLayerRows.filter((x) => x.component_id === comp.id)) {
+      if (!il.copied_from) continue;
+      const orig = copiedFrom.get(il.copied_from);
+      if (orig === undefined || JSON.stringify(orig) === JSON.stringify(il.data)) continue;
+      const target = liveLayers.get(il.layer_key);
+      lines.push({ key: `layer:${il.layer_key}`,
+        text: `${il.layer_key} layer revised on this event`,
+        from: orig, to: il.data,
+        componentId: comp.id, eventLabel: label, isEvidence,
+        baselineKind, baselineRevision: cfg?.seed_config_revision ?? null,
+        layer: { layerKey: il.layer_key, data: il.data,
+          expectedLive: target?.id ?? null, schemaVersion: il.schema_version } });
     }
 
     // annotations — read from the move log, the honest current source
