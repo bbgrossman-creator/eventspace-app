@@ -47,7 +47,7 @@ import { sourceForIdentity } from "@/lib/library";
 import { NodePayload, DropTarget, operationFor, reorder, isNoOp, splitCatKey } from "@/lib/dragGrammar";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import ProductionSheet from "@/components/studio/renderers/ProductionSheet";
-import LiveLensPanel from "@/components/studio/LiveLensPanel";
+import StudioRightRegion from "@/components/studio/StudioRightRegion";
 import { loadProductionModel } from "@/lib/productionLensSupabase";
 import { ProductionModel } from "@/lib/productionLens";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
@@ -81,6 +81,14 @@ interface CompRow {
 }
 interface CanvasGroup { sectionTypeId: string | null; name: string; comps: CompRow[]; }
 const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** v214 — which lenses this page can render LIVE in the right region. The
+ *  page owns pipeline level 5, so this table is renderer inventory, not lens
+ *  policy: a key appears when its renderer is mounted below (Customer →
+ *  ProposalRenderer over liveStage; Production → ProductionSheet over
+ *  loadProductionModel) and the registry still decides whether the lens is
+ *  offered at all (visibleLenses ∩ this). A plain record, not a Set — the
+ *  production build targets es5 (the v210 lesson, kept). */
+const LIVE_RENDERED_LENSES: Record<string, true> = { customer: true, production: true };
 const DOMAINS = ["food", "decor", "flowers", "lighting", "music", "layout", "kids", "staffing", "logistics", "custom"];
 
 /** A component-local presentation category. Not an entity — just instructions
@@ -239,6 +247,20 @@ export default function StudioPage() {
   const lenses = useMemo(
     () => (caps ? visibleLenses({ caps }, session) : []),
     [caps, session],
+  );
+  // v214 — the Live Lens switcher's offer: the registry's visible lenses ∩
+  // this page's renderer table. The page owns pipeline level 5 (Renderer), so
+  // "a live renderer exists here" is legitimately its knowledge; WHETHER a
+  // lens may be offered at all stays the registry's (capability × permission,
+  // inherited from visibleLenses for free — no second gate here). Design is
+  // absent from the table because the Canvas IS the Design; a lens joins the
+  // offer by gaining a renderer, never by an edit to a hardcoded list of
+  // keys in a component.
+  const liveOptions = useMemo(
+    () => lenses
+      .filter((l) => LIVE_RENDERED_LENSES[l.key] === true)
+      .map((l) => ({ key: l.key as string, label: l.label, blurb: l.blurb })),
+    [lenses],
   );
   useEffect(() => {
     if (!caps || lens) return;
@@ -403,15 +425,19 @@ export default function StudioPage() {
   // the same graph (xray off: the artifact, not the maker's chrome); nothing
   // synchronizes it because there is nothing to synchronize.
   const [liveStage, setLiveStage] = useState<Awaited<ReturnType<typeof buildPresentationModel>> | null>(null);
+  // v214: the Live Lens's CHOICE, mirrored from StudioRightRegion (one event
+  // source — the region notifies on mount and on change, so this cannot
+  // drift). Render state here exactly as it is there: never persisted.
+  const [liveLensKey, setLiveLensKey] = useState<LensKey>("customer");
   useEffect(() => {
-    if (!versionId || lens !== "design") { setLiveStage(null); return; }
+    if (!versionId || lens !== "design" || liveLensKey !== "customer") { setLiveStage(null); return; }
     let dead = false;
     buildPresentationModel(versionId, { xray: false })
       .then((m) => { if (!dead) setLiveStage(m); })
       .catch(() => { if (!dead) setLiveStage(null); });
     return () => { dead = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [versionId, lens, items, comps, guests, adjs]);
+  }, [versionId, lens, liveLensKey, items, comps, guests, adjs]);
 
   // v212 (SPEC-003): the Production sheet's model — projected fresh whenever
   // the lens opens or the version's data changes; a disposable projection,
@@ -435,13 +461,19 @@ export default function StudioPage() {
 
   useEffect(() => {
     let live = true;
-    if (lens !== "production") { setProdModel(null); return; }
+    // v214: the same disposable projection now serves two mounts — the
+    // Production LENS (the Stage) and the Production LIVE PROJECTION (the
+    // right region while designing). One state, because it is one truth;
+    // nothing synchronizes the two mounts because there is nothing to
+    // synchronize.
+    const wanted = lens === "production" || (lens === "design" && liveLensKey === "production");
+    if (!wanted) { setProdModel(null); return; }
     loadProductionModel(bookingId, versionId, locked)
       .then((m) => { if (live) setProdModel(m); })
       .catch(() => { if (live) setProdModel(null); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lens, versionId, comps.length, items.length, cfgState]);
+  }, [lens, liveLensKey, versionId, comps.length, items.length, cfgState]);
 
   const inspected = useMemo<InspectorSelection | null>(() => {
     if (!selectedId) return null;
@@ -993,11 +1025,12 @@ export default function StudioPage() {
                 if (!r.ok) setErr(r.detail ?? ""); else setToast(`📐 "${name.trim()}" saved as a blueprint`);
               }}>📐 Save as Blueprint</button>
           )}
-          {comps.length > 0 && (
-            <a href={`/bookings/${b.id}/studio/${version.id}/preview`} target="_blank" rel="noopener noreferrer"
-              className="text-xs font-semibold text-slate-500 hover:text-[#102F56] ring-1 ring-[#E7EDF5] rounded-lg px-2.5 py-1.5 transition-colors"
-              title="See the customer-facing view">👁 Preview</a>
-          )}
+          {/* v214: the header's 👁 Preview link is retired in the Live Lens's
+              favor — the customer view is continuously beside the Canvas now
+              (the mockup's "View as Proposal"), so a link that opens a second
+              tab to see the same projection was one truth reachable twice.
+              The /preview ROUTE survives: it is the shareable artifact, and
+              the share flow still links it. */}
           {!locked && versions.length > 0 && (
             <button className="btn-primary !py-1.5 !px-3 text-xs" disabled={busy}
               onClick={async () => {
@@ -1116,53 +1149,62 @@ export default function StudioPage() {
                enforced from one side only. The old panel survives for lenses
                with no Stage yet. */}
           {lens === "design" ? (
-            <div className="border-l border-[#E7EDF5] bg-white min-h-0 flex flex-col" data-right-region>
-              {/* v213 — INSPECTOR FOLLOWS SELECTION: present exactly when a
-                  selection exists; the Live Lens holds the region otherwise
-                  and beneath. Layout and ownership only — the Inspector's
-                  interior is untouched. */}
-              {inspected && (
-                <div className="shrink-0 max-h-[55%] overflow-y-auto border-b" style={{ borderColor: "#E7EDF5" }}
-                     data-inspector-dock>
-                  <Inspector
-                    selection={inspected}
-                    lens={lens}
-                    canEdit={!locked && !!session?.perms.includes("bookings.edit")}
-                    canSeeCost={!!session?.perms.includes("bookings.edit")}
-                    money={money}
-                    onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
-                    configureFacet={cfgState && inspected?.kind === "component" ? (
-                      <ConfigureFacet
-                        state={cfgState}
-                        onState={setCfgState}
-                        persist={supabasePersistAdapter}
-                        itemCount={items.filter((i) => i.component_id === inspected.id).length}
-                        canEdit={!locked && !!session?.perms.includes("bookings.edit")}
-                        onPromote={currentCan()("knowledge.curate") ? () => {
-                          const c = comps.find((x) => x.id === inspected.id);
-                          if (c?.definition_id) void openPromotion(c.definition_id, c.title);
-                        } : undefined}
-                        backRefs={backRefs}
-                        onOpenCanvas={() => { /* the canvas is beside us */ }}
-                      />
-                    ) : null}
-                    onLoadMemory={(id) => {
-                      const it = items.find((x) => x.id === id);
-                      if (!it) return;
-                      loadPriceMemory({ name: it.name, catalog_item_id: it.catalog_item_id ?? null, component_id: it.component_id })
-                        .then((m) => setMemory((prev) => ({ ...prev, [id]: m })));
-                    }}
-                    designPanel={null}
-                  />
-                </div>
-              )}
-              <LiveLensPanel lensLabel="Customer"
-                emptyReason={"Nothing composed yet — the proposal appears here as you build."}>
-                {liveStage ? <div className="shadow rounded-lg overflow-hidden bg-white">
-                  <ProposalRenderer model={liveStage} xray={false} draftRibbon />
-                </div> : null}
-              </LiveLensPanel>
-            </div>
+            /* v214 — the region is a COMPONENT now (StudioRightRegion), so
+               its geography is provable in a harness rather than asserted by
+               parse + tsc (the v213 debt, paid). The page keeps what is
+               legitimately the page's: composing the Inspector (its
+               callbacks are Supabase-coupled), computing the switcher's
+               offer (visibleLenses ∩ the renderer table above), and
+               rendering each projection over its model. The region keeps the
+               layout and the choice. */
+            <StudioRightRegion
+              inspector={inspected ? (
+                <Inspector
+                  selection={inspected}
+                  lens={lens}
+                  canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                  canSeeCost={!!session?.perms.includes("bookings.edit")}
+                  money={money}
+                  onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
+                  configureFacet={cfgState && inspected?.kind === "component" ? (
+                    <ConfigureFacet
+                      state={cfgState}
+                      onState={setCfgState}
+                      persist={supabasePersistAdapter}
+                      itemCount={items.filter((i) => i.component_id === inspected.id).length}
+                      canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                      onPromote={currentCan()("knowledge.curate") ? () => {
+                        const c = comps.find((x) => x.id === inspected.id);
+                        if (c?.definition_id) void openPromotion(c.definition_id, c.title);
+                      } : undefined}
+                      backRefs={backRefs}
+                      onOpenCanvas={() => { /* the canvas is beside us */ }}
+                    />
+                  ) : null}
+                  onLoadMemory={(id) => {
+                    const it = items.find((x) => x.id === id);
+                    if (!it) return;
+                    loadPriceMemory({ name: it.name, catalog_item_id: it.catalog_item_id ?? null, component_id: it.component_id })
+                      .then((m) => setMemory((prev) => ({ ...prev, [id]: m })));
+                  }}
+                  designPanel={null}
+                />
+              ) : null}
+              options={liveOptions}
+              onLiveLens={(k) => setLiveLensKey(k as LensKey)}
+              projections={{
+                customer: liveStage ? (
+                  <div className="shadow rounded-lg overflow-hidden bg-white">
+                    <ProposalRenderer model={liveStage} xray={false} draftRibbon />
+                  </div>
+                ) : null,
+                production: prodModel ? <ProductionSheet model={prodModel} /> : null,
+              }}
+              emptyReasons={{
+                customer: "Nothing composed yet — the proposal appears here as you build.",
+                production: "No production facts yet — quantities appear as the design takes shape.",
+              }}
+            />
           ) : (lens === "customer") ? (
             <div className="border-l border-[#E7EDF5] bg-white min-h-0">
               <Inspector

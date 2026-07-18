@@ -7,10 +7,16 @@
 //
 // OWNERSHIP (SPEC-003 §7 shell rules): this component owns the region's
 // chrome — the identity line, the read-only marking, the scroll — and
-// NOTHING else. The projection inside arrives as children from the page
-// (today: the Customer model through ProposalRenderer; v214 adds the
-// switcher and further lenses). This panel contributes zero interactive
-// controls of its own: read-only is structural, not disciplined.
+// NOTHING else. The projection inside arrives as children from the page.
+//
+// v214 — the switcher arrives, as v213's header promised, and the structural
+// read-only claim TIGHTENS rather than bends: the CONTENT region (where the
+// projection lives) contributes zero interactive controls — the projection
+// cannot write, structurally — while the header hosts exactly one thing the
+// page supplies: the lens switcher, which is a render decision, never a graph
+// verb. This panel still contributes zero controls of ITS OWN; it hosts a
+// slot. Which lenses the switcher offers is the registry's business
+// (visibleLenses, in the owner above) — this file never knows.
 // ═══════════════════════════════════════════════════════════════════════════
 "use client";
 import React from "react";
@@ -24,6 +30,11 @@ export default function LiveLensPanel(props: {
   children: React.ReactNode;
   /** Nothing to project yet — empty is information (SPEC-003 §5). */
   emptyReason?: string | null;
+  /** v214: the lens switcher, built and owned by the region above (its
+   *  options come from the registry there). Hosted in the header — the one
+   *  place chrome controls may live; the content region stays structurally
+   *  control-free. */
+  switcher?: React.ReactNode;
 }) {
   return (
     <div data-live-lens className="h-full min-h-0 flex flex-col bg-[#EEF2F7]">
@@ -36,11 +47,12 @@ export default function LiveLensPanel(props: {
         <span data-live-lens-label className="text-[11px] font-semibold" style={{ color: T.ink }}>
           {props.lensLabel}
         </span>
+        {props.switcher}
         <span data-live-lens-readonly className="ml-auto text-[9.5px] text-slate-400">
           live · read-only
         </span>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+      <div data-live-lens-content className="flex-1 min-h-0 overflow-y-auto p-3">
         {props.children ?? (
           <p data-live-lens-empty className="text-center text-[11.5px] text-slate-400 py-10">
             {props.emptyReason ?? "Nothing to project yet — the panel fills in as the design does."}
