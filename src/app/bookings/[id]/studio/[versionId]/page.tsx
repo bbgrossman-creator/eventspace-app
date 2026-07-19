@@ -51,7 +51,7 @@ import Inspector, { InspectorSelection } from "@/components/studio/Inspector";
 import { buildDesignStage, outlineFromDesignChapters, RawComp, RawItem } from "@/lib/designStageModel";
 import { sourceForIdentity } from "@/lib/library";
 import { NodePayload, DropTarget, operationFor, reorder, isNoOp, splitCatKey } from "@/lib/dragGrammar";
-import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
+import { visibleLenses, resolveLens, LensKey , lensEdits } from "@/lib/lenses";
 import ProductionSheet from "@/components/studio/renderers/ProductionSheet";
 import { loadProductionModel } from "@/lib/productionLensSupabase";
 import { ProductionModel } from "@/lib/productionLens";
@@ -277,6 +277,9 @@ export default function StudioPage() {
   // absent from the table because the Canvas IS the Design; a lens joins the
   // offer by gaining a renderer, never by an edit to a hardcoded list of
   // keys in a component.
+  // v224 — chrome consults DECLARATIONS, never lens names (PUBLICATION §5).
+  const activeLensDef = useMemo(() => lenses.filter((l) => l.key === lens)[0] ?? null, [lenses, lens]);
+
   const liveOptions = useMemo(
     () => lenses
       .filter((l) => LIVE_RENDERED_LENSES[l.key] === true)
@@ -1011,6 +1014,7 @@ export default function StudioPage() {
         obligations={obligations}
         xray={xray}
         onXray={setXray}
+        lensControls={null /* v225: the Presentation toolbar mounts here from edits.presentation */}
         split={split}
         onSplit={setSplit}
         desk={[
@@ -1370,16 +1374,18 @@ export default function StudioPage() {
 
       {/* ── THE INSPECTOR DRAWER — selection is interrogation (§6). The
            drawer and the selection live and die together. ── */}
-      <Drawer open={tab === "build" && !!inspected && (lens === "design" || lens === "customer")}
+      <Drawer open={tab === "build" && !!inspected && !!activeLensDef?.edits}
         title="Inspector" onClose={() => setSelectedId(null)}>
         {inspected && (
           <Inspector
             selection={inspected}
             lens={lens}
-            canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+            canEdit={!locked && !!session?.perms.includes("bookings.edit") && lensEdits(activeLensDef, "content")}
             canSeeCost={!!session?.perms.includes("bookings.edit")}
             money={money}
-            onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
+            onConfirmPrice={lensEdits(activeLensDef, "pricing")
+              ? (id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })
+              : undefined}
             configureFacet={cfgState && inspected?.kind === "component" ? (
               <ConfigureFacet
                 state={cfgState}
@@ -1395,7 +1401,7 @@ export default function StudioPage() {
                 onOpenCanvas={() => { /* the canvas is beside us */ }}
               />
             ) : null}
-            onRemove={!locked && session?.perms.includes("bookings.edit") ? () => {
+            onRemove={!locked && session?.perms.includes("bookings.edit") && lensEdits(activeLensDef, "content") ? () => {
               if (inspected.kind === "component") {
                 const c = comps.filter((x) => x.id === inspected.id)[0];
                 if (c) { void deleteComp(c).then(() => setSelectedId(null)); }

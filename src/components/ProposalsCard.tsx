@@ -255,8 +255,7 @@ export default function ProposalsCard({ b }: { b: Booking }) {
               {open && (
                 <div className="mt-2 space-y-1.5">
                   <VersionThread
-                    versions={vs}
-                    archived={archived}
+                    versions={vs.concat(archived).slice().sort((a, b) => a.version - b.version)}
                     compCounts={compCounts}
                     wonVersionId={p.won_version_id ?? null}
                     proposalOpen={p.status === "open"}
@@ -268,6 +267,7 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                       run(() => setVersionStatus(b, p, v, next));
                     }}
                     onArchiveVersion={(v) => doArchive(p, v)}
+                    onRestoreVersion={(v) => run(() => restoreVersion(b, v))}
                     onTogglePricing={(vid) => setPricingOpen((x) => ({ ...x, [vid]: !x[vid] }))}
                     pricingOpen={pricingOpen}
                   />
@@ -276,37 +276,6 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                     <VersionPricing key={`pp-${v.id}`} b={b} v={v} />
                   ))}
 
-                  {archived.length > 0 && (
-                    <div className="pt-1">
-                      <button className="text-[11px] text-slate-400 hover:text-slate-600 underline"
-                        onClick={() => setShowArchived((x) => ({ ...x, [p.id]: !x[p.id] }))}>
-                        {showArchived[p.id] ? "Hide" : "Show"} archived ({archived.length})
-                      </button>
-                      {showArchived[p.id] && (
-                        <div className="mt-1.5 space-y-1 reveal">
-                          {archived.map((v) => (
-                            <div key={v.id} className="flex items-center gap-2 flex-wrap rounded px-2 py-1.5 bg-[#FAFAF9] ring-1 ring-[#EDE9E4]">
-                              <span className="text-[12px] font-semibold w-8 text-slate-400">v{v.version}</span>
-                              <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 bg-[#F5F5F4] text-[#78716C]">🗄 archived</span>
-                              <span className="text-[11px] text-slate-400">
-                                {v.archived_at ? new Date(v.archived_at).toLocaleDateString() : ""}
-                                {v.archived_reason ? ` · ${v.archived_reason}` : ""}
-                              </span>
-                              <span className="ml-auto flex gap-2">
-                                <button className="text-[11px] text-accent-ink hover:underline" disabled={busy}
-                                  onClick={() => run(() => restoreVersion(b, v))}>restore</button>
-                                {isAdmin && (
-                                  <button className="text-[11px] text-red-400 hover:text-red-600 hover:underline" disabled={busy}
-                                    onClick={() => doDelete(p, v)}>delete permanently</button>
-                                )}
-                              </span>
-                            </div>
-                          ))}
-                          {!isAdmin && <p className="text-[10px] text-slate-300 pl-1">Permanent deletion is admin-only.</p>}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </div>

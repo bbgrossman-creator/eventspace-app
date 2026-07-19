@@ -9,10 +9,10 @@ const T = (name: string, fn: () => void) => {
   catch (e) { failed++; console.log(`FAIL ${name}\n     ${(e as Error).message}`); }
 };
 const lens = (k: string) => LENSES.filter((l) => l.key === k)[0];
-T("x-ray is a registry fact: design inherent, customer modifier, sheets silent", () => {
-  if (lens("design")?.xrayMode !== "inherent") throw new Error("design not inherent");
-  if (lens("customer")?.xrayMode !== "modifier") throw new Error("customer not modifier");
-  if (lens("production")?.xrayMode !== undefined) throw new Error("production should be silent until its renderer honors x-ray");
+T("x-ray is a registry fact (v224: absorbed into supports): design inherent, presentation modifier, sheets silent", () => {
+  if (lens("design")?.supports?.xray !== "inherent") throw new Error("design not inherent");
+  if (lens("customer")?.supports?.xray !== "modifier") throw new Error("presentation not modifier");
+  if (lens("production")?.supports?.xray !== undefined) throw new Error("production should be silent until its renderer honors x-ray");
 });
 T("the caption: delta and counts, zeros silent, nothing at all honestly said", () => {
   const money = (n: number) => "$" + n;

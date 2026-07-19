@@ -54,6 +54,12 @@ export default function StudioLine(p: {
   // the modifier
   xray: boolean;
   onXray: (on: boolean) => void;
+  // v224 — the LENS-OWNED CONTROL SURFACE (PUBLICATION §5): the host
+  // computes this from the active lens's `edits` declarations; the Line
+  // mounts whatever the lens brought and knows the name of no lens. In
+  // Design the presentation controls don't render disabled — they DO NOT
+  // EXIST (the absence rule, applied to chrome).
+  lensControls?: React.ReactNode;
   // the Second Sheet
   split: boolean;
   onSplit: (on: boolean) => void;
@@ -111,11 +117,14 @@ export default function StudioLine(p: {
           onChange={(e) => p.onVersion(e.target.value)} aria-label="Version">
           {p.versions.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
+        {/* v223 — status is DOCUMENT METADATA, not a control. Semantic
+             correctness (v222) wasn't enough: the pill, dot, toolbar dress
+             and tooltip all still said "button". Visual grammar must match
+             behavior — so this is plain quiet text, the way Word says
+             "Saved". No pill, no border, no hover, no tooltip, no cursor.
+             Status TRANSITIONS live on the booking page, deliberately. */}
         {p.flow && (
-          <span data-flow-status role="status" aria-label={`Version status: ${p.flow.label}`}
-            title={`Version status — this version is ${p.flow.label}. Status moves (Draft → Review → Sent → Approved) on the booking page; it isn't a button.`}
-            className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 cursor-help select-none"
-            style={{ backgroundColor: p.flow.color }}>● {p.flow.label}</span>
+          <span data-flow-status className="text-[11px] text-slate-400 select-none">· {p.flow.label}</span>
         )}
         {p.locked && <span className="text-[10px] font-semibold text-[#166534]">🔒</span>}
       </span>
@@ -169,10 +178,13 @@ export default function StudioLine(p: {
         )}
       </span>
 
+      {/* ── the lens's own controls — declaration-driven, host-supplied ── */}
+      {p.lensControls && <span data-lens-controls className="flex items-center gap-1 shrink-0">{p.lensControls}</span>}
+
       {/* ── the modifier — only where it CHANGES something (registry-driven:
-           xrayMode "modifier"). On an inherent lens the edition is simply
-           what the dial says, and no dead control renders. ── */}
-      {mayAuthor && activeDef?.xrayMode === "modifier" && (
+           supports.xray "modifier"). On an inherent lens the edition is
+           simply what the dial says, and no dead control renders. ── */}
+      {mayAuthor && activeDef?.supports?.xray === "modifier" && (
         <button data-xray onClick={() => p.onXray(!p.xray)} aria-pressed={p.xray}
           title="Show the truth the customer never sees: hidden items, unconfirmed prices, drop zones"
           className={`text-[11px] px-2 py-1 rounded-md border transition-colors shrink-0 ${

@@ -67,15 +67,17 @@ export interface LensDef {
   label: string;
   /** One line of what this audience sees — for tooltips and empty states. */
   blurb: string;
-  /** v218 — how X-ray relates to this lens (STUDIO_COMPOSITION follow-up):
-   *  "inherent"  — the lens IS the x-ray edition; the Line renders no toggle
-   *                (a control that does nothing unsettles the mental model).
-   *  "modifier"  — the toggle appears and changes the rendering.
-   *  absent      — x-ray does not apply (sheet lenses, until their renderers
-   *                honor it). The Line consults THIS FIELD, never a lens
-   *                name — the doctrine "x-ray is a modifier on every lens"
-   *                lives in the registry, where every lens fact lives. */
-  xrayMode?: "inherent" | "modifier";
+  /** v224 — LENS CAPABILITIES (PUBLICATION §5). Two axes, sparse by design.
+   *  THE LAW: nothing outside this registry may ask `if (lens === X)` —
+   *  every toolbar, drawer affordance, and modifier renders from these
+   *  declarations. `edits` says which LAYER of the proposal this lens may
+   *  change (structure and content belong to Design everywhere and always —
+   *  PUBLICATION §0.2); `supports` says which machinery applies (xray
+   *  absorbed from v218's xrayMode: "inherent" = the lens IS the x-ray
+   *  edition, no toggle; "modifier" = the toggle appears and changes the
+   *  rendering; absent = does not apply). */
+  edits?: { presentation?: true; content?: true; structure?: true; pricing?: true };
+  supports?: { xray?: "inherent" | "modifier"; print?: true; compare?: true };
   /** Tenant capability required. The ONLY gate this file applies (condition 3).
    *  null = always available wherever the Studio itself is. */
   cap: keyof Capabilities | null;
@@ -114,14 +116,20 @@ const SEED_LENSES: LensDef[] = [
   {
     key: "design", label: "Design",
     blurb: "The maker's view — every truth, nothing hidden.",
-    xrayMode: "inherent",
+    edits: { content: true, structure: true, pricing: true },
+    supports: { xray: "inherent" },
     cap: null, perm: "bookings.edit", module: "events", editable: true,
     concern: "authoring the design", capability: null, verbs: [], anatomy: "editing",
   },
   {
-    key: "customer", label: "Customer",
-    blurb: "Exactly what the client receives.",
-    xrayMode: "modifier",
+    // PUBLICATION §4: the business object is a Proposal; this lens is the
+    // PRESENTATION — the live customer publication. The key stays `customer`
+    // (keys are wire-stable, the `operations` precedent); the label is the
+    // user-facing truth.
+    key: "customer", label: "Presentation",
+    blurb: "The live customer publication — exactly what the client receives.",
+    edits: { presentation: true },
+    supports: { xray: "modifier", print: true, compare: true },
     cap: "proposals", perm: "bookings.view", module: "events", editable: false,
     concern: "what the client receives", capability: "proposal.customer_view",
     verbs: [], anatomy: "editing",
@@ -129,6 +137,7 @@ const SEED_LENSES: LensDef[] = [
   {
     key: "production", label: "Production",
     blurb: "Quantities, prep, and fulfilment — internal, vendor, or both.",
+    supports: { print: true },
     cap: "requirements", perm: "ops.view", module: "production", editable: false,
     concern: "producing the event (kitchen)", capability: "lens.production",
     verbs: [], anatomy: "sheet",
@@ -320,3 +329,10 @@ export function defaultLens(config: LensConfig, session: Session | null): LensKe
 export function lensAllowed(key: LensKey, config: LensConfig, session: Session | null): boolean {
   return visibleLenses(config, session).some((l) => l.key === key);
 }
+
+/** v224 — the one question chrome may ask: does this lens edit this layer?
+ *  (Chrome consults declarations, never names.) */
+export const lensEdits = (
+  def: LensDef | null | undefined,
+  layer: "presentation" | "content" | "structure" | "pricing",
+): boolean => def?.edits?.[layer] === true;
