@@ -82,7 +82,7 @@ export interface LensDef {
    *  this lens lets you select on the paper. Contextual toolbars render
    *  from this + the treatment registries — never from scattered
    *  type checks. Component/item join here when their treatments ship. */
-  selects?: { document?: true; section?: true; component?: true };
+  selects?: { document?: true; section?: true; component?: true; item?: true };
   /** Tenant capability required. The ONLY gate this file applies (condition 3).
    *  null = always available wherever the Studio itself is. */
   cap: keyof Capabilities | null;
@@ -135,7 +135,7 @@ const SEED_LENSES: LensDef[] = [
     blurb: "The live customer publication — exactly what the client receives.",
     edits: { presentation: true },
     supports: { xray: "modifier", print: true, compare: true },
-    selects: { document: true, section: true, component: true },   // v234: component treatments exist
+    selects: { document: true, section: true, component: true, item: true },   // v235: the last door opens
     cap: "proposals", perm: "bookings.view", module: "events", editable: false,
     concern: "what the client receives", capability: "proposal.customer_view",
     verbs: [], anatomy: "editing",
@@ -341,7 +341,7 @@ export function lensAllowed(key: LensKey, config: LensConfig, session: Session |
 /** The selection twin of lensEdits. */
 export const lensSelects = (
   def: LensDef | null | undefined,
-  kind: "document" | "section" | "component",
+  kind: "document" | "section" | "component" | "item",
 ): boolean => def?.selects?.[kind] === true;
 
 export const lensEdits = (

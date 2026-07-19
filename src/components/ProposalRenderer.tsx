@@ -47,15 +47,22 @@ function OptionalBadge() {
 }
 
 // ── v195 P1.6: `uppercase` removed — authored casing is data, not decoration ─
-function Heading({ children }: { children: React.ReactNode }) {
+function Heading({ children, variant = "standard" }: { children: React.ReactNode; variant?: "standard" | "eyebrow" | "understated" }) {
+  if (variant === "eyebrow")
+    return <div className="text-[10px] font-bold uppercase tracking-[0.2em] mb-1" style={{ color: "var(--pub-accent, #C9A34E)" }}>{children}</div>;
+  if (variant === "understated")
+    return <div className="text-[11px] font-medium tracking-wide mb-1 text-slate-400">{children}</div>;
   return <div className="text-[11px] font-semibold tracking-wide mb-1" style={{ color: "var(--pub-accent, #C9A34E)" }}>{children}</div>;
 }
 
 // ── v195 P1.7/P1.9: ONE implementation of the three layouts, shared by
 //    component blocks AND choice groups. Choices are no longer vertical-only. ─
-function ItemRun({ items, layout, bullet = "\u00b7" }: {
+function ItemRun({ items, layout, bullet = "\u00b7", emphasis = "standard" }: {
   items: PresentationItem[]; layout: "vertical" | "comma" | "dot"; bullet?: string;
+  emphasis?: "standard" | "strong" | "subtle";
 }) {
+  const emph = emphasis === "strong" ? "font-semibold text-slate-700"
+    : emphasis === "subtle" ? "text-slate-400" : "";
   // v196: an internal row is drawn GHOSTED — struck through, greyed, with the
   // reason. It is not styled to look deleted; it is styled to look like truth
   // the customer will never receive. The distinction matters: the chef needs
@@ -72,7 +79,7 @@ function ItemRun({ items, layout, bullet = "\u00b7" }: {
               style={ghost(it) ? { color: T.xrayInk } : undefined}>
             <span>
               <span className="mr-1.5" style={{ color: ghost(it) ? T.xrayEdge : T.gold }}>{bullet}</span>
-              <span className={ghost(it) ? "line-through decoration-slate-300" : ""}>{it.name}</span>
+              <span className={ghost(it) ? "line-through decoration-slate-300" : emph}>{it.name}</span>
               {ghost(it) && (
                 <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-wide px-1 py-0.5 rounded"
                       style={{ background: "#F1F5F9", color: T.xrayInk }}>
@@ -101,7 +108,7 @@ function ItemRun({ items, layout, bullet = "\u00b7" }: {
       {items.map((it, i) => (
         <span key={i}>
           {i > 0 && (layout === "dot" ? <span style={{ color: "var(--pub-accent, #C9A34E)" }}> &middot; </span> : <span>, </span>)}
-          {it.name}
+          <span className={emph}>{it.name}</span>
           {it.optional && <OptionalBadge />}
           {it.note && <span className="text-[12px] italic text-slate-400"> {it.note}</span>}
         </span>
@@ -132,10 +139,10 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
 // callers render exactly the historical dress: every themed value falls back
 // to the constants that were always here. The theme decides how things look
 // — nothing here lets it decide what exists.
-import { ResolvedTheme, effectiveSectionTreatment, effectiveComponentTreatment, COMPONENT_TREATMENT_DEFAULTS, ComponentTreatment, SectionTreatment, DocumentTreatment, RegionTexts } from "@/lib/publication";
+import { ResolvedTheme, effectiveSectionTreatment, effectiveComponentTreatment, effectiveItemTreatment, COMPONENT_TREATMENT_DEFAULTS, ITEM_TREATMENT_DEFAULTS, ComponentTreatment, ItemTreatment, BULLET_CHARS, SectionTreatment, DocumentTreatment, RegionTexts } from "@/lib/publication";
 import { PhotoPins, pinnedFor } from "@/lib/photos";
 
-export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions, photos, onComponentSelect, selectedComponentId }: {
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions, photos, onComponentSelect, selectedComponentId, onItemsSelect, selectedItemsId }: {
   model: PresentationModel; draftRibbon?: boolean;
   /** v226 THE CANVAS — Studio-only interactivity: the paper is the primary
    *  interaction surface; clicking a section head selects its PRESENTATION
@@ -147,6 +154,9 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   /** v234 — components are identities too (selects.component). */
   onComponentSelect?: (componentId: string) => void;
   selectedComponentId?: string | null;
+  /** v235 — the item run ("the items of component X") is an identity. */
+  onItemsSelect?: (componentId: string) => void;
+  selectedItemsId?: string | null;
   selectedSectionId?: string | null;
   documentSelected?: boolean;
   /** v231 — the region WORDS (footer/signature/terms), brand-owned. */
@@ -338,12 +348,30 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
                         {/* v195 P1.2: the COMPONENT's own note — "Carved to order by
                             our chefs" belongs to the station, not to the Prime Rib. */}
                         {comp.note && <p className="text-[12.5px] italic text-slate-500 mt-1">{comp.note}</p>}
-                        {comp.blocks.map((block, bk) => (
-                          <div key={bk} className={bk === 0 ? "mt-1.5" : "mt-2.5"}>
-                            {block.showHeading && block.label && <Heading>{block.label}</Heading>}
-                            <ItemRun items={block.items} layout={block.layout} />
-                          </div>
-                        ))}
+                        {comp.blocks.length > 0 && (() => {
+                          const itr: Required<ItemTreatment> = theme
+                            ? effectiveItemTreatment(theme, comp.id) : ITEM_TREATMENT_DEFAULTS;
+                          const iSel = !!onItemsSelect;
+                          return (
+                            <div data-pub-items={comp.id}
+                              data-pub-bullet={itr.bullet} data-pub-itememphasis={itr.emphasis}
+                              onClick={iSel ? (e) => { e.stopPropagation(); onItemsSelect(comp.id); } : undefined}
+                              title={iSel ? "Style these items" : undefined}
+                              className={`${iSel ? "cursor-pointer rounded-sm hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-2" : ""}${
+                                selectedItemsId === comp.id ? " ring-2 ring-[#4A9EFF]/60 ring-offset-2" : ""}`}>
+                              {comp.blocks.map((block, bk) => {
+                                const lay = itr.layout === "inherit" ? block.layout : itr.layout;
+                                return (
+                                  <div key={bk} data-pub-itemlayout={lay} className={bk === 0 ? "mt-1.5" : "mt-2.5"}>
+                                    {block.showHeading && block.label && <Heading variant={itr.heading}>{block.label}</Heading>}
+                                    <ItemRun items={block.items} layout={lay}
+                                      bullet={BULLET_CHARS[itr.bullet]} emphasis={itr.emphasis} />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                         {/* v195 P1.1: the choice renders HERE, inside its course. */}
                         {comp.choice && <div className="mt-3"><ChoiceCard cg={comp.choice} /></div>}
                       </div>

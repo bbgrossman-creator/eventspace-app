@@ -97,6 +97,20 @@ export interface ComponentTreatment {
   photo?: "none" | "side" | "band";
 }
 
+/** v235 — the ITEM RUN's dress: attaches to the stable identity
+ *  "the items of component X" (individual items are too unstable to
+ *  address — reordering would orphan their dress). §0.2-safe throughout:
+ *  layout "inherit" defers to Design's choice; nothing hides an item. */
+export interface ItemTreatment {
+  bullet?: "dot" | "dash" | "diamond" | "none";
+  heading?: "standard" | "eyebrow" | "understated";
+  emphasis?: "standard" | "strong" | "subtle";
+  layout?: "inherit" | "vertical" | "comma" | "dot";
+}
+
+export const BULLET_CHARS: Record<NonNullable<ItemTreatment["bullet"]>, string> =
+  { dot: "\u00b7", dash: "\u2013", diamond: "\u25c6", none: "" };
+
 /** v229 — the DOCUMENT identity's own dress: everything a section has
  *  (as the publication's defaults) plus document-only leaves. */
 export interface DocumentTreatment extends SectionTreatment {
@@ -130,7 +144,7 @@ export interface ThemeDelta {
    *  is stored.) */
   paper?: { tint?: string; texture?: string };
   margins?: { measure?: number; sectionGap?: number };
-  treatments?: { document?: DocumentTreatment; sections?: Record<string, SectionTreatment>; components?: Record<string, ComponentTreatment> };
+  treatments?: { document?: DocumentTreatment; sections?: Record<string, SectionTreatment>; components?: Record<string, ComponentTreatment>; items?: Record<string, ItemTreatment> };
 }
 
 /** The complete resolved theme — every implemented leaf present. */
@@ -139,7 +153,7 @@ export interface ResolvedTheme {
   colors: { primary: string; accent: string; ink: string };
   paper: { tint: string; texture: string };
   margins: { measure: number; sectionGap: number };
-  treatments: { document: Required<DocumentTreatment>; sections: Record<string, SectionTreatment>; components: Record<string, ComponentTreatment> };
+  treatments: { document: Required<DocumentTreatment>; sections: Record<string, SectionTreatment>; components: Record<string, ComponentTreatment>; items: Record<string, ItemTreatment> };
 }
 
 export type ThemeRung = "system" | "brand" | "theme" | "override";
@@ -159,7 +173,7 @@ export const SYSTEM_DEFAULT_THEME: Required<ThemeDelta> = {
   colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37" },
   paper: { tint: "#FFFFFF", texture: "none" },
   margins: { measure: 760, sectionGap: 40 },
-  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none", photo: "band" }, sections: {}, components: {} },
+  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none", photo: "band" }, sections: {}, components: {}, items: {} },
 };
 
 /** THE LADDER, resolved. One pure walk; per-leaf most-specific-wins; the
@@ -196,6 +210,7 @@ export function resolveTheme(
   const doc: Required<DocumentTreatment> = { ...(SYSTEM_DEFAULT_THEME.treatments!.document as Required<DocumentTreatment>) };
   const secs: Record<string, SectionTreatment> = {};
   const compTr: Record<string, ComponentTreatment> = {};
+  const itemTr: Record<string, ItemTreatment> = {};
   for (const r of rungs) {
     const t = r.d.treatments;
     if (!t) continue;
@@ -208,6 +223,9 @@ export function resolveTheme(
     if (t.components) for (const id of Object.keys(t.components)) {
       compTr[id] = { ...(compTr[id] ?? {}), ...t.components[id] };
     }
+    if (t.items) for (const id of Object.keys(t.items)) {
+      itemTr[id] = { ...(itemTr[id] ?? {}), ...t.items[id] };
+    }
   }
 
   return {
@@ -216,7 +234,7 @@ export function resolveTheme(
       colors: { primary: primary.v as string, accent: accent.v as string, ink: ink.v as string },
       paper: { tint: tint.v as string, texture: texture.v as string },
       margins: { measure: measure.v as number, sectionGap: gap.v as number },
-      treatments: { document: doc, sections: secs, components: compTr },
+      treatments: { document: doc, sections: secs, components: compTr, items: itemTr },
     },
     provenance: {
       fonts: { pairing: fp.rung },
@@ -310,6 +328,12 @@ export function mergeDelta(base: ThemeDelta | null, patch: ThemeDelta): ThemeDel
         nt.components[id] = { ...(nt.components[id] ?? {}), ...patch.treatments.components[id] };
       }
     }
+    if (patch.treatments.items) {
+      nt.items = { ...(bt.items ?? {}) };
+      for (const id of Object.keys(patch.treatments.items)) {
+        nt.items[id] = { ...(nt.items[id] ?? {}), ...patch.treatments.items[id] };
+      }
+    }
     out.treatments = nt;
   }
   return out;
@@ -328,6 +352,32 @@ export const COMPONENT_TREATMENT_DEFAULTS: Required<ComponentTreatment> =
 export function effectiveComponentTreatment(theme: ResolvedTheme, componentId: string): Required<ComponentTreatment> {
   return { ...COMPONENT_TREATMENT_DEFAULTS, ...(theme.treatments.components[componentId] ?? {}) } as Required<ComponentTreatment>;
 }
+
+/** v235 — the item run's dress: defaults preserve today's paper exactly. */
+export const ITEM_TREATMENT_DEFAULTS: Required<ItemTreatment> =
+  { bullet: "dot", heading: "standard", emphasis: "standard", layout: "inherit" };
+export function effectiveItemTreatment(theme: ResolvedTheme, componentId: string): Required<ItemTreatment> {
+  return { ...ITEM_TREATMENT_DEFAULTS, ...(theme.treatments.items[componentId] ?? {}) } as Required<ItemTreatment>;
+}
+
+/** v235 — the item toolbar's registry. Layout "inherit" defers to Design. */
+export const ITEM_TREATMENT_OPTIONS: {
+  key: keyof ItemTreatment; label: string;
+  options: { value: string; label: string }[];
+}[] = [
+  { key: "bullet", label: "Bullet", options: [
+    { value: "dot", label: "Dot" }, { value: "dash", label: "Dash" },
+    { value: "diamond", label: "Diamond" }, { value: "none", label: "None" } ] },
+  { key: "heading", label: "Category", options: [
+    { value: "standard", label: "Standard" }, { value: "eyebrow", label: "Eyebrow" },
+    { value: "understated", label: "Understated" } ] },
+  { key: "emphasis", label: "Emphasis", options: [
+    { value: "standard", label: "Standard" }, { value: "strong", label: "Strong" },
+    { value: "subtle", label: "Subtle" } ] },
+  { key: "layout", label: "Layout", options: [
+    { value: "inherit", label: "As designed" }, { value: "vertical", label: "List" },
+    { value: "comma", label: "Comma" }, { value: "dot", label: "Run" } ] },
+];
 
 /** v234 — the component toolbar's registry. Semantic; nothing hides content. */
 export const COMPONENT_TREATMENT_OPTIONS: {

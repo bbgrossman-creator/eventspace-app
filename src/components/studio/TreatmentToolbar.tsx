@@ -10,13 +10,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import React from "react";
 import {
-  ResolvedTheme, ThemeDelta, SectionTreatment, DocumentTreatment, ComponentTreatment,
+  ResolvedTheme, ThemeDelta, SectionTreatment, DocumentTreatment, ComponentTreatment, ItemTreatment,
   TREATMENT_OPTIONS, DOCUMENT_TITLE_OPTIONS, MEASURE_OPTIONS, DOCUMENT_PHOTO_OPTIONS,
-  COMPONENT_TREATMENT_OPTIONS, effectiveSectionTreatment, effectiveComponentTreatment,
+  COMPONENT_TREATMENT_OPTIONS, ITEM_TREATMENT_OPTIONS,
+  effectiveSectionTreatment, effectiveComponentTreatment, effectiveItemTreatment,
 } from "@/lib/publication";
 
 export default function TreatmentToolbar(props: {
-  selection: { kind: "document" } | { kind: "section"; id: string; name: string } | { kind: "component"; id: string; name: string };
+  selection: { kind: "document" } | { kind: "section"; id: string; name: string } | { kind: "component"; id: string; name: string } | { kind: "item"; id: string; name: string };
   resolved: ResolvedTheme;
   onPatch: (patch: ThemeDelta) => void;
   /** v233 — the identity's photo shelf: opens the Photography room ON this
@@ -31,6 +32,8 @@ export default function TreatmentToolbar(props: {
     ? effectiveSectionTreatment(props.resolved, sel.id) : doc;
   const ceff: Required<ComponentTreatment> | null = sel.kind === "component"
     ? effectiveComponentTreatment(props.resolved, sel.id) : null;
+  const ieff: Required<ItemTreatment> | null = sel.kind === "item"
+    ? effectiveItemTreatment(props.resolved, sel.id) : null;
 
   const secPatch = (t: SectionTreatment): ThemeDelta =>
     sel.kind === "section"
@@ -96,7 +99,17 @@ export default function TreatmentToolbar(props: {
         </Group>
       ))}
 
-      {sel.kind !== "component" && TREATMENT_OPTIONS
+      {sel.kind === "item" && ieff && ITEM_TREATMENT_OPTIONS.map((g) => (
+        <Group key={g.key} label={g.label}>
+          {g.options.map((o) => (
+            <Opt key={o.value} id={`${g.key}:${o.value}`} label={o.label}
+              active={ieff[g.key] === o.value}
+              onClick={() => props.onPatch({ treatments: { items: { [sel.id]: { [g.key]: o.value } as ItemTreatment } } })} />
+          ))}
+        </Group>
+      ))}
+
+      {sel.kind !== "component" && sel.kind !== "item" && TREATMENT_OPTIONS
         .filter((g) => sel.kind === "section" ? true : g.key !== "heading" && g.key !== "background" && g.key !== "photo")
         .map((g) => (
           <Group key={g.key} label={g.label}>
@@ -108,7 +121,7 @@ export default function TreatmentToolbar(props: {
           </Group>
         ))}
 
-      {sel.kind !== "document" && props.onChoosePhoto && (
+      {(sel.kind === "section" || sel.kind === "component") && props.onChoosePhoto && (
         <button data-treat-photo onClick={props.onChoosePhoto}
           className="text-[10.5px] px-1.5 py-0.5 rounded ring-1 ring-slate-200 text-slate-500 hover:bg-slate-50">Choose photo…</button>
       )}
