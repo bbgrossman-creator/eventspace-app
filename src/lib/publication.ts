@@ -79,6 +79,14 @@ export interface SectionTreatment {
   divider?: "rule" | "double" | "dots" | "none";
   heading?: "standard" | "eyebrow" | "centered";
   spacing?: "compact" | "standard" | "airy";
+  /** v229 — a section's wash: none, a soft accent tint, or a ringed panel. */
+  background?: "none" | "tint" | "panel";
+}
+
+/** v229 — the DOCUMENT identity's own dress: everything a section has
+ *  (as the publication's defaults) plus document-only leaves. */
+export interface DocumentTreatment extends SectionTreatment {
+  title?: "standard" | "centered" | "understated";
 }
 
 export interface ThemeDelta {
@@ -90,7 +98,7 @@ export interface ThemeDelta {
    *  is stored.) */
   paper?: { tint?: string; texture?: string };
   margins?: { measure?: number; sectionGap?: number };
-  treatments?: { document?: SectionTreatment; sections?: Record<string, SectionTreatment> };
+  treatments?: { document?: DocumentTreatment; sections?: Record<string, SectionTreatment> };
 }
 
 /** The complete resolved theme — every implemented leaf present. */
@@ -99,7 +107,7 @@ export interface ResolvedTheme {
   colors: { primary: string; accent: string; ink: string };
   paper: { tint: string; texture: string };
   margins: { measure: number; sectionGap: number };
-  treatments: { document: Required<SectionTreatment>; sections: Record<string, SectionTreatment> };
+  treatments: { document: Required<DocumentTreatment>; sections: Record<string, SectionTreatment> };
 }
 
 export type ThemeRung = "system" | "brand" | "theme" | "override";
@@ -119,7 +127,7 @@ export const SYSTEM_DEFAULT_THEME: Required<ThemeDelta> = {
   colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37" },
   paper: { tint: "#FFFFFF", texture: "none" },
   margins: { measure: 760, sectionGap: 40 },
-  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard" }, sections: {} },
+  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard" }, sections: {} },
 };
 
 /** THE LADDER, resolved. One pure walk; per-leaf most-specific-wins; the
@@ -153,12 +161,12 @@ export function resolveTheme(
   // Treatments: document per-leaf through the rungs; section dicts merge
   // rung over rung, per id, per leaf. (Scalar provenance covers the ladder's
   // spirit; per-section provenance lands with the x-ray ink slice.)
-  const doc: Required<SectionTreatment> = { ...(SYSTEM_DEFAULT_THEME.treatments!.document as Required<SectionTreatment>) };
+  const doc: Required<DocumentTreatment> = { ...(SYSTEM_DEFAULT_THEME.treatments!.document as Required<DocumentTreatment>) };
   const secs: Record<string, SectionTreatment> = {};
   for (const r of rungs) {
     const t = r.d.treatments;
     if (!t) continue;
-    if (t.document) for (const k of Object.keys(t.document) as (keyof SectionTreatment)[]) {
+    if (t.document) for (const k of Object.keys(t.document) as (keyof DocumentTreatment)[]) {
       if (t.document[k] !== undefined) (doc as Record<string, unknown>)[k] = t.document[k];
     }
     if (t.sections) for (const id of Object.keys(t.sections)) {
@@ -287,4 +295,18 @@ export const TREATMENT_OPTIONS: {
   { key: "spacing", label: "Spacing", options: [
     { value: "compact", label: "Compact" }, { value: "standard", label: "Standard" },
     { value: "airy", label: "Airy" } ] },
+  { key: "background", label: "Background", options: [
+    { value: "none", label: "None" }, { value: "tint", label: "Tint" },
+    { value: "panel", label: "Panel" } ] },
+];
+
+/** v229 — DOCUMENT-only semantic groups for the document toolbar. */
+export const DOCUMENT_TITLE_OPTIONS: { value: NonNullable<DocumentTreatment["title"]>; label: string }[] = [
+  { value: "standard", label: "Standard" }, { value: "centered", label: "Centered" },
+  { value: "understated", label: "Understated" },
+];
+
+/** Semantic measure — labels for humans, numbers for margins.measure. */
+export const MEASURE_OPTIONS: { value: number; label: string }[] = [
+  { value: 640, label: "Narrow" }, { value: 760, label: "Standard" }, { value: 880, label: "Wide" },
 ];

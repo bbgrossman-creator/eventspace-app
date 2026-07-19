@@ -37,7 +37,7 @@ import SectionPicker from "@/components/studio/SectionPicker";
 import PresentationControls, { PubRoom } from "@/components/studio/PresentationControls";
 import PresentationRooms from "@/components/studio/PresentationRooms";
 import TreatmentToolbar from "@/components/studio/TreatmentToolbar";
-import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta, effectiveSectionTreatment } from "@/lib/publication";
+import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta } from "@/lib/publication";
 import { getPublicationSettings, listPublicationThemes, PublicationTheme } from "@/lib/publicationData";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
@@ -1166,9 +1166,12 @@ export default function StudioPage() {
 
       {lens === "customer" && pubSection && stage && (
         <TreatmentToolbar
-          sectionName={(stage.sections.filter((x) => x.id === pubSection)[0]?.name) ?? "Section"}
-          effective={effectiveSectionTreatment(resolvedPub, pubSection)}
-          onPick={(patch) => patchPub({ treatments: { sections: { [pubSection]: patch } } })}
+          selection={pubSection === "__document__"
+            ? { kind: "document" }
+            : { kind: "section", id: pubSection,
+                name: (stage.sections.filter((x) => x.id === pubSection)[0]?.name) ?? "Section" }}
+          resolved={resolvedPub}
+          onPatch={patchPub}
           onClose={() => setPubSection(null)}
         />
       )}
@@ -1390,7 +1393,11 @@ export default function StudioPage() {
                       onSectionSelect={!locked && session?.perms.includes("bookings.edit")
                         ? (sid) => { setPubRoom(null); setPubSection(sid === pubSection ? null : sid); }
                         : undefined}
-                      selectedSectionId={pubSection} />
+                      onDocumentSelect={!locked && session?.perms.includes("bookings.edit")
+                        ? () => { setPubRoom(null); setPubSection(pubSection === "__document__" ? null : "__document__"); }
+                        : undefined}
+                      selectedSectionId={pubSection}
+                      documentSelected={pubSection === "__document__"} />
                   : <p className="text-center text-[12px] text-slate-400 py-16">Nothing to show on this lens yet.</p>
               )}
               {lens === "production" && (

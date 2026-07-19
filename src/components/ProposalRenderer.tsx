@@ -132,15 +132,19 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
 // callers render exactly the historical dress: every themed value falls back
 // to the constants that were always here. The theme decides how things look
 // — nothing here lets it decide what exists.
-import { ResolvedTheme, effectiveSectionTreatment, SectionTreatment } from "@/lib/publication";
+import { ResolvedTheme, effectiveSectionTreatment, SectionTreatment, DocumentTreatment } from "@/lib/publication";
 
-export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, selectedSectionId }: {
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected }: {
   model: PresentationModel; draftRibbon?: boolean;
   /** v226 THE CANVAS — Studio-only interactivity: the paper is the primary
    *  interaction surface; clicking a section head selects its PRESENTATION
    *  IDENTITY. Preview/share callers omit these and render inert. */
   onSectionSelect?: (sectionId: string) => void;
+  /** v229 — the DOCUMENT is an identity too: clicking the title block
+   *  selects it for its own contextual toolbar. */
+  onDocumentSelect?: () => void;
   selectedSectionId?: string | null;
+  documentSelected?: boolean;
   /** v196: chrome only. The MODEL already decided what exists — an internal
    *  item is absent from a non-xray model, so this flag cannot leak one. It
    *  only labels the page as an authoring surface. */
@@ -150,9 +154,24 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   // Themed dress, historical fallbacks.
   const H = { color: theme?.colors.primary ?? T.navy, fontFamily: theme?.fonts.headingStack } as const;
   const A = theme?.colors.accent ?? T.gold;
+  const docTr: Required<DocumentTreatment> = theme
+    ? theme.treatments.document
+    : { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard" };
   const isDraft = model.status !== "approved" && model.status !== "sent";
   return (
-    <div className="mx-auto max-w-3xl bg-white px-8 py-10 sm:px-12 sm:py-14 relative" style={{ color: T.ink }}>
+    // v229 — the ROOT is themed (repairing a silent v225 miss: the wrap
+    // targeted a class the root never had, so paper tint, body stack, ink,
+    // measure, and --pub-accent never landed; sub-components rode the
+    // fallback gold). Unthemed callers keep the historical dress exactly.
+    <div data-publication
+      className="mx-auto max-w-3xl bg-white px-8 py-10 sm:px-12 sm:py-14 relative"
+      style={theme ? {
+        color: theme.colors.ink,
+        fontFamily: theme.fonts.bodyStack,
+        backgroundColor: theme.paper.tint,
+        maxWidth: theme.margins.measure,
+        ["--pub-accent" as never]: theme.colors.accent,
+      } : { color: T.ink }}>
       {xray && (
         <div className="absolute top-4 left-4 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded"
              style={{ background: T.gold, color: "white" }}>
@@ -165,10 +184,18 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
         </div>
       )}
 
-      <header className="text-center mb-10">
-        <h1 data-pub-title className="font-display font-extrabold tracking-tight text-3xl sm:text-4xl" style={H}>{model.title}</h1>
+      <header data-pub-doc data-pub-titlestyle={docTr.title}
+        onClick={onDocumentSelect ? () => onDocumentSelect() : undefined}
+        title={onDocumentSelect ? "Style this document" : undefined}
+        className={`mb-10 rounded-sm ${docTr.title === "standard" ? "text-center" : docTr.title === "centered" ? "text-center" : "text-left"}${
+          onDocumentSelect ? " cursor-pointer hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-4" : ""}${
+          documentSelected ? " ring-2 ring-[#4A9EFF]/60 ring-offset-4" : ""}`}>
+        <h1 data-pub-title className={`font-display tracking-tight ${
+          docTr.title === "understated" ? "font-semibold text-2xl" : "font-extrabold text-3xl sm:text-4xl"}`} style={H}>{model.title}</h1>
         {model.eventLine && <p className="mt-2 text-sm tracking-wide text-slate-500 uppercase">{model.eventLine}</p>}
-        <div className="mx-auto mt-4 h-[3px] w-12 rounded-full" style={{ background: A }} />
+        {docTr.title !== "understated" && (
+          <div className={`${docTr.title === "standard" || docTr.title === "centered" ? "mx-auto" : ""} mt-4 h-[3px] w-12 rounded-full`} style={{ background: A }} />
+        )}
       </header>
 
       {model.intro && <p className="text-[15px] leading-relaxed text-slate-600 mb-10 whitespace-pre-wrap">{model.intro}</p>}
@@ -180,13 +207,17 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
           // entry). Unthemed callers keep the historical section rendering.
           const tr: Required<SectionTreatment> = theme
             ? effectiveSectionTreatment(theme, section.id)
-            : { divider: "rule", heading: "standard", spacing: "standard" };
+            : { divider: "rule", heading: "standard", spacing: "standard", background: "none" };
           const gap = theme ? theme.margins.sectionGap : 40;
           const mb = tr.spacing === "compact" ? Math.round(gap * 0.6) : tr.spacing === "airy" ? Math.round(gap * 1.5) : gap;
           const selectable = !!onSectionSelect;
           const selected = selectedSectionId === section.id;
           return (
-          <section key={si} data-pub-section={section.id} data-pub-spacing={tr.spacing} style={{ marginBottom: mb }}>
+          <section key={si} data-pub-section={section.id} data-pub-spacing={tr.spacing} data-pub-bg={tr.background}
+            className={tr.background === "tint" ? "rounded-lg px-5 py-4" : tr.background === "panel" ? "rounded-lg px-5 py-4 ring-1 bg-white shadow-sm" : undefined}
+            style={{ marginBottom: mb,
+              ...(tr.background === "tint" ? { background: `${A}14` } : {}),
+              ...(tr.background === "panel" ? { borderColor: T.goldFaint, boxShadow: "0 1px 2px rgba(16,47,86,0.06)" } : {}) }}>
             {si > 0 && tr.divider !== "none" && (
               <div data-pub-divider={tr.divider} aria-hidden className="mb-6 flex justify-center">
                 {tr.divider === "rule" && <span className="block h-px w-full" style={{ background: T.goldSoft }} />}
@@ -202,7 +233,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
             <div
               data-pub-headstyle={tr.heading}
               onClick={selectable ? () => onSectionSelect(section.id) : undefined}
-              className={`${tr.heading === "centered" ? "text-center " : "flex items-baseline justify-between "}pb-1.5 mb-4 border-b${selectable ? " cursor-pointer rounded-sm" : ""}${selected ? " ring-2 ring-[#4A9EFF]/60 ring-offset-2" : ""}`}
+              className={`${tr.heading === "centered" ? "text-center " : "flex items-baseline justify-between "}pb-1.5 mb-4 border-b${selectable ? " cursor-pointer rounded-sm hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-2" : ""}${selected ? " ring-2 ring-[#4A9EFF]/60 ring-offset-2" : ""}`}
               style={{ borderColor: T.goldSoft }}
               title={selectable ? "Style this section" : undefined}>
               {tr.heading === "eyebrow" && (
