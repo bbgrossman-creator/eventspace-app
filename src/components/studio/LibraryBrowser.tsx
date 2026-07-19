@@ -1,55 +1,61 @@
 "use client";
 // ═══════════════════════════════════════════════════════════════════════════
-// THE LIBRARY BROWSER (v196 slice 3)
+// THE LIBRARY BROWSER (v196 slice 3 · rebuilt registry-driven v215)
 //
 // Ctrl+K → the organisation's memory. Browsed on demand, never resident:
 // the Library is GLOBAL and in the LEARNED tense, while everything below the
 // divide is event-scoped and INTENDED. Different scope AND different tense ⇒
-// different physical treatment. That is why it is a line and an overlay rather
-// than a fourth column.
+// different physical treatment. (v213 corrected the physical treatment:
+// docked, expands in place, the Canvas stays visible — UI_GRAMMAR §12.)
 //
-// A BROWSER, NOT A DRAWER. A drawer stores; a browser is how you interact with
-// something too large to store. "Everything the organisation has learned, made
-// instantiable" is the latter.
+// A BROWSER, NOT A DRAWER. A drawer stores; a browser is how you interact
+// with something too large to store.
 //
-// UNDER THE RENDERER CONTRACT: this component NEVER queries. searchLibrary()
-// is the projection; this is the rendering. If it wants a fact the results
-// lack, the projection is wrong.
+// v215 — THE BROWSER KNOWS NO KIND BY NAME (KA §4). The hardcoded
+// KIND_LABEL/KIND_ICON records and the per-kind branches in go() and the
+// drag handler are gone; every rail heading, glyph, pick action, drag
+// payload, and secondary affordance arrives from the kind's REGISTRATION.
+// Adding a knowledge type must not modify the Library — and now it cannot:
+// there is nothing here to modify. (Search the file for a kind string; the
+// absence is the claim.)
 //
-// CLOSES ON DROP / ON PICK — never mid-gesture. The fluid part of Ctrl+K is
-// that it gets out of the way the instant it has served its purpose.
+// UNDER THE RENDERER CONTRACT: this component NEVER queries.
+// searchLibraryRails() is the projection; this is the rendering. If it wants
+// a fact the rails lack, the projection is wrong.
+//
+// CLOSES ON PICK — never mid-gesture. The fluid part of Ctrl+K is that it
+// gets out of the way the instant it has served its purpose.
 // ═══════════════════════════════════════════════════════════════════════════
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { searchLibrary, LibraryResults, LibraryResult, resultCount } from "@/lib/library";
+import {
+  searchLibraryRails, railCount, libraryKind, IDLE_RAILS,
+  LibraryRails, LibraryEntry,
+} from "@/lib/libraryRegistry";
+// The HOST boots the kind registrations (bootLibraryKinds beside bootMoves
+// in the page) — the browser consumes whatever is registered and registers
+// nothing, which is also what lets fixture harnesses mount it over fixture
+// kinds alone.
 
 const T = { ink: "#1F2A37", navy: "#102F56", gold: "#C9A34E", rule: "#E7EDF5" } as const;
-
-const KIND_LABEL: Record<string, string> = {
-  component: "Components", event: "Past events", blueprint: "Blueprints",
-};
-const KIND_ICON: Record<string, string> = { component: "◆", event: "◈", blueprint: "▤" };
 
 export interface LibraryBrowserProps {
   open: boolean;
   onClose: () => void;
   /** v213 (Studio shell): render docked as the Knowledge strip — expands in
-   *  place beneath the top bar, THE CANVAS STAYS VISIBLE (UI_GRAMMAR §12's
-   *  own words, now honored better than the covering overlay did). The v196
-   *  header's overlay argument stands corrected by the shell slice: the
-   *  Library remains global and learned-tense; only its physical treatment
-   *  changed, and expansion state is a render decision, never persisted. */
+   *  place beneath the top bar, THE CANVAS STAYS VISIBLE (UI_GRAMMAR §12).
+   *  Expansion state is a render decision, never persisted. */
   docked?: boolean;
   /** Instantiate this identity into the current event. Absent = no event in
    *  context (the Library is browsable from anywhere), so the action hides. */
   onInstantiate?: (identityId: string, name: string) => void;
-  /** v207: open the definition (curation surface) for a component result. */
+  /** v207: open the definition (curation surface) for a result whose
+   *  registration offers that secondary affordance. */
   onViewDefinition?: (definitionId: string, name: string) => void;
 }
 
 export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDefinition, docked }: LibraryBrowserProps) {
   const [q, setQ] = useState("");
-  const [res, setRes] = useState<LibraryResults>({ components: [], events: [], blueprints: [], idle: true });
+  const [res, setRes] = useState<LibraryRails>(IDLE_RAILS);
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,22 +65,23 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
     if (!open) return;
     const h = setTimeout(async () => {
       setBusy(true);
-      try { setRes(await searchLibrary(q)); } finally { setBusy(false); }
+      try { setRes(await searchLibraryRails(q)); } finally { setBusy(false); }
       setCursor(0);
     }, 160);
     return () => clearTimeout(h);
   }, [q, open]);
 
   useEffect(() => {
-    if (open) { setQ(""); setRes({ components: [], events: [], blueprints: [], idle: true }); setCursor(0);
+    if (open) { setQ(""); setRes(IDLE_RAILS); setCursor(0);
                 setTimeout(() => inputRef.current?.focus(), 10); }
   }, [open]);
 
   if (!open) return null;
 
-  // Flatten for keyboard navigation — the visual grouping is presentation; the
-  // keyboard walks one list, because that is what fingers expect.
-  const flat: LibraryResult[] = [...res.components, ...res.events, ...res.blueprints];
+  // Flatten for keyboard navigation — the visual grouping is presentation;
+  // the keyboard walks one list, because that is what fingers expect.
+  const flat: LibraryEntry[] = [];
+  for (const rail of res.rails) for (const e of rail.entries) flat.push(e);
   const active = flat[cursor];
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -84,64 +91,32 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
     if (e.key === "Enter" && active) { e.preventDefault(); go(active); }
   };
 
-  function go(r: LibraryResult) {
-    if (r.kind === "component" && r.identityId && onInstantiate) {
-      onInstantiate(r.identityId, r.title);
+  /** ↵ / click. The MEANING comes from the registration; the browser only
+   *  routes it. Instantiate falls back to navigate when no host handler
+   *  exists, because the Library is browsable from anywhere. */
+  function go(entry: LibraryEntry) {
+    const reg = libraryKind(entry.kind);
+    if (!reg) return;
+    const action = reg.pick(entry);
+    if (action.type === "instantiate" && onInstantiate) {
+      onInstantiate(action.instantiateId, action.name);
       onClose();                       // closes ON PICK — the gesture is complete
       return;
     }
-    if (r.href) { window.location.href = r.href; onClose(); }
+    const href = action.type === "navigate" ? action.href
+      : action.type === "instantiate" ? entry.pointer.href : null;
+    if (href) { window.location.href = href; onClose(); }
   }
 
-  const Group = ({ kind, items, from }: { kind: string; items: LibraryResult[]; from: number }) => {
-    if (!items.length) return null;
-    return (
-      <div className="mb-1">
-        <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          {KIND_LABEL[kind]}
-        </div>
-        {items.map((r, i) => {
-          const idx = from + i;
-          const on = idx === cursor;
-          return (
-            <button
-              key={`${r.kind}-${r.id}`}
-              onMouseEnter={() => setCursor(idx)}
-              onClick={() => go(r)}
-              // Drag is the fast path; ↵ is the click path. Both instantiate.
-              draggable={r.kind === "component" && !!r.identityId}
-              onDragStart={(e) => {
-                if (r.kind !== "component" || !r.identityId) return;
-                e.dataTransfer.setData("text/eventcore-identity",
-                  JSON.stringify({ identityId: r.identityId, name: r.title }));
-                e.dataTransfer.effectAllowed = "copy";
-              }}
-              className={`w-full flex items-baseline gap-2 px-3 py-2 text-left ${on ? "bg-[#F4F9FF]" : ""}`}
-            >
-              <span style={{ color: T.gold }}>{KIND_ICON[r.kind]}</span>
-              <span className="text-[13.5px] font-medium" style={{ color: T.ink }}>{r.title}</span>
-              {/* The WHY — a hit is only useful if you can see why it's here. */}
-              {r.subtitle && <span className="text-[12px] text-slate-400 truncate">{r.subtitle}</span>}
-              {r.kind === "component" && r.identityId && onViewDefinition && (
-                <span data-view-definition={r.identityId}
-                  className="ml-auto text-[10px] text-slate-300 hover:text-slate-500 cursor-pointer shrink-0"
-                  onClick={(e) => { e.stopPropagation(); onViewDefinition(r.identityId!, r.title); }}
-                  title="View definition — the organizational knowledge behind this component">
-                  definition
-                </span>
-              )}
-              <span className="flex-1" />
-              {on && (
-                <span className="text-[10px] text-slate-400">
-                  {r.kind === "component" && onInstantiate ? "↵ add to event" : "↵ open"}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    );
-  };
+  /** The hint the active row shows — what ↵ will DO, stated, not implied. */
+  function hintFor(entry: LibraryEntry): string | null {
+    const reg = libraryKind(entry.kind);
+    if (!reg) return null;
+    const action = reg.pick(entry);
+    if (action.type === "instantiate" && onInstantiate) return "↵ add to event";
+    if (action.type === "navigate" || (action.type === "instantiate" && entry.pointer.href)) return "↵ open";
+    return null;
+  }
 
   const body = (
       <div
@@ -159,7 +134,7 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Search the Library — components, past events, blueprints…"
+            placeholder="Search the Library — everything this business knows…"
             className="flex-1 text-[14px] outline-none placeholder:text-slate-300"
             style={{ color: T.ink }}
           />
@@ -170,19 +145,80 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
           {res.idle && (
             // "Type to search" and "no results" are DIFFERENT FACTS. Collapsing
             // them into one empty state tells the user the Library is empty.
-            <p className="px-3 py-6 text-[13px] text-center text-slate-400">
+            <p data-library-idle className="px-3 py-6 text-[13px] text-center text-slate-400">
               Search everything this business has done before.
             </p>
           )}
           {!res.idle && busy && <p className="px-3 py-6 text-[13px] text-center text-slate-400">Searching…</p>}
-          {!res.idle && !busy && resultCount(res) === 0 && (
-            <p className="px-3 py-6 text-[13px] text-center text-slate-400">
+          {!res.idle && !busy && railCount(res) === 0 && (
+            <p data-library-empty className="px-3 py-6 text-[13px] text-center text-slate-400">
               Nothing found for “{q}”.
             </p>
           )}
-          <Group kind="component" items={res.components} from={0} />
-          <Group kind="event" items={res.events} from={res.components.length} />
-          <Group kind="blueprint" items={res.blueprints} from={res.components.length + res.events.length} />
+          {(() => {
+            // Rails render in the order the projection returned them — best
+            // hit first (KA §5); the browser adds nothing to the ranking.
+            let from = 0;
+            return res.rails.map((rail) => {
+              const start = from;
+              from += rail.entries.length;
+              return (
+                <div className="mb-1" key={rail.kind} data-library-rail={rail.kind}>
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {rail.label}
+                  </div>
+                  {rail.entries.map((entry, i) => {
+                    const idx = start + i;
+                    const on = idx === cursor;
+                    const reg = libraryKind(entry.kind);
+                    const dragPayload = reg?.drag ? reg.drag(entry) : null;
+                    const secondary = reg?.secondary ? reg.secondary(entry) : null;
+                    const hint = hintFor(entry);
+                    return (
+                      <button
+                        key={`${entry.kind}-${entry.id}`}
+                        onMouseEnter={() => setCursor(idx)}
+                        onClick={() => go(entry)}
+                        // Drag is the fast path; ↵ is the click path. Both are
+                        // the registration's verb. Every drag has a click path.
+                        draggable={!!dragPayload}
+                        onDragStart={(e) => {
+                          if (!dragPayload) return;
+                          e.dataTransfer.setData(dragPayload.mime, dragPayload.payload);
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        className={`w-full flex items-baseline gap-2 px-3 py-2 text-left ${on ? "bg-[#F4F9FF]" : ""}`}
+                      >
+                        <span style={{ color: T.gold }}>{rail.icon}</span>
+                        <span className="text-[13.5px] font-medium" style={{ color: T.ink }}>{entry.title}</span>
+                        {/* The WHY — a hit is only useful if you can see why it's here. */}
+                        {entry.subtitle && <span className="text-[12px] text-slate-400 truncate">{entry.subtitle}</span>}
+                        {/* Layer badges: exactly the layers the object actually
+                            carries (KA §4) — today that is none, and none is
+                            what renders. Never a simulation. */}
+                        {entry.layer_badges.map((b) => (
+                          <span key={b} data-layer-badge={b}
+                            className="text-[9px] px-1 rounded bg-[#F6F8FB] text-slate-400 border border-slate-200">{b}</span>
+                        ))}
+                        {secondary && onViewDefinition && (
+                          <span data-view-definition={secondary.id}
+                            className="ml-auto text-[10px] text-slate-300 hover:text-slate-500 cursor-pointer shrink-0"
+                            onClick={(e) => { e.stopPropagation(); onViewDefinition(secondary.id, secondary.title); }}
+                            title="View definition — the organizational knowledge behind this component">
+                            {secondary.label}
+                          </span>
+                        )}
+                        <span className="flex-1" />
+                        {on && hint && (
+                          <span className="text-[10px] text-slate-400">{hint}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            });
+          })()}
         </div>
 
         <div className="px-3 py-1.5 border-t text-[10px] text-slate-400 flex gap-3" style={{ borderColor: T.rule }}>

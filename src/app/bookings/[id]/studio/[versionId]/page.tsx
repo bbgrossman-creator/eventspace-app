@@ -28,6 +28,7 @@ import StudioShell from "@/components/studio/StudioShell";
 import LibraryBrowser from "@/components/studio/LibraryBrowser";
 import ConfigureFacet from "@/components/studio/ConfigureFacet";
 import { bootMoves } from "@/lib/moves/boot";
+import { bootLibraryKinds } from "@/lib/libraryKinds";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -119,6 +120,7 @@ const LAYOUT_OPTS: { v: string; label: string }[] = [
 ];
 
 bootMoves();
+bootLibraryKinds();   // v215: the host registers the Library kinds; the browser only consumes
 
 export default function StudioPage() {
   const params = useParams<{ id: string; versionId: string }>();
