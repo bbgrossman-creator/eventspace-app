@@ -56,10 +56,17 @@ export interface LibraryBrowserProps {
    *  browser falls back to the entry's pointer. Every drag has a click path:
    *  this is the click path for the blueprint card's drag. */
   onLandDesign?: (id: string, name: string) => void;
+  /** v217 (STUDIO_COMPOSITION §7): the SUMMON ROW. The host's Ask line owns
+   *  the query; the browser renders its rails beneath it with no input and
+   *  no footer of its own. Everything else — registrations, pick, drag,
+   *  secondary — is identical: one logic path, two dressings. */
+  externalQuery?: string;
+  chromeless?: boolean;
 }
 
-export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDefinition, onLandDesign, docked }: LibraryBrowserProps) {
-  const [q, setQ] = useState("");
+export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDefinition, onLandDesign, docked, externalQuery, chromeless }: LibraryBrowserProps) {
+  const [internalQ, setQ] = useState("");
+  const q = externalQuery !== undefined ? externalQuery : internalQ;
   const [res, setRes] = useState<LibraryRails>(IDLE_RAILS);
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState(0);
@@ -139,6 +146,7 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
         style={docked ? undefined : { borderColor: T.rule }}
         onClick={(e) => e.stopPropagation()}
       >
+        {!chromeless && (
         <div className="flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: T.rule }}>
           <span aria-hidden style={{ color: T.gold }}>🔍</span>
           <input
@@ -152,6 +160,7 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
           />
           <kbd className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-400">Esc</kbd>
         </div>
+        )}
 
         <div className="max-h-[50vh] overflow-y-auto py-1">
           {res.idle && (
@@ -233,9 +242,11 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
           })()}
         </div>
 
+        {!chromeless && (
         <div className="px-3 py-1.5 border-t text-[10px] text-slate-400 flex gap-3" style={{ borderColor: T.rule }}>
           <span>↑↓ navigate</span><span>↵ select</span><span>esc close</span>
         </div>
+        )}
       </div>
   );
   if (docked) return <div className="border-b" style={{ borderColor: T.rule }}>{body}</div>;

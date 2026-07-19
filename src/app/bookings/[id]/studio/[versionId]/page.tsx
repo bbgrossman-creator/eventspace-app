@@ -17,14 +17,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 // The move grammar boots once per app load (idempotent).
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 // (grammar boot lives below imports; see bootMoves())
 import { Booking, fmtDate } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { resolveTaxForTenant, TaxResolution } from "@/lib/tax";
-import StudioShell from "@/components/studio/StudioShell";
+import StudioLine from "@/components/studio/StudioLine";
+import SecondSheet from "@/components/studio/SecondSheet";
+import { Meter, Drawer, GhostOutline } from "@/components/studio/StageFurniture";
 import LibraryBrowser from "@/components/studio/LibraryBrowser";
 import ConfigureFacet from "@/components/studio/ConfigureFacet";
 import { bootMoves } from "@/lib/moves/boot";
@@ -50,7 +51,6 @@ import { sourceForIdentity } from "@/lib/library";
 import { NodePayload, DropTarget, operationFor, reorder, isNoOp, splitCatKey } from "@/lib/dragGrammar";
 import { visibleLenses, resolveLens, LensKey } from "@/lib/lenses";
 import ProductionSheet from "@/components/studio/renderers/ProductionSheet";
-import StudioRightRegion from "@/components/studio/StudioRightRegion";
 import { loadProductionModel } from "@/lib/productionLensSupabase";
 import { ProductionModel } from "@/lib/productionLens";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
@@ -161,7 +161,12 @@ export default function StudioPage() {
   // independent track.
   const [session, setSession] = useState<Session | null>(null);
   const [lens, setLens] = useState<LensKey | null>(null);
-  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);   // the Shade (⌘K)
+  // v217 (STUDIO_COMPOSITION): all three are RENDER STATE — the Law's
+  // summons die with the page, never persisted.
+  const [ask, setAsk] = useState("");                       // the Summon row's query
+  const [ghostOpen, setGhostOpen] = useState(false);        // the outline ghost
+  const [split, setSplit] = useState(false);                // the Second Sheet
   // v196 THE STAGE. The customer projection, rendered INLINE — not a route in
   // another tab. This is the convergence the design doc committed to: the
   // preview was the X-ray-off end of a spectrum and the build view the X-ray-on
@@ -472,19 +477,21 @@ export default function StudioPage() {
   // the same graph (xray off: the artifact, not the maker's chrome); nothing
   // synchronizes it because there is nothing to synchronize.
   const [liveStage, setLiveStage] = useState<Awaited<ReturnType<typeof buildPresentationModel>> | null>(null);
-  // v214: the Live Lens's CHOICE, mirrored from StudioRightRegion (one event
+  // v214→v217: the Second Sheet's CHOICE, mirrored from SecondSheet (one event
   // source — the region notifies on mount and on change, so this cannot
   // drift). Render state here exactly as it is there: never persisted.
   const [liveLensKey, setLiveLensKey] = useState<LensKey>("customer");
   useEffect(() => {
-    if (!versionId || lens !== "design" || liveLensKey !== "customer") { setLiveStage(null); return; }
+    // v217: the customer projection serves the SECOND SHEET (summoned), not
+    // a resident panel.
+    if (!versionId || !split || liveLensKey !== "customer") { setLiveStage(null); return; }
     let dead = false;
     buildPresentationModel(versionId, { xray: false })
       .then((m) => { if (!dead) setLiveStage(m); })
       .catch(() => { if (!dead) setLiveStage(null); });
     return () => { dead = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [versionId, lens, liveLensKey, items, comps, guests, adjs]);
+  }, [versionId, split, liveLensKey, items, comps, guests, adjs]);
 
   // v212 (SPEC-003): the Production sheet's model — projected fresh whenever
   // the lens opens or the version's data changes; a disposable projection,
@@ -513,14 +520,14 @@ export default function StudioPage() {
     // right region while designing). One state, because it is one truth;
     // nothing synchronizes the two mounts because there is nothing to
     // synchronize.
-    const wanted = lens === "production" || (lens === "design" && liveLensKey === "production");
+    const wanted = lens === "production" || (split && liveLensKey === "production");
     if (!wanted) { setProdModel(null); return; }
     loadProductionModel(bookingId, versionId, locked)
       .then((m) => { if (live) setProdModel(m); })
       .catch(() => { if (live) setProdModel(null); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lens, liveLensKey, versionId, comps.length, items.length, cfgState]);
+  }, [lens, split, liveLensKey, versionId, comps.length, items.length, cfgState]);
 
   const inspected = useMemo<InspectorSelection | null>(() => {
     if (!selectedId) return null;
@@ -946,38 +953,85 @@ export default function StudioPage() {
            (event-scoped). The existing header below is untouched — it already
            carries title/version/contact/date, and a second event strip would
            be one truth rendered twice. ── */}
-      {/* ── v213 KNOWLEDGE — across the top. The Library, docked: expands in
-           place, the Canvas stays visible (UI_GRAMMAR §12). Collapsed at rest;
-           expansion is a render decision and dies with the page — never
-           persisted (ENGINEERING_PRINCIPLES). Same browser, same projection,
-           new physical treatment; ownership of the region is this block's. ── */}
-      <div className="shrink-0">
-        <StudioShell
-          session={session}
-          lenses={lenses}
-          active={lens}
-          onSelect={setLens}
-          xray={xray}
-          onXray={setXray}
-          debtCount={totals.unconfirmed + totals.unpriced}
-          obligations={obligations}
-          onOpenLibrary={() => setLibraryOpen((o) => !o)}
-        />
-      </div>
-      {libraryOpen && (
-        <div className="shrink-0 max-h-[42vh] overflow-y-auto shadow-sm" data-knowledge-region>
+      {/* ── v217 THE LINE (STUDIO_COMPOSITION §2) — the one bar. The v213
+           docked strip died here: knowledge is summoned (the row while you
+           type, the Shade on ⌘K), never resident. ── */}
+      <StudioLine
+        session={session}
+        backHref={`/bookings/${b.id}`}
+        title={proposal.title}
+        contactLine={[b.contact_name, b.event_type, b.event_date ? fmtDate(b.event_date) : null, `#${b.invoice_num}`].filter(Boolean).join(" · ")}
+        versions={versions.map((v) => ({ id: v.id, label: `v${v.version}` }))}
+        versionId={version.id}
+        onVersion={(id) => { window.location.href = `/bookings/${b.id}/studio/${id}`; }}
+        flow={flow ? { label: flow.label, color: flow.color } : null}
+        locked={locked}
+        ask={ask}
+        onAsk={setAsk}
+        onOpenShade={() => { setAsk(""); setLibraryOpen(true); }}
+        lenses={lenses}
+        active={lens}
+        onSelect={(k) => { setTab("build"); setLens(k); }}
+        obligations={obligations}
+        xray={xray}
+        onXray={setXray}
+        split={split}
+        onSplit={setSplit}
+        desk={[
+          { key: "blueprint", label: "📐 Save as Blueprint", disabled: busy || comps.length === 0,
+            onPick: async () => {
+              const name = prompt('Blueprint name — e.g. "Elegant Wedding", "Backyard BBQ"',
+                b.event_type ? `${b.event_type} — ${proposal.title}` : proposal.title);
+              if (!name?.trim()) return;
+              const r = await promoteToBlueprint(b, version, proposal.title, name, b.event_type ?? null);
+              if (!r.ok) setErr(r.detail ?? ""); else setToast(`📐 "${name.trim()}" saved as a blueprint`);
+            } },
+          ...(!locked && versions.length > 0 ? [{ key: "newversion", label: "＋ New Version", disabled: busy,
+            onPick: async () => {
+              const latest = versions[versions.length - 1];
+              setBusy(true);
+              const r = await createVersion(b, proposal, latest);
+              setBusy(false);
+              if (r.ok && r.id) window.location.href = `/bookings/${b.id}/studio/${r.id}`;
+            } }] : []),
+          { key: "compare", label: "⇄ Compare versions", onPick: () => setTab("compare") },
+          { key: "notes", label: "🗒 Notes", onPick: () => setTab("notes") },
+          { key: "files", label: "📎 Files", onPick: () => setTab("files") },
+        ]}
+      />
+      {/* ── the Summon row: the registry's rails inline beneath the Line while
+           you type, the Paper visible beneath — UI_GRAMMAR §12's Ctrl+K
+           citizen, honored literally. The full Shade is ⌘K. ── */}
+      {ask.trim().length > 0 && !libraryOpen && (
+        <div data-summon-row className="shrink-0 max-h-[34vh] overflow-y-auto shadow-sm border-b border-[#E7EDF5]">
           <LibraryBrowser
             docked
-            open={libraryOpen}
-            onClose={() => setLibraryOpen(false)}
+            chromeless
+            externalQuery={ask}
+            open={true}
+            onClose={() => setAsk("")}
             onViewDefinition={(definitionId, name) => void openDefinition(definitionId, name)}
-            onLandDesign={(id, name) => void openLanding(id, name)}
+            onLandDesign={(id, name) => { setAsk(""); void openLanding(id, name); }}
             onInstantiate={(identityId, name) => {
+              setAsk("");
               if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
               setAskChapterFor({ identityId, name });   // ask; never guess
             }}
           />
         </div>
+      )}
+      {libraryOpen && (
+        <LibraryBrowser
+          open={libraryOpen}
+          onClose={() => setLibraryOpen(false)}
+          onViewDefinition={(definitionId, name) => void openDefinition(definitionId, name)}
+          onLandDesign={(id, name) => { setLibraryOpen(false); void openLanding(id, name); }}
+          onInstantiate={(identityId, name) => {
+            setLibraryOpen(false);
+            if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
+            setAskChapterFor({ identityId, name });
+          }}
+        />
       )}
 
       {landing && (
@@ -1049,469 +1103,184 @@ export default function StudioPage() {
         </div>
       )}
 
-      {/* ── Header ── */}
-      <div className="shrink-0 bg-white border-b border-[#E7EDF5] px-5 py-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <Link href={`/bookings/${b.id}`} className="text-slate-400 hover:text-slate-600 text-sm">←</Link>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-display font-bold text-[17px] leading-tight truncate">{proposal.title}</h1>
-              <select className="field !py-0.5 !px-1.5 !text-xs" value={version.id}
-                onChange={(e) => { window.location.href = `/bookings/${b.id}/studio/${e.target.value}`; }}>
-                {versions.map((v) => <option key={v.id} value={v.id}>v{v.version}</option>)}
-              </select>
-              <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ backgroundColor: flow?.color }}>{flow?.label}</span>
-              {locked && <span className="text-[10px] font-semibold text-[#166534]">🔒 read-only</span>}
-            </div>
-            <div className="text-[11px] text-slate-400">
-              {b.contact_name}{b.event_type ? ` · ${b.event_type}` : ""}{b.event_date ? ` · ${fmtDate(b.event_date)}` : ""} · #{b.invoice_num}
-            </div>
-          </div>
-          <div className="ml-auto flex items-center gap-1 rounded-lg ring-1 ring-[#E7EDF5] bg-[#F6F8FB] p-0.5">
-            {(["build", "compare", "notes", "files"] as const).map((t) => (
-              <button key={t}
-                className={`px-3 py-1 rounded-md text-[12px] font-bold capitalize transition-colors ${tab === t ? "bg-white text-[#102F56] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
-                onClick={() => setTab(t)}>{t}</button>
-            ))}
-          </div>
-          {comps.length > 0 && (
-            <button className="text-xs font-semibold text-slate-500 hover:text-[#102F56] ring-1 ring-[#E7EDF5] rounded-lg px-2.5 py-1.5 transition-colors" disabled={busy}
-              title="Promote this version to a reusable blueprint"
-              onClick={async () => {
-                const name = prompt('Blueprint name — e.g. "Elegant Wedding", "Backyard BBQ"',
-                  b.event_type ? `${b.event_type} — ${proposal.title}` : proposal.title);
-                if (!name?.trim()) return;
-                const r = await promoteToBlueprint(b, version, proposal.title, name, b.event_type ?? null);
-                if (!r.ok) setErr(r.detail ?? ""); else setToast(`📐 "${name.trim()}" saved as a blueprint`);
-              }}>📐 Save as Blueprint</button>
-          )}
-          {/* v214: the header's 👁 Preview link is retired in the Live Lens's
-              favor — the customer view is continuously beside the Canvas now
-              (the mockup's "View as Proposal"), so a link that opens a second
-              tab to see the same projection was one truth reachable twice.
-              The /preview ROUTE survives: it is the shareable artifact, and
-              the share flow still links it. */}
-          {!locked && versions.length > 0 && (
-            <button className="btn-primary !py-1.5 !px-3 text-xs" disabled={busy}
-              onClick={async () => {
-                const latest = versions[versions.length - 1];
-                setBusy(true);
-                const r = await createVersion(b, proposal, latest);
-                setBusy(false);
-                if (r.ok && r.id) window.location.href = `/bookings/${b.id}/studio/${r.id}`;
-              }}>＋ New Version</button>
-          )}
+      {/* ── v217: the old two-row header died into the Line. When a Desk
+           surface (compare/notes/files) is open, one slim bar offers the way
+           back to the Paper. ── */}
+      {tab !== "build" && (
+        <div className="shrink-0 bg-white border-b border-[#E7EDF5] px-4 py-1.5 flex items-center gap-2">
+          <button data-back-to-paper onClick={() => setTab("build")}
+            className="text-[12px] font-semibold text-slate-500 hover:text-[#102F56]">‹ Back to the paper</button>
+          <span className="text-[11px] text-slate-400 capitalize">{tab}</span>
         </div>
-      </div>
-
+      )}
       {toast && <div className="shrink-0 bg-[#F0FDF4] border-b border-[#BBF7D0] text-[#166534] text-xs font-semibold px-5 py-1.5">{toast}</div>}
       {err && <div className="shrink-0 bg-red-50 border-b border-red-200 text-red-700 text-xs px-5 py-1.5">⚠️ {err} <button className="underline" onClick={() => setErr("")}>dismiss</button></div>}
 
       {/* ── Body ── */}
+      {/* ══ v217 THE STAGE (STUDIO_COMPOSITION §1/§3) — one artifact,
+           centered, dominant. Every lens turns the WHOLE Paper; the Second
+           Sheet is two whole papers by request; the Inspector is a drawer
+           that lives as long as the selection; the Outline is margin ghosts.
+           The grid of three columns died here. ══ */}
       {tab === "build" && (
-        <div className="flex-1 min-h-0 grid grid-cols-[280px_1fr_300px] gap-0">
-          {/* LEFT — the Outline. A lens-owned projection (banked correction:
-               a Layout lens's outline is rooms ▸ zones ▸ stations). It
-               NAVIGATES; it never drives. Its own scroll. */}
-          <div className="border-r border-[#E7EDF5] bg-white min-h-0 overflow-y-auto">
-            <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 sticky top-0 bg-white border-b border-[#EEF2F7]">
-              Outline
-            </div>
-            {/* Each lens's outline projects from THAT LENS'S model — never
-                from another's. Design's rail carries real database ids so a
-                click addresses the same object the Stage rendered; Customer's
-                carries its own. Building one from the other was the bug: two
-                projections of one truth that disagreed about identity. */}
-            {lens === "design" && designChapters.length > 0 && (
-              <DesignOutline
-                nodes={outlineFromDesignChapters(designChapters, true)}
-                selectedId={selectedId} onSelect={setSelectedId}
-                focusedId={focusedId} onFocus={setFocusedId} xray={true}
-              />
-            )}
-            {lens === "customer" && stage && (
-              <DesignOutline
-                nodes={outlineFromModel(stage)}
-                selectedId={selectedId} onSelect={setSelectedId}
-                focusedId={focusedId} onFocus={setFocusedId} xray={xray}
-              />
-            )}
-            {((lens === "design" && !designChapters.length) || (lens === "customer" && !stage)) && (
-              <p className="px-3 py-6 text-[12px] text-center text-slate-400">Nothing composed yet.</p>
-            )}
-          </div>
-
-          {/* CENTER — THE STAGE. One Stage; the active lens decides the
-               rendering (§III.4: a lens may change the rendering, never the
-               scope — both render the WHOLE Design). Its own vertical scroll,
-               which is the bug this rebuild exists to fix: the renderer used
-               to sit ABOVE 700 lines of component forms, so the page scrolled
-               and the Stage never did. */}
-          <div className="min-h-0 overflow-y-auto bg-white"
-            onDragOver={(e) => {
-              // v216: legality is DECLARED — the accepted mimes come from the
-              // kind registrations (canvasDragMimes), plus the non-Library
-              // component-copy mime the SourceEventPane emits. No list of
-              // Library kinds lives here.
-              const accepted = canvasDragMimes().concat(["text/eventcore-component"]);
-              for (const m of accepted) {
-                if (e.dataTransfer.types.includes(m)) { e.preventDefault(); setDropHot(true); return; }
-              }
-            }}
-            onDragLeave={() => setDropHot(false)}
-            onDrop={(e) => {
-              setDropHot(false);
-              // A whole design: the drop is the REQUEST — it opens the
-              // landing flow (direct only onto an empty Canvas), never a
-              // silent merge.
-              const bpRaw = e.dataTransfer.getData("text/eventcore-blueprint");
-              if (bpRaw) {
-                e.preventDefault();
-                try { const d = JSON.parse(bpRaw); void openLanding(d.blueprintId, d.name); } catch {}
-                return;
-              }
-              const ident = e.dataTransfer.getData("text/eventcore-identity");
-              if (ident) {
-                e.preventDefault();
-                try { const d = JSON.parse(ident); instantiate(d.identityId, d.name, dropChapter); } catch {}
-                return;
-              }
-              const raw = e.dataTransfer.getData("text/eventcore-component");
-              if (!raw) return;
-              e.preventDefault();
-              try { const d = JSON.parse(raw); addFromSource([d.id], d.label); } catch {}
-            }}
-            style={dropHot ? { outline: "2px dashed #C9A34E", outlineOffset: -4 } : undefined}
-          >
-            {lens === "design" && (
-              <DesignStage
-                chapters={designChapters}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                focusedId={focusedId}
-                xray={true}
-                mayEdit={!locked && !!session?.perms.includes("bookings.edit")}
-                onPatchComponent={(id, patch) => patchComp(id, patch as Partial<CompRow>)}
-                onPatchItem={(id, patch) => patchItem(id, patch as Partial<PricedItem>)}
-                onAddComponent={(chapterId) => addComponentIn(chapterId === "__none__" ? null : chapterId)}
-                onAddItem={(compId, categoryKey) => void addItem(compId, categoryKey)}
-                money={money}
-                onDrop={applyDrop}
-              />
-            )}
-            {lens === "customer" && (
-              <div className="bg-[#EEF2F7] p-4 min-h-full">
-                {stage
-                  ? <div className="shadow-lg rounded-lg overflow-hidden"><ProposalRenderer model={stage} xray={xray} draftRibbon /></div>
-                  : <p className="text-center text-[12px] text-slate-400 py-8">Nothing to show on this lens yet.</p>}
-              </div>
-            )}
-            {lens === "production" && (
-              prodModel
-                ? <ProductionSheet model={prodModel} />
-                : <p className="text-center text-[12px] text-slate-400 py-16">Loading production…</p>
-            )}
-            {lens !== "design" && lens !== "customer" && lens !== "production" && (
-              <p className="text-center text-[12px] text-slate-400 py-16">
-                This lens has no renderer yet.
-              </p>
-            )}
-          </div>
-
-          {/* RIGHT — THE INSPECTOR. Replaces the Live Quote panel for the
-               lenses that have a Stage: that panel showed THE VERSION'S MONEY
-               where THE SELECTION'S TRUTH belongs, which left the field rule
-               enforced from one side only. The old panel survives for lenses
-               with no Stage yet. */}
-          {lens === "design" ? (
-            /* v214 — the region is a COMPONENT now (StudioRightRegion), so
-               its geography is provable in a harness rather than asserted by
-               parse + tsc (the v213 debt, paid). The page keeps what is
-               legitimately the page's: composing the Inspector (its
-               callbacks are Supabase-coupled), computing the switcher's
-               offer (visibleLenses ∩ the renderer table above), and
-               rendering each projection over its model. The region keeps the
-               layout and the choice. */
-            <StudioRightRegion
-              inspector={inspected ? (
-                <Inspector
-                  selection={inspected}
-                  lens={lens}
-                  canEdit={!locked && !!session?.perms.includes("bookings.edit")}
-                  canSeeCost={!!session?.perms.includes("bookings.edit")}
-                  money={money}
-                  onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
-                  configureFacet={cfgState && inspected?.kind === "component" ? (
-                    <ConfigureFacet
-                      state={cfgState}
-                      onState={setCfgState}
-                      persist={supabasePersistAdapter}
-                      itemCount={items.filter((i) => i.component_id === inspected.id).length}
-                      canEdit={!locked && !!session?.perms.includes("bookings.edit")}
-                      onPromote={currentCan()("knowledge.curate") ? () => {
-                        const c = comps.find((x) => x.id === inspected.id);
-                        if (c?.definition_id) void openPromotion(c.definition_id, c.title);
-                      } : undefined}
-                      backRefs={backRefs}
-                      onOpenCanvas={() => { /* the canvas is beside us */ }}
-                    />
-                  ) : null}
-                  onLoadMemory={(id) => {
-                    const it = items.find((x) => x.id === id);
-                    if (!it) return;
-                    loadPriceMemory({ name: it.name, catalog_item_id: it.catalog_item_id ?? null, component_id: it.component_id })
-                      .then((m) => setMemory((prev) => ({ ...prev, [id]: m })));
-                  }}
-                  designPanel={null}
+        <div className="flex-1 min-h-0 overflow-y-auto relative" style={{ background: "#EEF2F7" }} data-stage>
+          {/* margin ghosts — Design's lens-owned outline, subordinated (§4) */}
+          {lens === "design" && (
+            <GhostOutline
+              open={ghostOpen}
+              onOpen={setGhostOpen}
+              onTravel={(chId) => {
+                setGhostOpen(false); setFocusedId(chId);
+                const el = document.querySelector(`[data-chapter='${chId}']`);
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              ticks={outlineFromDesignChapters(designChapters, true).map((n) => ({
+                id: n.id, label: n.label, debt: n.debt ?? 0 }))}
+              panel={
+                <DesignOutline
+                  nodes={outlineFromDesignChapters(designChapters, true)}
+                  selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setGhostOpen(false); }}
+                  focusedId={focusedId} onFocus={setFocusedId} xray={true}
                 />
-              ) : null}
-              options={liveOptions}
-              onLiveLens={(k) => setLiveLensKey(k as LensKey)}
-              projections={{
-                customer: liveStage ? (
-                  <div className="shadow rounded-lg overflow-hidden bg-white">
-                    <ProposalRenderer model={liveStage} xray={false} draftRibbon />
-                  </div>
-                ) : null,
-                production: prodModel ? <ProductionSheet model={prodModel} /> : null,
-              }}
-              emptyReasons={{
-                customer: "Nothing composed yet — the proposal appears here as you build.",
-                production: "No production facts yet — quantities appear as the design takes shape.",
-              }}
+              }
             />
-          ) : (lens === "customer") ? (
-            <div className="border-l border-[#E7EDF5] bg-white min-h-0">
-              <Inspector
-                selection={inspected}
-                lens={lens}
-                canEdit={!locked && !!session?.perms.includes("bookings.edit")}
-                // Cost is role-gated and never reaches the Stage — a
-                // salesperson screen-shares the Stage. Perms, never role.
-                canSeeCost={!!session?.perms.includes("bookings.edit")}
-                money={money}
-                onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
-                configureFacet={cfgState && inspected?.kind === "component" ? (
-                  <ConfigureFacet
-                    state={cfgState}
-                    onState={setCfgState}
-                    persist={supabasePersistAdapter}
-                    itemCount={items.filter((i) => i.component_id === inspected.id).length}
-                    canEdit={!locked && !!session?.perms.includes("bookings.edit")}
-                    onPromote={currentCan()("knowledge.curate") ? () => {
-                      const c = comps.find((x) => x.id === inspected.id);
-                      if (c?.definition_id) void openPromotion(c.definition_id, c.title);
-                    } : undefined}
-                    backRefs={backRefs}
-                    onOpenCanvas={() => { /* the canvas is beside us */ }}
-                  />
-                ) : null}
-                onLoadMemory={(id) => {
-                  const it = items.find((x) => x.id === id);
-                  if (!it) return;
-                  loadPriceMemory({ name: it.name, catalog_item_id: it.catalog_item_id ?? null, component_id: it.component_id })
-                    .then((m) => setMemory((prev) => ({ ...prev, [id]: m })));
-                }}
-                designPanel={
-                  <div className="px-3 py-3">
-                    <p className="text-[11px] text-slate-400 mb-2">
-                      Guests, adjustments and totals are the Design&apos;s context.
-                    </p>
-                    <div className="flex justify-between text-[12px] mb-1">
-                      <span className="text-slate-500">Total</span>
-                      <span className="font-semibold tabular-nums" style={{ color: "#102F56" }}>{money(totals.total)}</span>
-                    </div>
-                    {(totals.unconfirmed > 0 || totals.unpriced > 0) && (
-                      <p className="text-[11px] text-amber-600 mt-2">
-                        ⚠ {totals.unconfirmed + totals.unpriced} unresolved — click ⚠ in the lens bar
-                      </p>
-                    )}
-                  </div>
-                }
-              />
-            </div>
-          ) : null}
-
-          {/* Legacy panel — only for lenses without a Stage. */}
-          {(lens !== "design" && lens !== "customer") && (
-          <>
-          {/* RIGHT — persistent intelligence */}
-          <div className="border-l border-[#E7EDF5] bg-white min-h-0 overflow-y-auto p-4 space-y-4">
-            {/* Live Quote */}
-            <div className="rounded-xl ring-1 ring-[#E7EDF5] p-3.5" style={{ background: "linear-gradient(180deg,#FFFFFF, #F8FBFF)" }}>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Live Quote</div>
-              {hasOptions ? (
-                <div className="space-y-1 text-[13px]">
-                  <div className="flex justify-between"><span className="text-slate-500">Base</span><b>{money(totals.baseSubtotal)}</b></div>
-                  <div className="flex justify-between"><span className="text-slate-500">With selected options</span><b>{money(totals.itemsSubtotal)}</b></div>
-                  {totals.upside > 0 && (
-                    <div className="flex justify-between text-[#15803D]"><span>Potential upside</span><b>+{money(totals.upside)}</b></div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex justify-between text-[13px]"><span className="text-slate-500">Items</span><b>{money(totals.itemsSubtotal)}</b></div>
-              )}
-              <div className="border-t border-[#EDF2F9] mt-2 pt-2 space-y-1 text-[12px]">
-                {adjs.map((a) => (
-                  <div key={a.id} className="flex justify-between text-slate-500">
-                    <span>{a.label}{a.kind === "percent" ? ` (${a.value}%)` : ""}</span>
-                    <span>{money(a.kind === "percent" ? (totals.itemsSubtotal * a.value) / 100 : a.value)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between text-slate-500"><span>Tax</span><span>{money(totals.tax)}</span></div>
-                <div className="flex justify-between font-display font-bold text-[16px] text-[#102F56] pt-1">
-                  <span>Total</span><span>{money(totals.total)}</span>
-                </div>
-              </div>
-              {needsGuests && (
-                <p className="mt-2 text-[11px] font-semibold text-amber-700">👥 Guest count is 0 — per-person items aren&apos;t counted yet. Enter counts below.</p>
-              )}
-              {(totals.unconfirmed > 0 || totals.unpriced > 0) && (
-                <div className="mt-2 space-y-0.5">
-                  {totals.unconfirmed > 0 && <p className="text-[11px] font-semibold text-amber-700">⚠ {totals.unconfirmed} carried price{totals.unconfirmed === 1 ? "" : "s"} unconfirmed</p>}
-                  {totals.unpriced > 0 && <p className="text-[11px] text-slate-400">{totals.unpriced} item{totals.unpriced === 1 ? "" : "s"} unpriced</p>}
-                </div>
-              )}
-            </div>
-
-            {/* Guests */}
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Guests</div>
-              <div className="flex flex-wrap gap-2">
-                {cats.map((c) => (
-                  <label key={c.id} className="flex items-center gap-1 text-[12px]">
-                    {c.name}
-                    <input type="number" min={0} disabled={!!locked} className="field !py-0.5 !px-1.5 !text-xs w-16"
-                      value={guests[c.id] ?? 0}
-                      onChange={(e) => saveGuests(c.id, Math.max(0, parseInt(e.target.value || "0", 10)))} />
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Adjustments */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Adjustments</span>
-                {!locked && (
-                  <button className="text-[11px] text-[#2F80ED] hover:underline"
-                    onClick={async () => {
-                      const { data } = await supabase.from("version_adjustments")
-                        .insert({ version_id: versionId, label: "Service Charge", kind: "percent", value: 18, position: adjs.length })
-                        .select("*").single();
-                      if (data) setAdjs((p) => [...p, data as Adjustment]);
-                    }}>＋ add</button>
-                )}
-              </div>
-              {adjs.length === 0 && <p className="text-[11px] text-slate-400">Delivery, setup, gratuity, admin fee — all live here.</p>}
-              <div className="space-y-1">
-                {adjs.map((a) => (
-                  <div key={a.id} className="flex items-center gap-1 text-[11px]">
-                    <input className="field !py-0.5 !px-1 !text-[11px] flex-1 min-w-0" disabled={!!locked} defaultValue={a.label}
-                      onBlur={async (e) => { await supabase.from("version_adjustments").update({ label: e.target.value }).eq("id", a.id); setAdjs((p) => p.map((x) => x.id === a.id ? { ...x, label: e.target.value } : x)); }} />
-                    <select className="field !py-0.5 !px-0.5 !text-[10px]" disabled={!!locked} value={a.kind}
-                      onChange={async (e) => { const kind = e.target.value as "percent" | "flat"; await supabase.from("version_adjustments").update({ kind }).eq("id", a.id); setAdjs((p) => p.map((x) => x.id === a.id ? { ...x, kind } : x)); }}>
-                      <option value="percent">%</option><option value="flat">$</option>
-                    </select>
-                    <input type="number" step="0.01" className="field !py-0.5 !px-1 !text-[11px] w-16" disabled={!!locked} value={a.value}
-                      onChange={async (e) => { const value = parseFloat(e.target.value || "0"); await supabase.from("version_adjustments").update({ value }).eq("id", a.id); setAdjs((p) => p.map((x) => x.id === a.id ? { ...x, value } : x)); }} />
-                    {!locked && <button className="text-slate-300 hover:text-red-500" onClick={async () => { await supabase.from("version_adjustments").delete().eq("id", a.id); setAdjs((p) => p.filter((x) => x.id !== a.id)); }}>✕</button>}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Everything about the focused item: presentation first, then pricing.
-                Presentation used to hide inside a panel called "Price Memory", so
-                nobody found it — that framing is gone (v191). */}
-            {focusItem && (() => {
-              const i = items.find((x) => x.id === focusItem);
-              if (!i) return null;
-              const srp = i.catalog_item_id ? srps[i.catalog_item_id] : null;
-              const mem = memory[i.id];
-              const owner = comps.find((x) => x.id === i.component_id);
-              const ownerCats = owner ? readCats(owner.item_categories) : [];
-              return (
-                <div className="rounded-xl ring-1 ring-[#E7EDF5] p-3.5 bg-[#FDFDFF]">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Item Details</div>
-                  <div className="text-[13px] font-semibold mb-2">{i.name}</div>
-
-                  {/* ── Presentation ── */}
-                  <div className="text-[9.5px] font-bold uppercase tracking-wider text-[#2F80ED] mb-1">Presentation</div>
-                  <div className="space-y-1.5 mb-3">
-                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                      <input type="checkbox" className="accent-[#2F80ED]" disabled={!!locked}
-                        checked={i.show_on_proposal !== false}
-                        onChange={(e) => patchItem(i.id, { show_on_proposal: e.target.checked })} />
-                      Show on proposal
-                      {i.show_on_proposal === false && <span className="text-slate-400">— internal only</span>}
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-slate-400 w-14 shrink-0">Heading</span>
-                      <select className="field !py-0.5 !px-1.5 !text-[11px] w-full" disabled={!!locked || !ownerCats.length}
-                        title={ownerCats.length ? "Group this item under a presentation heading" : "Add a heading to this component first"}
-                        value={i.category_key ?? ""}
-                        onChange={(e) => patchItem(i.id, { category_key: e.target.value || null })}>
-                        <option value="">{ownerCats.length ? "(ungrouped)" : "(no headings yet)"}</option>
-                        {ownerCats.map((cat) => <option key={cat.key} value={cat.key}>{cat.label}</option>)}
-                      </select>
-                    </div>
-                    <input className="field !py-0.5 !px-1.5 !text-[11px] w-full" disabled={!!locked}
-                      placeholder="Presentation note — printed as written, e.g. “Served with au jus”, “Carved to order”"
-                      value={i.presentation_note ?? ""}
-                      onChange={(e) => patchItem(i.id, { presentation_note: e.target.value || null })} />
-                  </div>
-
-                  {/* ── Pricing ── */}
-                  <div className="text-[9.5px] font-bold uppercase tracking-wider text-slate-400 mb-1">Pricing memory</div>
-                  <div className="space-y-1 text-[11px] text-slate-600">
-                    {srp?.srp != null && (
-                      <p>Suggested <b>{money(srp.srp)}</b>{srp.srp_set_at ? <span className="text-slate-400"> · set {new Date(srp.srp_set_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })}</span> : null}
-                        {!locked && <button className="ml-1.5 text-[#2F80ED] underline" onClick={() => patchItem(i.id, { unit_price: srp.srp, price_confirmed: true })}>use</button>}
-                      </p>
-                    )}
-                    {!mem && <p className="text-slate-400">Loading…</p>}
-                    {mem && mem.points.length === 0 && <p className="text-slate-400">No sold history yet — this decision becomes the memory.</p>}
-                    {mem?.points.map((pt, idx) => (
-                      <p key={idx}>
-                        {pt.match === "lineage" ? "↺" : pt.match === "catalog" ? "📖" : "≈"} <b>{money(pt.unit_price)}</b>{pt.quantity_basis === "per_person" ? "/pp" : ""} — {pt.customer}
-                        {pt.date ? ` · ${new Date(pt.date).toLocaleDateString(undefined, { month: "short", year: "numeric" })}` : ""}{pt.guests ? ` · ${pt.guests} g` : ""}
-                        {pt.match === "name" && <span className="text-slate-400"> (same name)</span>}
-                        {!locked && <button className="ml-1 text-[#2F80ED] underline" onClick={() => patchItem(i.id, { unit_price: pt.unit_price, price_confirmed: true })}>use</button>}
-                      </p>
-                    ))}
-                    {mem?.range && <p className="text-slate-400">Range (12mo): {money(mem.range.low)}–{money(mem.range.high)} · {mem.range.count} sales</p>}
-                    {!locked && (
-                      <div className="pt-1 space-y-1">
-                        <input className="field !py-0.5 !px-1.5 !text-[11px] w-full" placeholder="pricing reason (optional)"
-                          value={i.pricing_reason ?? ""}
-                          onChange={(e) => patchItem(i.id, { pricing_reason: e.target.value || null })} />
-                        <div className="flex items-center gap-2">
-                          <label className="flex items-center gap-1 text-[10px] text-slate-500">
-                            <input type="checkbox" className="accent-[#4A9EFF]" checked={!!i.taxable}
-                              onChange={(e) => patchItem(i.id, { taxable: e.target.checked })} /> taxable
-                          </label>
-                          {i.unit_price != null && (
-                            <button className="text-[10px] text-[#2F80ED] underline ml-auto"
-                              onClick={async () => {
-                                const c = comps.find((x) => x.id === i.component_id);
-                                const r = await promoteToCatalog(i, c?.domain ?? "food");
-                                if (!r.ok) setErr(r.detail ?? ""); else { setToast("✓ Saved as standard price"); loadCanvas(); }
-                              }}>save as standard price</button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-            {!focusItem && <p className="text-[11px] text-slate-300">Click any item (or its ⋯) for its details — proposal visibility, heading, presentation note, and pricing history.</p>}
-          </div>
-          </>
           )}
+
+          <div className={split ? "grid grid-cols-2 gap-6 px-6" : "px-6"} data-stage-body>
+            {/* ── THE PAPER — first (and usually only) sheet ── */}
+            <main data-paper className={`bg-white shadow-lg rounded-lg my-8 min-h-[60vh] ${split ? "" : "max-w-[820px] mx-auto"}`}
+              onDragOver={(e) => {
+                if (lens !== "design") return;
+                const accepted = canvasDragMimes().concat(["text/eventcore-component"]);
+                for (const m of accepted) {
+                  if (e.dataTransfer.types.includes(m)) { e.preventDefault(); setDropHot(true); return; }
+                }
+              }}
+              onDragLeave={() => setDropHot(false)}
+              onDrop={(e) => {
+                if (lens !== "design") return;
+                setDropHot(false);
+                const bpRaw = e.dataTransfer.getData("text/eventcore-blueprint");
+                if (bpRaw) {
+                  e.preventDefault();
+                  try { const d = JSON.parse(bpRaw); void openLanding(d.blueprintId, d.name); } catch {}
+                  return;
+                }
+                const ident = e.dataTransfer.getData("text/eventcore-identity");
+                if (ident) {
+                  e.preventDefault();
+                  try { const d = JSON.parse(ident); instantiate(d.identityId, d.name, dropChapter); } catch {}
+                  return;
+                }
+                const raw = e.dataTransfer.getData("text/eventcore-component");
+                if (!raw) return;
+                e.preventDefault();
+                try { const d = JSON.parse(raw); addFromSource([d.id], d.label); } catch {}
+              }}
+              style={dropHot ? { outline: "2px dashed #C9A34E", outlineOffset: -4 } : undefined}
+            >
+              {/* the Design edition: the same document, x-ray ink — grammar verbatim */}
+              {lens === "design" && (
+                <DesignStage
+                  chapters={designChapters}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  focusedId={focusedId}
+                  xray={true}
+                  mayEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                  onPatchComponent={(id, patch) => patchComp(id, patch as Partial<CompRow>)}
+                  onPatchItem={(id, patch) => patchItem(id, patch as Partial<PricedItem>)}
+                  onAddComponent={(chapterId) => addComponentIn(chapterId === "__none__" ? null : chapterId)}
+                  onAddItem={(compId, categoryKey) => void addItem(compId, categoryKey)}
+                  money={money}
+                  onDrop={applyDrop}
+                />
+              )}
+              {lens === "customer" && (
+                stage
+                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon />
+                  : <p className="text-center text-[12px] text-slate-400 py-16">Nothing to show on this lens yet.</p>
+              )}
+              {lens === "production" && (
+                prodModel
+                  ? <ProductionSheet model={prodModel} />
+                  : <p className="text-center text-[12px] text-slate-400 py-16">Loading production…</p>
+              )}
+              {lens !== "design" && lens !== "customer" && lens !== "production" && (
+                <p className="text-center text-[12px] text-slate-400 py-16">This lens has no renderer yet.</p>
+              )}
+            </main>
+
+            {/* ── THE SECOND SHEET — a whole paper, summoned (§8/§9) ── */}
+            {split && (
+              <div className="my-8 min-h-[60vh] bg-white shadow-lg rounded-lg overflow-hidden" data-paper-second>
+                <SecondSheet
+                  options={liveOptions}
+                  onSheetLens={(k) => setLiveLensKey(k as LensKey)}
+                  projections={{
+                    customer: liveStage ? <ProposalRenderer model={liveStage} xray={false} draftRibbon /> : null,
+                    production: prodModel ? <ProductionSheet model={prodModel} /> : null,
+                  }}
+                  emptyReasons={{
+                    customer: "Nothing composed yet — the proposal appears here as you build.",
+                    production: "No production facts yet — quantities appear as the design takes shape.",
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* ── THE METER — floating facts; never lies, stores nothing (§10) ── */}
+          <Meter
+            perPerson={totalGuests > 0 ? money(totals.total / totalGuests) : null}
+            totalLabel={b.contact_name || proposal.title}
+            total={money(totals.total)}
+            debt={totals.unconfirmed + totals.unpriced}
+            onDebt={() => {
+              const bad = items.filter((i) => i.price_confirmed === false || i.unit_price == null)[0];
+              if (bad) setSelectedId(bad.id);
+            }}
+          />
         </div>
       )}
+
+      {/* ── THE INSPECTOR DRAWER — selection is interrogation (§6). The
+           drawer and the selection live and die together. ── */}
+      <Drawer open={tab === "build" && !!inspected && (lens === "design" || lens === "customer")}
+        title="Inspector" onClose={() => setSelectedId(null)}>
+        {inspected && (
+          <Inspector
+            selection={inspected}
+            lens={lens}
+            canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+            canSeeCost={!!session?.perms.includes("bookings.edit")}
+            money={money}
+            onConfirmPrice={(id, amount) => patchItem(id, { unit_price: amount, price_confirmed: true })}
+            configureFacet={cfgState && inspected?.kind === "component" ? (
+              <ConfigureFacet
+                state={cfgState}
+                onState={setCfgState}
+                persist={supabasePersistAdapter}
+                itemCount={items.filter((i) => i.component_id === inspected.id).length}
+                canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+                onPromote={currentCan()("knowledge.curate") ? () => {
+                  const c = comps.find((x) => x.id === inspected.id);
+                  if (c?.definition_id) void openPromotion(c.definition_id, c.title);
+                } : undefined}
+                backRefs={backRefs}
+                onOpenCanvas={() => { /* the canvas is beside us */ }}
+              />
+            ) : null}
+            onLoadMemory={(id) => {
+              const it = items.find((x) => x.id === id);
+              if (!it) return;
+              loadPriceMemory({ name: it.name, catalog_item_id: it.catalog_item_id ?? null, component_id: it.component_id })
+                .then((m) => setMemory((prev) => ({ ...prev, [id]: m })));
+            }}
+            designPanel={null}
+          />
+        )}
+      </Drawer>
 
       {tab === "compare" && (
         <div className="flex-1 min-h-0 overflow-y-auto p-6">

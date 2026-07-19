@@ -49,7 +49,7 @@
 //   3. RENDERER     components/studio/renderers/   Per-lens composition of the
 //                                     kit over a model. The ONLY layer that
 //                                     differs between lenses.
-//   4. SHELL        StudioShell + rail + inspector.   Constant. Owns
+//   4. SHELL        The Line + stage furniture (v217). Constant. Owns
 //                                     everything OUTSIDE the Stage. A renderer
 //                                     never draws chrome, never owns selection,
 //                                     never knows another lens exists.
