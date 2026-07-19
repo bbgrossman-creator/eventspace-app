@@ -19,6 +19,8 @@ const T = { ink: "#1F2A37", rule: "#E7EDF5" } as const;
 
 export default function PresentationRooms(props: {
   room: PubRoom;
+  /** v227 — the tenant's named themes join the shelf (Brand Studio §8). */
+  tenantThemes?: { id: string; name: string }[];
   themeKey: string | null;
   override: ThemeDelta | null;
   resolved: ResolvedTheme;
@@ -42,6 +44,22 @@ export default function PresentationRooms(props: {
               </button>
             ))}
           </div>
+          {(props.tenantThemes ?? []).length > 0 && (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-1">Your themes</p>
+              <div className="space-y-1.5">
+                {(props.tenantThemes ?? []).map((t) => (
+                  <button key={t.id} data-room-tenant-theme={t.id}
+                    onClick={() => props.onThemeKey(t.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg border hover:bg-[#F4F9FF] ${props.themeKey === t.id ? "ring-1 ring-[#C9A34E]" : ""}`}
+                    style={{ borderColor: T.rule }}>
+                    <span className="block text-[13px] font-semibold" style={{ color: T.ink }}>{t.name}</span>
+                    <span className="block text-[10.5px] text-slate-400">Named in your Brand Studio</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-2">Document defaults</p>
           <p className="text-[10.5px] text-slate-400 -mt-2">Every section starts from these; style any section directly on the paper.</p>
           {TREATMENT_OPTIONS.map((g) => (

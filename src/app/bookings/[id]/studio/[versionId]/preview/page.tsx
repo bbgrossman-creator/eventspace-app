@@ -11,7 +11,8 @@ import Link from "next/link";
 import { buildPresentationModel, PresentationModel } from "@/lib/presentation";
 import ProposalRenderer from "@/components/ProposalRenderer";
 import { supabase } from "@/lib/supabase";
-import { ResolvedTheme, ThemeDelta, resolveTheme, builtInTheme } from "@/lib/publication";
+import { ResolvedTheme, ThemeDelta, resolveTheme, resolveThemeKey } from "@/lib/publication";
+import { getPublicationSettings, listPublicationThemes } from "@/lib/publicationData";
 
 export default function ProposalPreviewPage() {
   const params = useParams<{ id: string; versionId: string }>();
@@ -34,7 +35,9 @@ export default function ProposalPreviewPage() {
       if ((v.status === "sent" || v.status === "approved") && v.presentation_snapshot) {
         setPubTheme(v.presentation_snapshot as ResolvedTheme);
       } else {
-        setPubTheme(resolveTheme(null, builtInTheme(v.theme_key), (v.theme_override as ThemeDelta | null) ?? null).theme);
+        const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
+        setPubTheme(resolveTheme(settings.brand, resolveThemeKey(v.theme_key, tenantThemes),
+          (v.theme_override as ThemeDelta | null) ?? null).theme);
       }
     };
     Promise.all([buildPresentationModel(params.versionId).then(setModel), loadTheme()])

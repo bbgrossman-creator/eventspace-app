@@ -37,7 +37,8 @@ import SectionPicker from "@/components/studio/SectionPicker";
 import PresentationControls, { PubRoom } from "@/components/studio/PresentationControls";
 import PresentationRooms from "@/components/studio/PresentationRooms";
 import TreatmentToolbar from "@/components/studio/TreatmentToolbar";
-import { ThemeDelta, ResolvedTheme, resolveTheme, builtInTheme, mergeDelta, effectiveSectionTreatment } from "@/lib/publication";
+import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta, effectiveSectionTreatment } from "@/lib/publication";
+import { getPublicationSettings, listPublicationThemes, PublicationTheme } from "@/lib/publicationData";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -290,6 +291,12 @@ export default function StudioPage() {
   const [pubBusy, setPubBusy] = useState(false);
   // v226 THE CANVAS — one thing open, always: a ROOM or a selected
   // presentation identity, never both (§6.1/§6.3); both die on lens change.
+  const [pubBrand, setPubBrand] = useState<ThemeDelta | null>(null);
+  const [pubTenantThemes, setPubTenantThemes] = useState<PublicationTheme[]>([]);
+  useEffect(() => {
+    getPublicationSettings().then((st) => setPubBrand(st.brand)).catch(() => {});
+    listPublicationThemes().then(setPubTenantThemes).catch(() => {});
+  }, []);
   const [pubRoom, setPubRoom] = useState<PubRoom | null>(null);
   const [pubSection, setPubSection] = useState<string | null>(null);
   useEffect(() => { setPubRoom(null); setPubSection(null); }, [lens]);
@@ -300,8 +307,8 @@ export default function StudioPage() {
     setPubDirty(false);
   }, [version?.id, version?.theme_key, version?.theme_override]);
   const resolvedPub: ResolvedTheme = useMemo(
-    () => resolveTheme(null /* brand: v226 */, builtInTheme(pubThemeKey), pubOverride).theme,
-    [pubThemeKey, pubOverride]);
+    () => resolveTheme(pubBrand, resolveThemeKey(pubThemeKey, pubTenantThemes), pubOverride).theme,
+    [pubBrand, pubTenantThemes, pubThemeKey, pubOverride]);
   async function savePublication() {
     if (!version) return;
     setPubBusy(true);
@@ -1445,6 +1452,7 @@ export default function StudioPage() {
         {pubRoom && (
           <PresentationRooms
             room={pubRoom}
+            tenantThemes={pubTenantThemes.map((t) => ({ id: t.id, name: t.name }))}
             themeKey={pubThemeKey}
             override={pubOverride}
             resolved={resolvedPub}

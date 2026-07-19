@@ -18,7 +18,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase, logActivity } from "./supabase";
 import { scaffoldFor, seedVersionSections, copyVersionSections } from "./sections";
-import { shouldStampPresentation, resolveTheme, builtInTheme, ThemeDelta } from "./publication";
+import { shouldStampPresentation, resolveTheme, resolveThemeKey, ThemeDelta } from "./publication";
+import { getPublicationSettings, listPublicationThemes } from "./publicationData";
 
 export type ProposalStatus = "open" | "won" | "lost" | "archived";
 export type VersionStatus = "draft" | "internal_review" | "sent" | "revision_requested" | "approved";
@@ -67,13 +68,23 @@ export async function createProposal(
   /** v221 — the answered archetype question. Blueprint and operational seeds
    *  carry their own structure and ignore it; absent = legacy scaffold. */
   archetypeSeed?: { key: string; label: string; sections: string[] } | null,
+  /** v227 — the creation-moment theme: a theme key, "__brand__" for the
+   *  bare company look, or undefined to take the tenant default. */
+  themeKey?: string | null,
 ): Promise<Outcome> {
   const { data: p, error: pErr } = await supabase.from("proposals")
     .insert({ booking_id: booking.id, title: title.trim() || "Proposal" })
     .select("id").single();
   if (pErr || !p) return { ok: false, detail: pErr?.message ?? "insert failed — run v177 SQL" };
+  // v227 — born looking like the company: v1 wears the tenant's default
+  // theme (creation-moment theme field may override; null = brand+system).
+  let birthTheme: string | null = themeKey ?? null;
+  if (birthTheme === undefined || birthTheme === null) {
+    try { birthTheme = (await getPublicationSettings()).defaultThemeKey; } catch { birthTheme = null; }
+  }
+  if (birthTheme === "__brand__") birthTheme = null;
   const { data: v, error: vErr } = await supabase.from("proposal_versions")
-    .insert({ proposal_id: p.id, version: 1 }).select("id").single();
+    .insert({ proposal_id: p.id, version: 1, theme_key: birthTheme }).select("id").single();
   if (vErr || !v) return { ok: false, detail: vErr?.message ?? "version insert failed" };
 
   // The outline seed: the ANSWERED archetype when the question applied
@@ -162,8 +173,10 @@ export async function createBlankVersion(
     .select("version").eq("proposal_id", proposal.id)
     .order("version", { ascending: false }).limit(1).maybeSingle();
   const nextN = ((maxRow as { version: number } | null)?.version ?? 0) + 1;
+  let birthTheme: string | null = null;
+  try { birthTheme = (await getPublicationSettings()).defaultThemeKey; } catch { /* pre-v227 */ }
   const { data: v, error } = await supabase.from("proposal_versions")
-    .insert({ proposal_id: proposal.id, version: nextN }).select("id").single();
+    .insert({ proposal_id: proposal.id, version: nextN, theme_key: birthTheme }).select("id").single();
   if (error || !v) return { ok: false, detail: error?.message ?? "version insert failed" };
   await logActivity(booking.id, booking.invoice_num, "Proposal Version Created",
     `🎨 ${proposal.title} v${nextN} (started blank)`);
@@ -270,8 +283,10 @@ export async function sendVersion(
 ): Promise<Outcome> {
   if (v.status === "approved") return { ok: false, detail: "Approved versions are immutable — create a new version instead." };
   const resend = v.status === "sent";
-  const named = builtInTheme((v.theme_key as string | null) ?? null);
-  const resolved = resolveTheme(null /* brand: v226 */, named, (v.theme_override as ThemeDelta | null) ?? null);
+  // v227 — the stamp resolves the FULL ladder: the brand rung is live.
+  const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
+  const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
+  const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
   const patch: Record<string, unknown> = {
     status: "sent",
     presentation_snapshot: resolved.theme,
@@ -302,8 +317,9 @@ export async function setVersionStatus(
   // status writes that bypass the ceremony — it fires only on transitions
   // INTO "sent"; editing alone never stamps; approval locks the last stamp.
   if (shouldStampPresentation(v.status, status)) {
-    const named = builtInTheme((v.theme_key as string | null) ?? null);
-    const resolved = resolveTheme(null /* brand: v226 */, named, (v.theme_override as ThemeDelta | null) ?? null);
+    const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
+    const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
+    const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
     patch.presentation_snapshot = resolved.theme;
     patch.presentation_stamped_at = new Date().toISOString();
   }

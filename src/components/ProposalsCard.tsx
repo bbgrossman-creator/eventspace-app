@@ -14,6 +14,8 @@ import VersionThread from "@/components/VersionThread";
 import VersionGenesis from "@/components/studio/VersionGenesis";
 import { getBlueprint, applyBlueprint } from "@/lib/blueprints";
 import { archetype } from "@/lib/archetypes";
+import { BUILT_IN_THEMES } from "@/lib/publication";
+import { getPublicationSettings, listPublicationThemes, PublicationTheme } from "@/lib/publicationData";
 import { Booking } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import VersionPricing from "@/components/VersionPricing";
@@ -35,6 +37,16 @@ export default function ProposalsCard({ b }: { b: Booking }) {
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const [nArch, setNArch] = useState<string | null>(null);   // v221: the outline question — unanswered until answered
+  // v227 — the creation-moment THEME field (§8): defaults to the tenant's
+  // default theme, so every proposal is born looking like the company.
+  // Unlike the outline, the look HAS a right default — the brand.
+  const [nTheme, setNTheme] = useState<string>("__default__");
+  const [pubThemes, setPubThemes] = useState<PublicationTheme[]>([]);
+  const [defThemeKey, setDefThemeKey] = useState<string | null>(null);
+  useEffect(() => {
+    listPublicationThemes().then(setPubThemes).catch(() => {});
+    getPublicationSettings().then((st) => setDefThemeKey(st.defaultThemeKey)).catch(() => {});
+  }, []);
   const [nTitle, setNTitle] = useState("");
   const [nSeed, setNSeed] = useState(true);
   const [bps, setBps] = useState<Blueprint[]>([]);
@@ -157,6 +169,18 @@ export default function ProposalsCard({ b }: { b: Booking }) {
             Start v1 from this event&apos;s current components
           </label>
           {!nBlueprint && !nSeed && <ArchetypePick value={nArch} onChange={setNArch} />}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Theme</p>
+            <select data-new-theme className="field !py-1 !text-xs !bg-white w-full" value={nTheme}
+              onChange={(e) => setNTheme(e.target.value)}>
+              <option value="__default__">
+                {defThemeKey ? "Company default" : "Company brand"}
+              </option>
+              <option value="__brand__">Company brand (bare)</option>
+              {BUILT_IN_THEMES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+              {pubThemes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
           <div className="flex gap-2">
             <button className="btn-primary !py-1 !px-2.5 text-xs"
               disabled={busy || (!nBlueprint && !nSeed && !nArch)}
@@ -167,7 +191,8 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                 run(() => createProposal(b, nTitle, nSeed && !bp,
                   bp?.source_version_id ? { sourceVersionId: bp.source_version_id, name: bp.name } : undefined,
                   arch ? { key: arch.key, label: arch.label, sections: arch.sections } : null,
-                )).then(() => { setNTitle(""); setNBlueprint(""); setNArch(null); setAdding(false); });
+                  nTheme === "__default__" ? undefined : nTheme,
+                )).then(() => { setNTitle(""); setNBlueprint(""); setNArch(null); setNTheme("__default__"); setAdding(false); });
               }}>
               Create
             </button>

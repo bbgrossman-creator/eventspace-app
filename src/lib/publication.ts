@@ -48,6 +48,19 @@ export const FONT_PAIRINGS: FontPairing[] = [
   { key: "work-sans", heading: "Work Sans", body: "Work Sans", styleLabel: "Minimal",
     headingStack: '"Work Sans", "Segoe UI", system-ui, sans-serif',
     bodyStack: '"Work Sans", "Segoe UI", system-ui, sans-serif' },
+  // v227 — the shelf expands (Brand Studio §8/§9): still curated, never a font list.
+  { key: "lora-open", heading: "Lora", body: "Open Sans", styleLabel: "Warm",
+    headingStack: 'Lora, Georgia, serif', bodyStack: '"Open Sans", "Segoe UI", system-ui, sans-serif' },
+  { key: "merri-source", heading: "Merriweather", body: "Source Sans 3", styleLabel: "Literary",
+    headingStack: 'Merriweather, Georgia, serif', bodyStack: '"Source Sans 3", "Segoe UI", system-ui, sans-serif' },
+  { key: "spectral-inter", heading: "Spectral", body: "Inter", styleLabel: "Refined",
+    headingStack: 'Spectral, Georgia, serif', bodyStack: 'Inter, "Segoe UI", system-ui, sans-serif' },
+  { key: "fraunces-work", heading: "Fraunces", body: "Work Sans", styleLabel: "Contemporary",
+    headingStack: 'Fraunces, Georgia, serif', bodyStack: '"Work Sans", "Segoe UI", system-ui, sans-serif' },
+  { key: "garamond-lato", heading: "EB Garamond", body: "Lato", styleLabel: "Heritage",
+    headingStack: '"EB Garamond", Garamond, Georgia, serif', bodyStack: 'Lato, "Segoe UI", system-ui, sans-serif' },
+  { key: "bodoni-karla", heading: "Bodoni Moda", body: "Karla", styleLabel: "Fashion",
+    headingStack: '"Bodoni Moda", "Didot", Georgia, serif', bodyStack: 'Karla, "Segoe UI", system-ui, sans-serif' },
 ];
 
 export const fontPairing = (key: string | null | undefined): FontPairing | null =>
@@ -187,6 +200,20 @@ export const BUILT_IN_THEMES: { key: string; label: string; blurb: string; delta
 
 export const builtInTheme = (key: string | null | undefined): ThemeDelta | null =>
   BUILT_IN_THEMES.filter((t) => t.key === key)[0]?.delta ?? null;
+
+/** v227 — a version's theme_key names EITHER a built-in or a tenant-named
+ *  theme (by id). Pure: the tenant list arrives as data. Unknown keys
+ *  resolve to null — the ladder simply skips the rung (brand + system
+ *  still guarantee a complete dress). */
+export function resolveThemeKey(
+  key: string | null | undefined,
+  tenantThemes: { id: string; delta: ThemeDelta }[],
+): ThemeDelta | null {
+  if (!key) return null;
+  const built = builtInTheme(key);
+  if (built) return built;
+  return tenantThemes.filter((t) => t.id === key)[0]?.delta ?? null;
+}
 
 /** Curated palettes for the Palette control — presets, not a color wheel. */
 export const PALETTES: { key: string; label: string; colors: NonNullable<ThemeDelta["colors"]> }[] = [
