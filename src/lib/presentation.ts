@@ -62,6 +62,8 @@ export interface PresentationBlock {
   items: PresentationItem[];
 }
 export interface PresentationComponent {
+  /** v234 — the PRESENTATION IDENTITY component treatments attach to. */
+  id: string;
   title: string;
   description: string | null;    // customer_description (description mode)
   /** v195 P1.2: copy about the COMPONENT ("Carved to order by our chefs") —
@@ -503,6 +505,7 @@ export async function buildPresentationModel(
       bandDesc: c.group_description,
       bandPos: c.group_label ? c.group_position : c.position + 100000,
       comp: {
+        id: c.id,   // v234 — the identity treatments attach to
         title: c.title,
         description: compDescription, // NEVER notes; only customer_description in description mode
         // v195 P1.2 — component-level copy, no longer welded to a proxy item.

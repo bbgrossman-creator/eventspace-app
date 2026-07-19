@@ -132,10 +132,10 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
 // callers render exactly the historical dress: every themed value falls back
 // to the constants that were always here. The theme decides how things look
 // — nothing here lets it decide what exists.
-import { ResolvedTheme, effectiveSectionTreatment, SectionTreatment, DocumentTreatment, RegionTexts } from "@/lib/publication";
+import { ResolvedTheme, effectiveSectionTreatment, effectiveComponentTreatment, COMPONENT_TREATMENT_DEFAULTS, ComponentTreatment, SectionTreatment, DocumentTreatment, RegionTexts } from "@/lib/publication";
 import { PhotoPins, pinnedFor } from "@/lib/photos";
 
-export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions, photos }: {
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions, photos, onComponentSelect, selectedComponentId }: {
   model: PresentationModel; draftRibbon?: boolean;
   /** v226 THE CANVAS — Studio-only interactivity: the paper is the primary
    *  interaction surface; clicking a section head selects its PRESENTATION
@@ -144,6 +144,9 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   /** v229 — the DOCUMENT is an identity too: clicking the title block
    *  selects it for its own contextual toolbar. */
   onDocumentSelect?: () => void;
+  /** v234 — components are identities too (selects.component). */
+  onComponentSelect?: (componentId: string) => void;
+  selectedComponentId?: string | null;
   selectedSectionId?: string | null;
   documentSelected?: boolean;
   /** v231 — the region WORDS (footer/signature/terms), brand-owned. */
@@ -299,13 +302,39 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
                   {band.description && <p className="text-[13px] italic text-slate-500 mb-2">{band.description}</p>}
                   <div className={band.label ? "pl-3 border-l-2 space-y-4" : "space-y-4"}
                        style={band.label ? { borderColor: T.goldFaint } : undefined}>
-                    {band.components.map((comp, ci) => (
-                      <div key={ci}>
+                    {band.components.map((comp, ci) => {
+                      const ct: Required<ComponentTreatment> = theme
+                        ? effectiveComponentTreatment(theme, comp.id) : COMPONENT_TREATMENT_DEFAULTS;
+                      const cSel = !!onComponentSelect;
+                      const cPin = pinnedFor(photos, "comp:" + comp.id);
+                      return (
+                      <div key={ci} data-pub-comp={comp.id} data-pub-comptitle={ct.title}
+                        className={`${cSel ? "cursor-pointer rounded-sm hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-2" : ""}${
+                          selectedComponentId === comp.id ? " ring-2 ring-[#4A9EFF]/60 ring-offset-2" : ""}`}
+                        onClick={cSel ? (e) => { e.stopPropagation(); onComponentSelect(comp.id); } : undefined}
+                        title={cSel ? "Style this component" : undefined}>
+                        {cPin && ct.photo === "band" && (
+                          <img data-pub-photo={"comp:" + comp.id} data-pub-photostyle="band" src={cPin.url} alt={cPin.label}
+                            className="mb-2 block w-full h-28 object-cover rounded-md" />
+                        )}
+                        {cPin && ct.photo === "side" && (
+                          <img data-pub-photo={"comp:" + comp.id} data-pub-photostyle="side" src={cPin.url} alt={cPin.label}
+                            className="float-right ml-3 mb-1 w-24 h-20 object-cover rounded-md" />
+                        )}
                         <div className="flex items-baseline justify-between gap-3">
-                          <h4 className="font-semibold text-[15px]" style={{ color: T.ink }}>{comp.title}</h4>
-                          <Price label={comp.priceLabel} status={comp.priceStatus} strong />
+                          <h4 className={`text-[15px] ${ct.title === "caps" ? "font-bold uppercase tracking-[0.08em] text-[13px]" : "font-semibold"}`}
+                            style={ct.title === "accent" ? { color: "var(--pub-accent, #C9A34E)" } : { color: T.ink }}>{comp.title}</h4>
+                          <span data-pub-price={ct.price} className={
+                            ct.price === "tabular" ? "tabular-nums font-semibold"
+                            : ct.price === "muted" ? "opacity-60" : undefined}>
+                            <Price label={comp.priceLabel} status={comp.priceStatus} strong={ct.price !== "muted"} />
+                          </span>
                         </div>
-                        {comp.description && <p className="text-[13.5px] leading-relaxed text-slate-600 mt-1">{comp.description}</p>}
+                        {comp.description && (
+                          <p className={`text-[13.5px] leading-relaxed mt-1 ${
+                            ct.description === "italic" ? "italic text-slate-500"
+                            : ct.description === "understated" ? "text-[12.5px] text-slate-400" : "text-slate-600"}`}>{comp.description}</p>
+                        )}
                         {/* v195 P1.2: the COMPONENT's own note — "Carved to order by
                             our chefs" belongs to the station, not to the Prime Rib. */}
                         {comp.note && <p className="text-[12.5px] italic text-slate-500 mt-1">{comp.note}</p>}
@@ -318,7 +347,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
                         {/* v195 P1.1: the choice renders HERE, inside its course. */}
                         {comp.choice && <div className="mt-3"><ChoiceCard cg={comp.choice} /></div>}
                       </div>
-                    ))}
+                    ); })}
                   </div>
                 </div>
               ))}

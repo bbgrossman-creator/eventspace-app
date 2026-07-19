@@ -25,7 +25,7 @@ const SPECIMEN: PresentationModel = {
   sections: [{
     id: "spec-1", name: "Cocktail Hour",
     bands: [{ label: "", description: null, components: [
-      { title: "Passed Hors d'Oeuvres", description: "A confident opening.", note: null, isPackage: false,
+      { id: "spec-comp-1", title: "Passed Hors d'Oeuvres", description: "A confident opening.", note: null, isPackage: false,
         priceLabel: "$18 / person", priceStatus: "quoted", blocks: [], choice: null },
     ] }],
     choiceGroups: [], subtotalLabel: null,

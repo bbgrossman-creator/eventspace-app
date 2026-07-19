@@ -1170,13 +1170,18 @@ export default function StudioPage() {
         <TreatmentToolbar
           selection={pubSection === "__document__"
             ? { kind: "document" }
+            : pubSection.indexOf("comp:") === 0
+            ? { kind: "component", id: pubSection.slice(5),
+                name: (() => { const cid = pubSection.slice(5);
+                  for (const sec of stage.sections) for (const b of sec.bands)
+                    for (const c of b.components) if (c.id === cid) return c.title;
+                  return "Component"; })() }
             : { kind: "section", id: pubSection,
                 name: (stage.sections.filter((x) => x.id === pubSection)[0]?.name) ?? "Section" }}
           resolved={resolvedPub}
           onPatch={patchPub}
           onChoosePhoto={() => {
-            const slot = pubSection === "__document__" ? "__document__" : pubSection;
-            setPubFocusSlot(slot); setPubSection(null); setPubRoom("photography");
+            setPubFocusSlot(pubSection); setPubSection(null); setPubRoom("photography");
           }}
           onClose={() => setPubSection(null)}
         />
@@ -1340,7 +1345,9 @@ export default function StudioPage() {
                 {pubRoom === "photography" ? (
                   <PhotographyRoom
                     slots={[{ id: "__document__", name: (stage?.title ?? "Document") }]
-                      .concat((stage?.sections ?? []).map((x) => ({ id: x.id, name: x.name })))}
+                      .concat((stage?.sections ?? []).map((x) => ({ id: x.id, name: x.name })))
+                      .concat((stage?.sections ?? []).flatMap((sec) => sec.bands.flatMap(
+                        (b) => b.components.map((c) => ({ id: "comp:" + c.id, name: c.title })))))}
                     library={pubLibrary}
                     pins={pubPins}
                     focusSlot={pubFocusSlot}
@@ -1435,6 +1442,10 @@ export default function StudioPage() {
                       onDocumentSelect={!locked && session?.perms.includes("bookings.edit") && lensSelects(activeLensDef, "document")
                         ? () => { setPubRoom(null); setPubSection(pubSection === "__document__" ? null : "__document__"); }
                         : undefined}
+                      onComponentSelect={!locked && session?.perms.includes("bookings.edit") && lensSelects(activeLensDef, "component")
+                        ? (cid) => { setPubRoom(null); setPubSection(pubSection === "comp:" + cid ? null : "comp:" + cid); }
+                        : undefined}
+                      selectedComponentId={pubSection?.indexOf("comp:") === 0 ? pubSection.slice(5) : null}
                       selectedSectionId={pubSection}
                       documentSelected={pubSection === "__document__"} />
                   : <p className="text-center text-[12px] text-slate-400 py-16">Nothing to show on this lens yet.</p>

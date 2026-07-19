@@ -10,13 +10,13 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import React from "react";
 import {
-  ResolvedTheme, ThemeDelta, SectionTreatment, DocumentTreatment,
+  ResolvedTheme, ThemeDelta, SectionTreatment, DocumentTreatment, ComponentTreatment,
   TREATMENT_OPTIONS, DOCUMENT_TITLE_OPTIONS, MEASURE_OPTIONS, DOCUMENT_PHOTO_OPTIONS,
-  effectiveSectionTreatment,
+  COMPONENT_TREATMENT_OPTIONS, effectiveSectionTreatment, effectiveComponentTreatment,
 } from "@/lib/publication";
 
 export default function TreatmentToolbar(props: {
-  selection: { kind: "document" } | { kind: "section"; id: string; name: string };
+  selection: { kind: "document" } | { kind: "section"; id: string; name: string } | { kind: "component"; id: string; name: string };
   resolved: ResolvedTheme;
   onPatch: (patch: ThemeDelta) => void;
   /** v233 — the identity's photo shelf: opens the Photography room ON this
@@ -29,6 +29,8 @@ export default function TreatmentToolbar(props: {
   const doc = props.resolved.treatments.document;
   const eff: Required<SectionTreatment> = sel.kind === "section"
     ? effectiveSectionTreatment(props.resolved, sel.id) : doc;
+  const ceff: Required<ComponentTreatment> | null = sel.kind === "component"
+    ? effectiveComponentTreatment(props.resolved, sel.id) : null;
 
   const secPatch = (t: SectionTreatment): ThemeDelta =>
     sel.kind === "section"
@@ -84,7 +86,17 @@ export default function TreatmentToolbar(props: {
         </>
       )}
 
-      {TREATMENT_OPTIONS
+      {sel.kind === "component" && ceff && COMPONENT_TREATMENT_OPTIONS.map((g) => (
+        <Group key={g.key} label={g.label}>
+          {g.options.map((o) => (
+            <Opt key={o.value} id={`${g.key}:${o.value}`} label={o.label}
+              active={ceff[g.key] === o.value}
+              onClick={() => props.onPatch({ treatments: { components: { [sel.id]: { [g.key]: o.value } as ComponentTreatment } } })} />
+          ))}
+        </Group>
+      ))}
+
+      {sel.kind !== "component" && TREATMENT_OPTIONS
         .filter((g) => sel.kind === "section" ? true : g.key !== "heading" && g.key !== "background" && g.key !== "photo")
         .map((g) => (
           <Group key={g.key} label={g.label}>
@@ -96,7 +108,7 @@ export default function TreatmentToolbar(props: {
           </Group>
         ))}
 
-      {sel.kind === "section" && props.onChoosePhoto && (
+      {sel.kind !== "document" && props.onChoosePhoto && (
         <button data-treat-photo onClick={props.onChoosePhoto}
           className="text-[10.5px] px-1.5 py-0.5 rounded ring-1 ring-slate-200 text-slate-500 hover:bg-slate-50">Choose photo…</button>
       )}

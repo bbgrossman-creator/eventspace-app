@@ -7,10 +7,11 @@ const T = (name: string, fn: () => void) => {
   catch (e) { failed++; console.log(`FAIL ${name}\n     ${(e as Error).message}`); }
 };
 const lens = (k: string) => LENSES.filter((l) => l.key === k)[0];
-T("the Presentation lens selects document + section; component/item wait for their treatments", () => {
+T("the Presentation lens selects document + section + component (v234); ITEM still waits for its treatments", () => {
   const c = lens("customer");
-  if (!lensSelects(c, "document") || !lensSelects(c, "section")) throw new Error("selection lost");
-  if ((c.selects as Record<string, unknown>).component) throw new Error("component selection declared before its treatments exist — a dead click");
+  if (!lensSelects(c, "document") || !lensSelects(c, "section") || !lensSelects(c, "component"))
+    throw new Error("selection lost");
+  if ((c.selects as Record<string, unknown>).item) throw new Error("item selection declared before its treatments exist — a dead click");
 });
 T("no other lens declares presentation selection; absence means NO", () => {
   for (const l of LENSES) if (l.key !== "customer" && l.selects !== undefined)

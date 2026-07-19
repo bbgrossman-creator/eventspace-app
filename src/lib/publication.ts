@@ -87,6 +87,16 @@ export interface SectionTreatment {
   photo?: "none" | "band" | "side" | "full";
 }
 
+/** v234 — a COMPONENT's dress. Semantic only, and §0.2-safe: nothing here
+ *  hides content — description and price options RE-DRESS what Design chose
+ *  to show; existence stays Design's alone. */
+export interface ComponentTreatment {
+  title?: "standard" | "caps" | "accent";
+  description?: "standard" | "italic" | "understated";
+  price?: "standard" | "tabular" | "muted";
+  photo?: "none" | "side" | "band";
+}
+
 /** v229 — the DOCUMENT identity's own dress: everything a section has
  *  (as the publication's defaults) plus document-only leaves. */
 export interface DocumentTreatment extends SectionTreatment {
@@ -120,7 +130,7 @@ export interface ThemeDelta {
    *  is stored.) */
   paper?: { tint?: string; texture?: string };
   margins?: { measure?: number; sectionGap?: number };
-  treatments?: { document?: DocumentTreatment; sections?: Record<string, SectionTreatment> };
+  treatments?: { document?: DocumentTreatment; sections?: Record<string, SectionTreatment>; components?: Record<string, ComponentTreatment> };
 }
 
 /** The complete resolved theme — every implemented leaf present. */
@@ -129,7 +139,7 @@ export interface ResolvedTheme {
   colors: { primary: string; accent: string; ink: string };
   paper: { tint: string; texture: string };
   margins: { measure: number; sectionGap: number };
-  treatments: { document: Required<DocumentTreatment>; sections: Record<string, SectionTreatment> };
+  treatments: { document: Required<DocumentTreatment>; sections: Record<string, SectionTreatment>; components: Record<string, ComponentTreatment> };
 }
 
 export type ThemeRung = "system" | "brand" | "theme" | "override";
@@ -149,7 +159,7 @@ export const SYSTEM_DEFAULT_THEME: Required<ThemeDelta> = {
   colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37" },
   paper: { tint: "#FFFFFF", texture: "none" },
   margins: { measure: 760, sectionGap: 40 },
-  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none", photo: "band" }, sections: {} },
+  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none", photo: "band" }, sections: {}, components: {} },
 };
 
 /** THE LADDER, resolved. One pure walk; per-leaf most-specific-wins; the
@@ -185,6 +195,7 @@ export function resolveTheme(
   // spirit; per-section provenance lands with the x-ray ink slice.)
   const doc: Required<DocumentTreatment> = { ...(SYSTEM_DEFAULT_THEME.treatments!.document as Required<DocumentTreatment>) };
   const secs: Record<string, SectionTreatment> = {};
+  const compTr: Record<string, ComponentTreatment> = {};
   for (const r of rungs) {
     const t = r.d.treatments;
     if (!t) continue;
@@ -194,6 +205,9 @@ export function resolveTheme(
     if (t.sections) for (const id of Object.keys(t.sections)) {
       secs[id] = { ...(secs[id] ?? {}), ...t.sections[id] };
     }
+    if (t.components) for (const id of Object.keys(t.components)) {
+      compTr[id] = { ...(compTr[id] ?? {}), ...t.components[id] };
+    }
   }
 
   return {
@@ -202,7 +216,7 @@ export function resolveTheme(
       colors: { primary: primary.v as string, accent: accent.v as string, ink: ink.v as string },
       paper: { tint: tint.v as string, texture: texture.v as string },
       margins: { measure: measure.v as number, sectionGap: gap.v as number },
-      treatments: { document: doc, sections: secs },
+      treatments: { document: doc, sections: secs, components: compTr },
     },
     provenance: {
       fonts: { pairing: fp.rung },
@@ -290,6 +304,12 @@ export function mergeDelta(base: ThemeDelta | null, patch: ThemeDelta): ThemeDel
         nt.sections[id] = { ...(nt.sections[id] ?? {}), ...patch.treatments.sections[id] };
       }
     }
+    if (patch.treatments.components) {
+      nt.components = { ...(bt.components ?? {}) };
+      for (const id of Object.keys(patch.treatments.components)) {
+        nt.components[id] = { ...(nt.components[id] ?? {}), ...patch.treatments.components[id] };
+      }
+    }
     out.treatments = nt;
   }
   return out;
@@ -300,6 +320,33 @@ export function mergeDelta(base: ThemeDelta | null, patch: ThemeDelta): ThemeDel
 export function effectiveSectionTreatment(theme: ResolvedTheme, sectionId: string): Required<SectionTreatment> {
   return { ...theme.treatments.document, ...(theme.treatments.sections[sectionId] ?? {}) } as Required<SectionTreatment>;
 }
+
+/** v234 — a component's effective dress: system defaults + its own rung-
+ *  merged entry. (No document-level component defaults yet — reserved.) */
+export const COMPONENT_TREATMENT_DEFAULTS: Required<ComponentTreatment> =
+  { title: "standard", description: "standard", price: "standard", photo: "side" };
+export function effectiveComponentTreatment(theme: ResolvedTheme, componentId: string): Required<ComponentTreatment> {
+  return { ...COMPONENT_TREATMENT_DEFAULTS, ...(theme.treatments.components[componentId] ?? {}) } as Required<ComponentTreatment>;
+}
+
+/** v234 — the component toolbar's registry. Semantic; nothing hides content. */
+export const COMPONENT_TREATMENT_OPTIONS: {
+  key: keyof ComponentTreatment; label: string;
+  options: { value: string; label: string }[];
+}[] = [
+  { key: "title", label: "Title", options: [
+    { value: "standard", label: "Standard" }, { value: "caps", label: "Caps" },
+    { value: "accent", label: "Accent" } ] },
+  { key: "description", label: "Description", options: [
+    { value: "standard", label: "Standard" }, { value: "italic", label: "Italic" },
+    { value: "understated", label: "Understated" } ] },
+  { key: "price", label: "Price", options: [
+    { value: "standard", label: "Standard" }, { value: "tabular", label: "Tabular" },
+    { value: "muted", label: "Muted" } ] },
+  { key: "photo", label: "Photo", options: [
+    { value: "side", label: "Side" }, { value: "band", label: "Band" },
+    { value: "none", label: "None" } ] },
+];
 
 /** §6.2/§6.3 — the SEMANTIC registry the contextual toolbar renders from.
  *  Treatments are named options, never free-form styling; chrome renders

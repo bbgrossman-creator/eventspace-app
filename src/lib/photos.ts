@@ -22,6 +22,8 @@ export interface PhotoRef { id: string; url: string; label: string }
 export interface PhotoPins {
   cover?: PhotoRef;
   sections?: Record<string, PhotoRef>;
+  /** v234 — component imagery, addressed as slot "comp:<id>". */
+  components?: Record<string, PhotoRef>;
 }
 
 const tokens = (s: string): string[] =>
@@ -51,16 +53,26 @@ export function pinPhoto(pins: PhotoPins | null, slot: string, photo: PhotoRecor
   const ref: PhotoRef = { id: photo.id, url: photo.url, label: photo.label };
   const base: PhotoPins = { ...(pins ?? {}) };
   if (slot === "__document__") return { ...base, cover: ref };
+  if (slot.indexOf("comp:") === 0)
+    return { ...base, components: { ...(base.components ?? {}), [slot.slice(5)]: ref } };
   return { ...base, sections: { ...(base.sections ?? {}), [slot]: ref } };
 }
 
 export function unpinPhoto(pins: PhotoPins | null, slot: string): PhotoPins {
   const base: PhotoPins = { ...(pins ?? {}) };
   if (slot === "__document__") { delete base.cover; return base; }
+  if (slot.indexOf("comp:") === 0) {
+    const components = { ...(base.components ?? {}) };
+    delete components[slot.slice(5)];
+    return { ...base, components };
+  }
   const sections = { ...(base.sections ?? {}) };
   delete sections[slot];
   return { ...base, sections };
 }
 
 export const pinnedFor = (pins: PhotoPins | null | undefined, slot: string): PhotoRef | null =>
-  !pins ? null : slot === "__document__" ? (pins.cover ?? null) : (pins.sections?.[slot] ?? null);
+  !pins ? null
+  : slot === "__document__" ? (pins.cover ?? null)
+  : slot.indexOf("comp:") === 0 ? (pins.components?.[slot.slice(5)] ?? null)
+  : (pins.sections?.[slot] ?? null);
