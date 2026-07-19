@@ -286,7 +286,7 @@ function ItemRow({ it, comp, p, drag }: {
       ref={ref}
       data-node-id={it.id}
       onClick={() => p.onSelect(it.id)}
-      className={`group flex items-center gap-2 pl-4 pr-3 py-[3px] text-[12.5px] cursor-pointer border-l-2 ${
+      className={`group flex items-center gap-2 pl-4 pr-3 py-[5px] text-[13px] cursor-pointer border-l-2 ${
         sel ? "border-l-[#C9A34E] [&_.grip]:opacity-100" : "border-l-transparent hover:bg-slate-50/60"
       } ${drag.live?.id === it.id ? "opacity-35" : ""}`}
       style={{ background: sel ? T.sel : undefined, color: ghost ? T.ghost : T.ink }}
@@ -307,16 +307,16 @@ function ItemRow({ it, comp, p, drag }: {
           <select value={it.basis ?? "flat"} disabled={!p.mayEdit}
             onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
             onChange={(e) => p.onPatchItem(it.id, { quantity_basis: e.target.value })}
-            className="text-[10px] bg-transparent outline-none text-slate-400 w-[52px]">
+            className="text-[10px] bg-transparent outline-none text-slate-400 w-[52px] opacity-25 group-hover:opacity-100 focus:opacity-100 transition-opacity">
             <option value="per_person">/person</option><option value="flat">flat</option><option value="per_table">/table</option>
           </select>
         </>
       )}
-      {it.choiceGroupId && <span className="text-[9px] text-slate-400">choice</span>}
+      {it.choiceGroupId && <span className="text-[9px] text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity">choice</span>}
       <button title={it.visible ? "Visible to customer" : "Hidden from customer"} disabled={!p.mayEdit}
         onClick={(e) => { e.stopPropagation(); p.onPatchItem(it.id, { show_on_proposal: !it.visible }); }}
         onMouseDown={(e) => e.stopPropagation()}
-        className="text-[11px] w-4 shrink-0">{it.visible ? "👁" : "🚫"}</button>
+        className={`text-[11px] w-4 shrink-0 transition-opacity ${it.visible ? "opacity-25 group-hover:opacity-100 focus:opacity-100" : ""}`}>{it.visible ? "👁" : "🚫"}</button>
     </div>
   );
 }
@@ -465,12 +465,12 @@ function ComponentBlock({ c, p, chapterId, drag }: {
       >
         <Grip payload={me} label={c.title} drag={drag} disabled={!p.mayEdit} />
         <Text value={c.title} disabled={!p.mayEdit}
-          className="flex-1 min-w-0 text-[13.5px] font-semibold text-[#1F2A37]"
+          className="flex-1 min-w-0 font-display text-[15px] font-semibold tracking-tight text-[#1F2A37]"
           onCommit={(v) => p.onPatchComponent(c.id, { title: v })} />
         <select value={c.isPackage ? "package" : "itemized"} disabled={!p.mayEdit}
           onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
           onChange={(e) => p.onPatchComponent(c.id, { pricing_mode: e.target.value })}
-          className="text-[10px] bg-transparent outline-none text-slate-400">
+          className="text-[10px] bg-transparent outline-none text-slate-400 opacity-25 group-hover:opacity-100 focus:opacity-100 transition-opacity">
           <option value="itemized">itemized</option><option value="package">package</option>
         </select>
         {c.isPackage && (
@@ -480,7 +480,7 @@ function ComponentBlock({ c, p, chapterId, drag }: {
             <select value={c.packageBasis ?? "flat"} disabled={!p.mayEdit}
               onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
               onChange={(e) => p.onPatchComponent(c.id, { package_basis: e.target.value })}
-              className="text-[10px] bg-transparent outline-none text-slate-400 w-[52px]">
+              className="text-[10px] bg-transparent outline-none text-slate-400 w-[52px] opacity-25 group-hover:opacity-100 focus:opacity-100 transition-opacity">
               <option value="flat">flat</option><option value="per_person">/person</option>
             </select>
           </>
@@ -491,7 +491,7 @@ function ComponentBlock({ c, p, chapterId, drag }: {
         <select value={c.display} disabled={!p.mayEdit}
           onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
           onChange={(e) => p.onPatchComponent(c.id, { proposal_display: e.target.value })}
-          className="text-[10px] bg-transparent outline-none text-slate-400 w-[64px]" title="What the customer sees">
+          className="text-[10px] bg-transparent outline-none text-slate-400 w-[64px] opacity-25 group-hover:opacity-100 focus:opacity-100 transition-opacity" title="What the customer sees">
           <option value="items">items</option><option value="description">description</option><option value="title_only">title only</option>
         </select>
       </div>
@@ -499,7 +499,7 @@ function ComponentBlock({ c, p, chapterId, drag }: {
       {!bodyHidden && c.note && (
         <div className="pl-8 pr-3 pb-0.5">
           <Text value={c.note} disabled={!p.mayEdit} placeholder="Presentation note…"
-            className="w-full text-[11.5px] italic text-slate-500"
+            className="w-full text-[12.5px] italic text-slate-600 leading-relaxed"
             onCommit={(v) => p.onPatchComponent(c.id, { presentation_note: v || null })} />
         </div>
       )}
@@ -630,8 +630,8 @@ export default function DesignStage(p: DesignStageProps) {
         const legal = isLegalTarget(live, { parentId: ch.id });
         const dropIn = (pl: NodePayload, t: DropTarget) => { p.onDrop?.(pl, t); };
         return (
-          <div key={ch.id} className="mb-4" onDragEnter={() => { if (live) setAwake(ch.id); }}>
-            <div className={`flex items-baseline gap-2 px-3 py-1.5 sticky top-0 backdrop-blur border-b z-10 transition-all ${
+          <div key={ch.id} className="mb-12" onDragEnter={() => { if (live) setAwake(ch.id); }}>
+            <div className={`flex items-baseline gap-2 px-3 py-2.5 sticky top-0 backdrop-blur border-b z-10 transition-all ${
                    landed === ch.id ? "ring-2 ring-[#C9A34E]" : ""}`}
                  style={{
                    borderColor: T.rule,
@@ -640,12 +640,12 @@ export default function DesignStage(p: DesignStageProps) {
                      : "rgba(255,255,255,.95)",
                    opacity: live && !legal ? 0.35 : 1,
                  }}>
-              <h3 className="font-display font-bold text-[13px] tracking-tight" style={{ color: T.navy }}>
+              <h3 className="font-display font-bold text-[16px] tracking-tight" style={{ color: T.navy }}>
                 {live && awake === ch.id && <span style={{ color: T.gold }}>▶ </span>}{ch.name}
               </h3>
               <span className="flex-1" />
               {ch.subtotal != null && (
-                <span className="text-[11px] font-semibold tabular-nums text-slate-400">{p.money(ch.subtotal)}</span>
+                <span className="text-[11px] tabular-nums text-slate-400">{p.money(ch.subtotal)}</span>
               )}
               {p.onAddComponent && p.mayEdit && !live && (
                 <button onClick={() => p.onAddComponent?.(ch.id)}

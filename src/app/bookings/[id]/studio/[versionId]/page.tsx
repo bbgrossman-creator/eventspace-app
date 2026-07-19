@@ -66,6 +66,11 @@ import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from
 import { SectionType, loadSectionTypes } from "@/lib/sections";
 import { promoteToBlueprint, getBlueprint, previewBlueprint, applyBlueprint, replaceWithBlueprint, applyBlueprintSubset, Blueprint, BlueprintPreview } from "@/lib/blueprints";
 import { landingRoute } from "@/lib/landing";
+import { formatVersionDiff } from "@/lib/sheetChoice";
+
+/** v218 — the sheet's physics: a layered lift instead of a generic div
+ *  shadow. One constant, both papers. */
+const PAPER_SHADOW = "0 1px 2px rgba(16,47,86,.10), 0 14px 44px -14px rgba(16,47,86,.28)";
 import SourceEventPane from "@/components/SourceEventPane";
 import FilesPanel from "@/components/FilesPanel";
 
@@ -135,7 +140,7 @@ export default function StudioPage() {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [version, setVersion] = useState<ProposalVersion | null>(null);
   const [versions, setVersions] = useState<ProposalVersion[]>([]);
-  const [tab, setTab] = useState<"build" | "compare" | "notes" | "files">("build");
+  const [tab, setTab] = useState<"build" | "notes" | "files">("build");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
@@ -187,8 +192,12 @@ export default function StudioPage() {
   const [dropHot, setDropHot] = useState(false);
 
   // Compare
-  const [compareWith, setCompareWith] = useState<string>("");
-  const [diff, setDiff] = useState<VersionDiff | null>(null);
+  // v218 — the Second Sheet's VERSION AXIS (STUDIO_COMPOSITION §8): another
+  // version through the customer lens — what we offered then, as an artifact.
+  // The Compare tab folds in here and dies; diff INK on the papers stays
+  // reserved. Both are render state.
+  const [sheetVersionModel, setSheetVersionModel] = useState<PresentationModel | null>(null);
+  const [sheetDiff, setSheetDiff] = useState<VersionDiff | null>(null);
 
   const locked = version?.status === "approved";
 
@@ -269,8 +278,13 @@ export default function StudioPage() {
   const liveOptions = useMemo(
     () => lenses
       .filter((l) => LIVE_RENDERED_LENSES[l.key] === true)
-      .map((l) => ({ key: l.key as string, label: l.label, blurb: l.blurb })),
-    [lenses],
+      .map((l) => ({ key: l.key as string, label: l.label, blurb: l.blurb }))
+      // v218 the VERSION AXIS: every other version, as the customer artifact
+      // it was — "v2 beside v3". Same dial, second axis, one surface.
+      .concat(versions.filter((v) => v.id !== versionId)
+        .map((v) => ({ key: "v:" + v.id, label: "v" + v.version,
+          blurb: "Version " + v.version + " \u2014 as the client would receive it" }))),
+    [lenses, versions, versionId],
   );
   useEffect(() => {
     if (!caps || lens) return;
@@ -480,7 +494,7 @@ export default function StudioPage() {
   // v214→v217: the Second Sheet's CHOICE, mirrored from SecondSheet (one event
   // source — the region notifies on mount and on change, so this cannot
   // drift). Render state here exactly as it is there: never persisted.
-  const [liveLensKey, setLiveLensKey] = useState<LensKey>("customer");
+  const [liveLensKey, setLiveLensKey] = useState<string>("customer");
   useEffect(() => {
     // v217: the customer projection serves the SECOND SHEET (summoned), not
     // a resident panel.
@@ -832,11 +846,8 @@ export default function StudioPage() {
       setMemory((p) => ({ ...p, [i.id]: m }));
     }
   }
-  async function runCompare(otherId: string) {
-    setCompareWith(otherId);
-    if (!otherId) { setDiff(null); return; }
-    setBusy(true);
-    const totalsFor = async (vid: string) => {
+  async function totalsFor(vid: string): Promise<number> {
+    {
       const { data: c } = await supabase.from("event_components").select("id").eq("proposal_version_id", vid);
       const ids = ((c ?? []) as { id: string }[]).map((x) => x.id);
       if (!ids.length) return 0;
@@ -846,10 +857,21 @@ export default function StudioPage() {
         supabase.from("version_adjustments").select("*").eq("version_id", vid),
       ]);
       return computeVersionTotals((it ?? []) as PricedItem[], (g ?? []) as { category_id: string; count: number }[], (a ?? []) as Adjustment[]).total;
-    };
-    setDiff(await diffVersions(otherId, versionId, totalsFor));
-    setBusy(false);
+    }
   }
+  // The version-axis loader: a "v:<id>" sheet key summons that version's
+  // customer artifact and its quiet diff line.
+  useEffect(() => {
+    const isV = split && liveLensKey.slice(0, 2) === "v:";
+    if (!isV) { setSheetVersionModel(null); setSheetDiff(null); return; }
+    const vid = liveLensKey.slice(2);
+    let dead = false;
+    setSheetVersionModel(null); setSheetDiff(null);
+    buildPresentationModel(vid).then((m) => { if (!dead) setSheetVersionModel(m); });
+    diffVersions(vid, versionId, totalsFor).then((d) => { if (!dead) setSheetDiff(d); });
+    return () => { dead = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [split, liveLensKey, versionId, items, comps, guests, adjs]);
 
   // ── The Proposal Language: canvas groups = version's sections (ordered),
   //    then any extra sections components reference, then Unsectioned. ──
@@ -994,7 +1016,6 @@ export default function StudioPage() {
               setBusy(false);
               if (r.ok && r.id) window.location.href = `/bookings/${b.id}/studio/${r.id}`;
             } }] : []),
-          { key: "compare", label: "⇄ Compare versions", onPick: () => setTab("compare") },
           { key: "notes", label: "🗒 Notes", onPick: () => setTab("notes") },
           { key: "files", label: "📎 Files", onPick: () => setTab("files") },
         ]}
@@ -1104,7 +1125,7 @@ export default function StudioPage() {
       )}
 
       {/* ── v217: the old two-row header died into the Line. When a Desk
-           surface (compare/notes/files) is open, one slim bar offers the way
+           surface (notes/files) is open, one slim bar offers the way
            back to the Paper. ── */}
       {tab !== "build" && (
         <div className="shrink-0 bg-white border-b border-[#E7EDF5] px-4 py-1.5 flex items-center gap-2">
@@ -1123,7 +1144,7 @@ export default function StudioPage() {
            that lives as long as the selection; the Outline is margin ghosts.
            The grid of three columns died here. ══ */}
       {tab === "build" && (
-        <div className="flex-1 min-h-0 overflow-y-auto relative" style={{ background: "#EEF2F7" }} data-stage>
+        <div className="flex-1 min-h-0 overflow-y-auto relative" style={{ background: "#E9EDF3" }} data-stage>
           {/* margin ghosts — Design's lens-owned outline, subordinated (§4) */}
           {lens === "design" && (
             <GhostOutline
@@ -1148,7 +1169,8 @@ export default function StudioPage() {
 
           <div className={split ? "grid grid-cols-2 gap-6 px-6" : "px-6"} data-stage-body>
             {/* ── THE PAPER — first (and usually only) sheet ── */}
-            <main data-paper className={`bg-white shadow-lg rounded-lg my-8 min-h-[60vh] ${split ? "" : "max-w-[820px] mx-auto"}`}
+            <main data-paper className={`bg-white rounded-[4px] ring-1 ring-black/5 my-10 min-h-[70vh] ${split ? "" : "max-w-[840px] mx-auto"}`}
+              style={dropHot ? { outline: "2px dashed #C9A34E", outlineOffset: -4, boxShadow: PAPER_SHADOW } : { boxShadow: PAPER_SHADOW }}
               onDragOver={(e) => {
                 if (lens !== "design") return;
                 const accepted = canvasDragMimes().concat(["text/eventcore-component"]);
@@ -1177,10 +1199,10 @@ export default function StudioPage() {
                 e.preventDefault();
                 try { const d = JSON.parse(raw); addFromSource([d.id], d.label); } catch {}
               }}
-              style={dropHot ? { outline: "2px dashed #C9A34E", outlineOffset: -4 } : undefined}
             >
               {/* the Design edition: the same document, x-ray ink — grammar verbatim */}
               {lens === "design" && (
+                <div className="px-6 py-8 sm:px-10">
                 <DesignStage
                   chapters={designChapters}
                   selectedId={selectedId}
@@ -1195,6 +1217,7 @@ export default function StudioPage() {
                   money={money}
                   onDrop={applyDrop}
                 />
+                </div>
               )}
               {lens === "customer" && (
                 stage
@@ -1213,19 +1236,37 @@ export default function StudioPage() {
 
             {/* ── THE SECOND SHEET — a whole paper, summoned (§8/§9) ── */}
             {split && (
-              <div className="my-8 min-h-[60vh] bg-white shadow-lg rounded-lg overflow-hidden" data-paper-second>
+              <div className="my-8 min-h-[60vh] bg-white rounded-[4px] ring-1 ring-black/5 overflow-hidden flex flex-col"
+                style={{ boxShadow: PAPER_SHADOW }} data-paper-second>
+                {liveLensKey.slice(0, 2) === "v:" && (
+                  <div data-sheet-diff className="shrink-0 px-4 py-1 text-[10.5px] tabular-nums text-slate-500 bg-[#FAFBFD] border-b border-[#EEF2F7]">
+                    {sheetDiff ? `vs v${version.version}: ${formatVersionDiff(sheetDiff, money)}` : "comparing\u2026"}
+                  </div>
+                )}
+                <div className="flex-1 min-h-0">
                 <SecondSheet
                   options={liveOptions}
-                  onSheetLens={(k) => setLiveLensKey(k as LensKey)}
+                  onSheetLens={setLiveLensKey}
                   projections={{
                     customer: liveStage ? <ProposalRenderer model={liveStage} xray={false} draftRibbon /> : null,
                     production: prodModel ? <ProductionSheet model={prodModel} /> : null,
+                    [liveLensKey]: liveLensKey.slice(0, 2) === "v:"
+                      ? (sheetVersionModel ? <ProposalRenderer model={sheetVersionModel} xray={false} /> : null)
+                      : (liveLensKey === "customer"
+                          ? (liveStage ? <ProposalRenderer model={liveStage} xray={false} draftRibbon /> : null)
+                          : (liveLensKey === "production" ? (prodModel ? <ProductionSheet model={prodModel} /> : null) : null)),
                   }}
                   emptyReasons={{
                     customer: "Nothing composed yet — the proposal appears here as you build.",
                     production: "No production facts yet — quantities appear as the design takes shape.",
+                    [liveLensKey]: liveLensKey.slice(0, 2) === "v:"
+                      ? "Summoning that version\u2026"
+                      : (liveLensKey === "customer"
+                          ? "Nothing composed yet — the proposal appears here as you build."
+                          : "No production facts yet — quantities appear as the design takes shape."),
                   }}
                 />
+                </div>
               </div>
             )}
           </div>
@@ -1282,55 +1323,6 @@ export default function StudioPage() {
         )}
       </Drawer>
 
-      {tab === "compare" && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
-          <div className="max-w-2xl mx-auto">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-sm font-semibold">Compare v{version.version} against</span>
-              <select className="field !py-1 !text-xs" value={compareWith} onChange={(e) => runCompare(e.target.value)}>
-                <option value="">— pick a version —</option>
-                {versions.filter((v) => v.id !== version.id).map((v) => (
-                  <option key={v.id} value={v.id}>v{v.version} ({VERSION_FLOW.find((f) => f.value === v.status)?.label})</option>
-                ))}
-              </select>
-              {busy && <span className="text-xs text-slate-400">computing…</span>}
-            </div>
-            {diff && (
-              <div className="space-y-3">
-                <div className="card p-4 flex items-center gap-6">
-                  <div><div className="text-[10px] font-bold uppercase text-slate-400">Older</div><div className="font-display font-bold">{money(diff.totalA)}</div></div>
-                  <div className="text-2xl text-slate-300">→</div>
-                  <div><div className="text-[10px] font-bold uppercase text-slate-400">This version</div><div className="font-display font-bold">{money(diff.totalB)}</div></div>
-                  <div className={`ml-auto font-display font-bold text-lg ${diff.totalB - diff.totalA >= 0 ? "text-[#15803D]" : "text-red-600"}`}>
-                    {diff.totalB - diff.totalA >= 0 ? "+" : ""}{money(diff.totalB - diff.totalA)}
-                  </div>
-                </div>
-                {diff.added.length > 0 && (
-                  <div className="card p-4">
-                    <div className="text-[10px] font-bold uppercase text-[#15803D] mb-1">Added</div>
-                    {diff.added.map((x, i) => <p key={i} className="text-[13px]">+ {x.title}</p>)}
-                  </div>
-                )}
-                {diff.removed.length > 0 && (
-                  <div className="card p-4">
-                    <div className="text-[10px] font-bold uppercase text-red-600 mb-1">Removed</div>
-                    {diff.removed.map((x, i) => <p key={i} className="text-[13px]">− {x.title}</p>)}
-                  </div>
-                )}
-                {diff.changed.length > 0 && (
-                  <div className="card p-4">
-                    <div className="text-[10px] font-bold uppercase text-[#2F80ED] mb-1">Changed</div>
-                    {diff.changed.map((x, i) => <p key={i} className="text-[13px]"><b>{x.title}</b>: <span className="text-slate-500">{x.detail}</span></p>)}
-                  </div>
-                )}
-                {diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0 && (
-                  <p className="text-sm text-slate-400">No structural differences — totals may still differ via guests or adjustments.</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {tab === "notes" && (
         <div className="flex-1 min-h-0 overflow-y-auto p-6">

@@ -67,6 +67,15 @@ export interface LensDef {
   label: string;
   /** One line of what this audience sees — for tooltips and empty states. */
   blurb: string;
+  /** v218 — how X-ray relates to this lens (STUDIO_COMPOSITION follow-up):
+   *  "inherent"  — the lens IS the x-ray edition; the Line renders no toggle
+   *                (a control that does nothing unsettles the mental model).
+   *  "modifier"  — the toggle appears and changes the rendering.
+   *  absent      — x-ray does not apply (sheet lenses, until their renderers
+   *                honor it). The Line consults THIS FIELD, never a lens
+   *                name — the doctrine "x-ray is a modifier on every lens"
+   *                lives in the registry, where every lens fact lives. */
+  xrayMode?: "inherent" | "modifier";
   /** Tenant capability required. The ONLY gate this file applies (condition 3).
    *  null = always available wherever the Studio itself is. */
   cap: keyof Capabilities | null;
@@ -105,12 +114,14 @@ const SEED_LENSES: LensDef[] = [
   {
     key: "design", label: "Design",
     blurb: "The maker's view — every truth, nothing hidden.",
+    xrayMode: "inherent",
     cap: null, perm: "bookings.edit", module: "events", editable: true,
     concern: "authoring the design", capability: null, verbs: [], anatomy: "editing",
   },
   {
     key: "customer", label: "Customer",
     blurb: "Exactly what the client receives.",
+    xrayMode: "modifier",
     cap: "proposals", perm: "bookings.view", module: "events", editable: false,
     concern: "what the client receives", capability: "proposal.customer_view",
     verbs: [], anatomy: "editing",

@@ -1,0 +1,360 @@
+// ═══ ACCEPTANCE — real Chromium, real mouse. Zero dispatchEvent anywhere. ════
+import { chromium } from "playwright-core";
+import http from "http"; import { readFileSync } from "fs";
+
+http.createServer((q, r) => {
+  const f = q.url.split("?")[0] === "/" ? "/index.html" : q.url.split("?")[0];
+  try { r.setHeader("content-type", f.endsWith(".js") ? "text/javascript" : f.endsWith(".css") ? "text/css" : "text/html; charset=utf-8");
+        r.end(readFileSync(new URL("." + f, import.meta.url))); }
+  catch { r.statusCode = 404; r.end(); }
+}).listen(4190);
+
+const browser = await chromium.launch({ headless: true, timeout: 15000 });
+const results = [];
+const T = (name, ok, detail = "") => { results.push({ name, ok, detail }); console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? "  — " + detail : ""}`); };
+
+const gripOf = (page, inputValue) => page.evaluate((v) => {
+  const inp = [...document.querySelectorAll("input")].find((i) => i.value === v);
+  if (!inp) return null;
+  inp.closest("div").scrollIntoView({ block: "center" });   // Canvas is a scroller now
+  const grip = [...inp.closest("div").querySelectorAll("[data-grip]")][0];
+  if (!grip) return null;
+  const r = grip.getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width, h: r.height,
+           opacity: getComputedStyle(grip).opacity };
+}, inputValue);
+
+async function fresh(qs = "") {
+  const page = await browser.newPage({ viewport: { width: 900, height: 1000 },
+    ...(process.env.RECORD ? { recordVideo: { dir: "/tmp/video", size: { width: 900, height: 1000 } } } : {}) });
+  await page.goto("http://localhost:4190/" + qs, { timeout: 10000 });
+  await page.locator('input[value="Sushi Station"]').waitFor({ timeout: 8000 });
+  return page;
+}
+const move = async (page, x, y, n = 8) => { for (let i = 0; i < n; i++) { await page.mouse.move(x, y, { steps: 2 }); await page.waitForTimeout(20); } };
+// A Chromium-canceled drag leaves Playwright's drag interception waiting forever.
+// Every in-flight action races a deadline so a dead drag FAILS instead of hanging.
+const tryMove = (page, x, y, steps = 4) => Promise.race([
+  page.mouse.move(x, y, { steps }).then(() => "ok"),
+  new Promise((r) => setTimeout(() => r("DRAG_DEAD"), 3500))]);
+const tryUp = (page) => Promise.race([page.mouse.up().then(() => "ok"),
+  new Promise((r) => setTimeout(() => r("DRAG_DEAD"), 3500))]);
+
+// ─── 1 · 2 · 3 · 4 · 5 — COMPONENT DRAG, end to end ─────────────────────────
+{
+  const page = await fresh();
+  // (1) hidden at rest, revealed on hover
+  const rest = await gripOf(page, "Sushi Station");
+  await page.mouse.move(rest.x + 120, rest.y);           // hover the row, not the grip
+  let hover = rest, polled = 0;
+  while (hover.opacity !== "1" && polled < 800) {        // poll: recording slows paint
+    await page.waitForTimeout(80); polled += 80;
+    hover = await gripOf(page, "Sushi Station");
+  }
+  T("1. hover reveals Sushi Station's handle", rest.opacity === "0" && hover.opacity === "1",
+    `rest=${rest.opacity} hover=${hover.opacity} hitbox=${Math.round(hover.w)}×${Math.round(hover.h)}px`);
+
+  // (2) real press + move starts the session
+  await page.mouse.move(hover.x, hover.y);
+  await page.mouse.down();
+  const m1 = await tryMove(page, hover.x + 10, hover.y + 20, 3);
+  const m2 = m1 === "ok" ? await tryMove(page, hover.x + 20, hover.y + 60, 4) : m1;
+  await page.waitForTimeout(120);
+  const dead = m1 !== "ok" || m2 !== "ok";
+  const flight = await page.evaluate(() => ({
+    seq: [...new Set(window.__log.map((e) => e.t))],
+    itemInputs: [...document.querySelectorAll("input")].filter((i) => ["Prime Rib", "California Roll", "Penne alla Vodka"].includes(i.value)).length,
+    bands: [...document.querySelectorAll("[data-band]")].map((b) => b.getAttribute("data-band-label")),
+    guidesVisible: [...document.querySelectorAll("[data-band] span[aria-hidden]")].every((l) => getComputedStyle(l).opacity !== "0" && l.getBoundingClientRect().height >= 2),
+    emptyHintShown: [...document.querySelectorAll("[data-band]")].some((b) => (b.textContent || "").includes("Drop component into Late Night")),
+  }));
+  T("2. real mouse from handle starts the drag session",
+    !dead && flight.seq.includes("dragstart") && flight.seq.includes("dragover") && !flight.seq.includes("dragend"),
+    (dead ? "CHROMIUM CANCELED THE DRAG · " : "") + flight.seq.join("→"));
+  T("3. Canvas collapses to chapter destinations", flight.itemInputs === 0,
+    `item inputs mid-flight: ${flight.itemInputs}`);
+  T("4. legal DropBands visible (beginning/between/end/empty)",
+    flight.bands.some((b) => b.includes("start of")) && flight.bands.some((b) => b.includes("Drop component into Late Night"))
+      && flight.guidesVisible && flight.emptyHintShown,
+    flight.bands.slice(0, 5).join(" | ") + ` · guides=${flight.guidesVisible} · emptyHint=${flight.emptyHintShown}`);
+  await page.screenshot({ path: "/mnt/user-data/outputs/drag-1-component-in-flight.png" });
+
+  // (5) drop into Reception, at the end — persisted chapter change
+  const band = await page.evaluate(() => {
+    const el = document.querySelector('[data-band-label="Drop at end of Reception"]');
+    if (!el) return { x: 450, y: 500 };
+    el.scrollIntoView({ block: "center" });
+    const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await tryMove(page, band.x, band.y, 8);
+  await page.waitForTimeout(120);
+  await tryUp(page);
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => ({
+    persisted: window.__persisted,
+    reception: window.__state().find((c) => c.id === "ch-recep").components.map((c) => c.title),
+    dinner: window.__state().find((c) => c.id === "ch-dinner").components.map((c) => c.title),
+    liveCleared: !document.body.innerText.includes("Drop at end of Reception"),
+  }));
+  T("5. dropping Sushi Station persists its new chapter",
+    after.persisted.some((w) => w.kind === "component" && w.id === "comp-sushi" && w.chapter === "ch-recep")
+      && after.reception.includes("Sushi Station") && !after.dinner.includes("Sushi Station")
+      && after.liveCleared,
+    `Reception=[${after.reception}] Dinner=[${after.dinner}] cleanup=${after.liveCleared}`);
+  await page.screenshot({ path: "/mnt/user-data/outputs/drag-2-component-landed.png" });
+  await page.close();
+}
+
+// ─── 6 · 7 · 8 · 9 — ITEM DRAG, end to end ──────────────────────────────────
+{
+  const page = await fresh();
+  // (6) hovering ONE item reveals only that item's handle
+  const sweet = await gripOf(page, "Sweet Potato Roll");
+  await page.mouse.move(sweet.x + 140, sweet.y);
+  await page.waitForTimeout(150);
+  const shown = await page.evaluate(() => [...document.querySelectorAll('[data-grip="item"]')]
+    .filter((g) => getComputedStyle(g).opacity === "1")
+    .map((g) => [...g.closest("div").querySelectorAll("input")][0]?.value));
+  T("6. hovering an item reveals only that item's handle", shown.length === 1 && shown[0] === "Sweet Potato Roll",
+    `visible item handles: [${shown}]`);
+
+  // (7) drag starts focus mode: other categories collapse to compact labels
+  await page.mouse.move(sweet.x, sweet.y);
+  await page.mouse.down();
+  const im1 = await tryMove(page, sweet.x + 8, sweet.y + 16, 3);
+  const im2 = im1 === "ok" ? await tryMove(page, sweet.x + 14, sweet.y + 40, 4) : im1;
+  const itemDead = im1 !== "ok" || im2 !== "ok";
+  await page.waitForTimeout(150);
+  const focus = await page.evaluate(() => ({
+    sourceOpen: !![...document.querySelectorAll("input")].find((i) => i.value === "Spicy Tuna Roll"),
+    classicCollapsed: ![...document.querySelectorAll("input")].find((i) => i.value === "Avocado Roll"),
+    classicLabel: [...document.querySelectorAll("span")].some((s) => s.textContent === "Classic Rolls"),
+    hint: document.body.innerText.includes("hover to open"),
+  }));
+  T("7. item drag starts focus mode (source open, others compact)",
+    !itemDead && focus.sourceOpen && focus.classicCollapsed && focus.classicLabel && focus.hint,
+    (itemDead ? "CHROMIUM CANCELED THE DRAG · " : "") + JSON.stringify(focus));
+  await page.screenshot({ path: "/mnt/user-data/outputs/drag-3-item-in-flight.png" });
+
+  // (8) dwell ~700ms over Classic Rolls opens it
+  const label = await page.evaluate(() => {
+    const el = [...document.querySelectorAll("span")].find((s) => s.textContent === "Classic Rolls");
+    if (!el) return { x: 450, y: 400 };
+    el.closest("div").scrollIntoView({ block: "center" });
+    const r = el.closest("div").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  await tryMove(page, label.x, label.y, 6);                 // slide over…
+  await page.waitForTimeout(1100);                          // …and REST > HOVER_EXPAND_MS
+  const opened = await page.evaluate(() => ({
+    avocadoVisible: !![...document.querySelectorAll("input")].find((i) => i.value === "Avocado Roll"),
+    bands: document.querySelectorAll("[data-band]").length,
+  }));
+  T("8. dwelling over another category opens it", opened.avocadoVisible && opened.bands > 0,
+    `Avocado visible=${opened.avocadoVisible}, bands=${opened.bands}`);
+  await page.screenshot({ path: "/mnt/user-data/outputs/drag-4-item-dwell-opened.png" });
+
+  // (9) drop BETWEEN Avocado and Cucumber → persisted category_key + position
+  const between = await page.evaluate(() => {
+    // the between-items guide inside the OPENED destination (Classic Rolls)
+    // VISIBLE bands only: since the freeze fix, the SOURCE list stays in the
+    // DOM (display:none) so dragend has a node to land on — its hidden bands
+    // must not be droppable targets for this locator.
+    const bands = [...document.querySelectorAll('[data-band-label="Drop here"]')]
+      .filter((b) => b.offsetParent !== null);
+    const el = bands.find((b) => {
+      let n = b.parentElement;
+      while (n) { if ((n.textContent || "").includes("Avocado Roll")) return true; n = n.parentElement; }
+      return false;
+    }) ?? bands[0];
+    if (!el) return null;
+    el.scrollIntoView({ block: "center" });
+    const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  if (!between) { T("9. dropping between two destination items persists", false, "no between-items band found"); }
+  else {
+    await tryMove(page, between.x, between.y, 6);
+    await page.waitForTimeout(120);
+    await tryUp(page);
+    // settle-wait: 13c flaked twice (v206, v207) reading state before the
+    // drop's async persist completed — wait for the persist wave instead
+    await page.waitForFunction(() => window.__persisted.some((w) => w.id === "it-sweet"), { timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(250);
+    const done = await page.evaluate(() => {
+      const comp = window.__state().flatMap((c) => c.components).find((c) => c.id === "comp-sushi");
+      const classic = comp.categories.find((k) => k.key === "classic").items.map((i) => i.name);
+      const sig = comp.categories.find((k) => k.key === "sig").items.map((i) => i.name);
+      return { persisted: window.__persisted, classic, sig };
+    });
+    T("9. dropping between two destination items persists category+position",
+      done.persisted.some((w) => w.kind === "item" && w.id === "it-sweet" && w.category_key === "classic")
+        && done.classic.join(",") === "Avocado Roll,Sweet Potato Roll,Cucumber Roll"
+        && !done.sig.includes("Sweet Potato Roll"),
+      `classic=[${done.classic}] sig=[${done.sig}]`);
+    await page.screenshot({ path: "/mnt/user-data/outputs/drag-5-item-landed.png" });
+  }
+  await page.close();
+}
+
+// ─── 10 — text selection in an inline input must not start a drag ───────────
+{
+  const page = await fresh();
+  const box = await page.evaluate(() => {
+    const i = [...document.querySelectorAll("input")].find((x) => x.value === "Sushi Station");
+    const r = i.getBoundingClientRect(); return { x: r.x + 8, y: r.y + r.height / 2 };
+  });
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 60, box.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const sel = await page.evaluate(() => ({
+    dragstart: window.__log.some((e) => e.t === "dragstart"),
+    selected: (() => { const i = [...document.querySelectorAll("input")].find((x) => x.value === "Sushi Station");
+                       return i.selectionEnd - i.selectionStart; })(),
+  }));
+  T("10. selecting text in an inline input does not start a drag", !sel.dragstart && sel.selected > 0,
+    `dragstart=${sel.dragstart}, chars selected=${sel.selected}`);
+  await page.close();
+}
+
+// ─── 11 — category rows advertise nothing ────────────────────────────────────
+{
+  const page = await fresh();
+  const cat = await page.evaluate(() => {
+    const el = [...document.querySelectorAll("span")].find((s) => s.textContent === "Signature Rolls");
+    const row = el.closest("div");
+    return { grips: row.querySelectorAll("[data-grip]").length,
+             draggables: row.querySelectorAll('[draggable="true"]').length,
+             glyph: row.textContent.includes("⠿") };
+  });
+  T("11. category rows contain no drag handle", cat.grips === 0 && cat.draggables === 0 && !cat.glyph,
+    JSON.stringify(cat));
+  await page.close();
+}
+
+// ─── 12 — locked / read-only: no handles anywhere ────────────────────────────
+{
+  const page = await fresh("?readonly=1");
+  const ro = await page.evaluate(() => ({
+    grips: document.querySelectorAll("[data-grip]").length,
+    draggables: document.querySelectorAll('[draggable="true"]').length,
+    banner: document.body.innerText.includes("Read-only"),
+  }));
+  T("12. read-only version renders zero handles", ro.grips === 0 && ro.draggables === 0 && ro.banner,
+    JSON.stringify(ro));
+  await page.close();
+}
+
+// ─── 13 — LONG-DISTANCE: anchor holds on collapse, edge auto-scroll reaches
+//         an offscreen chapter, and the drop persists ─────────────────────────
+{
+  const page = await fresh();
+  // Sushi Station at the top of the Canvas viewport; Cocktail Hour offscreen above.
+  const pre = await page.evaluate(() => {
+    const sc = document.getElementById("canvas");
+    const row = document.querySelector('[data-node-id="comp-sushi"]');
+    sc.scrollTop = 0;
+    sc.scrollTop = row.getBoundingClientRect().top - sc.getBoundingClientRect().top - 70;
+    const r = row.getBoundingClientRect(), c = sc.getBoundingClientRect();
+    const cock = [...document.querySelectorAll("h3")].find((h) => h.textContent.includes("Cocktail Hour"));
+    return { rowTop: r.top, canvasTop: c.top,
+             cocktailOffscreen: cock.getBoundingClientRect().bottom < c.top,
+             scrollTop: sc.scrollTop };
+  });
+  const g = await gripOf(page, "Sushi Station");
+  // gripOf recentres the row — re-pin the intended starting frame:
+  const start = await page.evaluate(() => {
+    const sc = document.getElementById("canvas");
+    const row = document.querySelector('[data-node-id="comp-sushi"]');
+    sc.scrollTop += row.getBoundingClientRect().top - sc.getBoundingClientRect().top - 70;
+    const grip = row.querySelector("[data-grip]").getBoundingClientRect();
+    const r = row.getBoundingClientRect(), c = sc.getBoundingClientRect();
+    const cock = [...document.querySelectorAll("h3")].find((h) => h.textContent.includes("Cocktail Hour"));
+    return { gx: grip.x + grip.width / 2, gy: grip.y + grip.height / 2,
+             rowTop: r.top, canvasTop: c.top, canvasBottom: c.bottom,
+             cocktailOffscreen: cock.getBoundingClientRect().bottom < c.top };
+  });
+  await page.mouse.move(start.gx + 120, start.gy); await page.waitForTimeout(80);
+  await page.mouse.move(start.gx, start.gy);
+  await page.mouse.down();
+  const lm = await tryMove(page, start.gx + 8, start.gy + 14, 3);
+  await tryMove(page, start.gx + 14, start.gy + 30, 3);
+  await page.waitForTimeout(160);                       // collapse + anchor correction
+  const anchored = await page.evaluate(() => {
+    const row = document.querySelector('[data-node-id="comp-sushi"]');
+    return { rowTop: row.getBoundingClientRect().top };
+  });
+  const drift = Math.abs(anchored.rowTop - start.rowTop);
+  T("13a. source stays anchored through focus-mode collapse",
+    lm === "ok" && start.cocktailOffscreen && drift < 40,
+    `pre-collapse top=${Math.round(start.rowTop)} post=${Math.round(anchored.rowTop)} drift=${Math.round(drift)}px · CocktailHour offscreen=${start.cocktailOffscreen}`);
+
+  // hold the pointer in the top edge zone until Cocktail Hour scrolls into view
+  await tryMove(page, start.gx, start.canvasTop + 14, 6);
+  let visible = false, waited = 0;
+  while (!visible && waited < 4000) {
+    await page.waitForTimeout(200); waited += 200;
+    visible = await page.evaluate(() => {
+      const sc = document.getElementById("canvas").getBoundingClientRect();
+      const b = document.querySelector('[data-band-label="Drop component into Cocktail Hour"]');
+      if (!b) return false;
+      const r = b.getBoundingClientRect();
+      return r.top >= sc.top && r.bottom <= sc.bottom;
+    });
+  }
+  T("13b. holding the top edge auto-scrolls Cocktail Hour into view", visible, `after ${waited}ms`);
+
+  // leave the edge zone and let the scroll settle before aiming — the zone
+  // keeps scrolling while the pointer is in it, which is the feature.
+  await tryMove(page, start.gx, start.canvasTop + 200, 4);
+  await page.evaluate(async () => {
+    const sc = document.getElementById("canvas");
+    let last = -1;
+    while (sc.scrollTop !== last) { last = sc.scrollTop; await new Promise((r) => setTimeout(r, 120)); }
+  });
+
+  // aim with FRESH coordinates and verify the band armed before releasing —
+  // the spacer can shift after the settle loop exits, staling a cached rect
+  // (this test lost that race intermittently in v206–v208 CI runs)
+  const aim = async () => {
+    const d = await page.evaluate(() => {
+      const b = document.querySelector('[data-band-label="Drop component into Cocktail Hour"]');
+      if (!b) return null;
+      b.scrollIntoView({ block: "center" });
+      const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    if (!d) return false;
+    await tryMove(page, d.x, d.y, 6);
+    await page.waitForTimeout(150);
+    // re-read: still under the pointer?
+    return page.evaluate((pt) => {
+      const b = document.querySelector('[data-band-label="Drop component into Cocktail Hour"]');
+      if (!b) return false;
+      const r = b.getBoundingClientRect();
+      return pt.x >= r.x && pt.x <= r.x + r.width && pt.y >= r.y && pt.y <= r.y + r.height;
+    }, d);
+  };
+  let aimed = await aim();
+  if (!aimed) aimed = await aim();   // one re-aim after any late layout shift
+  const dest = aimed ? {} : null;
+  if (!dest) { T("13c. dropping Sushi Station into Cocktail Hour persists", false, "destination band not found or never stable under pointer"); }
+  else {
+    await page.waitForTimeout(150);
+    await tryUp(page);
+    await page.waitForTimeout(400);
+    const done = await page.evaluate(() => ({
+      persisted: window.__persisted,
+      cocktail: window.__state().find((c) => c.id === "ch-cocktail").components.map((c) => c.title),
+      dinner: window.__state().find((c) => c.id === "ch-dinner").components.map((c) => c.title),
+    }));
+    T("13c. dropping Sushi Station into Cocktail Hour persists",
+      done.persisted.some((w) => w.kind === "component" && w.id === "comp-sushi" && w.chapter === "ch-cocktail")
+        && done.cocktail.includes("Sushi Station") && !done.dinner.includes("Sushi Station"),
+      `CocktailHour=[${done.cocktail}] Dinner=[${done.dinner}]`);
+  }
+  await page.screenshot({ path: "/mnt/user-data/outputs/drag-6-longdistance-landed.png" });
+  await page.close();
+}
+
+console.log(`\n═══ ${results.filter((r) => r.ok).length}/${results.length} PASSED ═══`);
+await browser.close(); process.exit(results.every((r) => r.ok) ? 0 : 1);

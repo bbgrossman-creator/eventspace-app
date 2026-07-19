@@ -19,3 +19,18 @@ export function effectiveSheetChoice(chosen: string | null, options: SheetOption
   if (chosen && options.some((o) => o.key === chosen)) return chosen;
   return fallbackSheetChoice(options);
 }
+
+/** v218 — the Second Sheet's version-axis caption, pure. What changed
+ *  between the summoned version and this one, in one quiet line. */
+export function formatVersionDiff(
+  d: { added: unknown[]; removed: unknown[]; changed: unknown[]; totalA: number; totalB: number },
+  money: (n: number) => string,
+): string {
+  const parts: string[] = [];
+  const delta = d.totalB - d.totalA;
+  if (delta !== 0) parts.push((delta > 0 ? "+" : "\u2212") + money(Math.abs(delta)));
+  if (d.added.length) parts.push(d.added.length + " added");
+  if (d.removed.length) parts.push(d.removed.length + " removed");
+  if (d.changed.length) parts.push(d.changed.length + " changed");
+  return parts.length ? parts.join(" \u00B7 ") : "No differences";
+}

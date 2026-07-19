@@ -147,8 +147,10 @@ export default function StudioLine(p: {
         )}
       </span>
 
-      {/* ── the modifier ── */}
-      {mayAuthor && (
+      {/* ── the modifier — only where it CHANGES something (registry-driven:
+           xrayMode "modifier"). On an inherent lens the edition is simply
+           what the dial says, and no dead control renders. ── */}
+      {mayAuthor && activeDef?.xrayMode === "modifier" && (
         <button data-xray onClick={() => p.onXray(!p.xray)} aria-pressed={p.xray}
           title="Show the truth the customer never sees: hidden items, unconfirmed prices, drop zones"
           className={`text-[11px] px-2 py-1 rounded-md border transition-colors shrink-0 ${
