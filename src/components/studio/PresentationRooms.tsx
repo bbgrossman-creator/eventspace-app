@@ -27,6 +27,9 @@ export default function PresentationRooms(props: {
   onThemeKey: (key: string) => void;
   /** v241 — capture the open version's PORTABLE stratum as a named template. */
   onSaveTemplate?: () => void;
+  /** v242 — the template shelf + the compare verb. */
+  templates?: { id: string; name: string; description?: string | null }[];
+  onCompareTemplate?: (id: string) => void;
   onPatch: (d: ThemeDelta) => void;
 }) {
   const r = props.room;
@@ -57,6 +60,22 @@ export default function PresentationRooms(props: {
                     style={{ borderColor: T.rule }}>
                     <span className="block text-[13px] font-semibold" style={{ color: T.ink }}>{t.name}</span>
                     <span className="block text-[10.5px] text-slate-400">Named in your Brand Studio</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {(props.templates ?? []).length > 0 && (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-1">Templates</p>
+              <div className="space-y-1.5">
+                {(props.templates ?? []).map((t) => (
+                  <button key={t.id} data-room-template={t.id}
+                    onClick={() => props.onCompareTemplate?.(t.id)}
+                    className="w-full text-left px-3 py-2 rounded-lg border hover:bg-[#F4F9FF]"
+                    style={{ borderColor: T.rule }}>
+                    <span className="block text-[13px] font-semibold" style={{ color: T.ink }}>{t.name}</span>
+                    <span className="block text-[10.5px] text-slate-400">{t.description || "Compare Presentation\u2026"}</span>
                   </button>
                 ))}
               </div>

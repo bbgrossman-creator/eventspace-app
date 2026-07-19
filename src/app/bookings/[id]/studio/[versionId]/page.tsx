@@ -46,8 +46,9 @@ import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta } 
 import { getPublicationSettings, listPublicationThemes, PublicationTheme } from "@/lib/publicationData";
 import { RegionTexts } from "@/lib/publication";
 import { ResolvedFact, projectIdentity } from "@/lib/identity";
-import { portablePresentation } from "@/lib/portable";
-import { createPublicationTemplate } from "@/lib/publicationData";
+import { portablePresentation, applyPortable, replaceOntoDestination, makeProvenance, MappingDecisions } from "@/lib/portable";
+import { createPublicationTemplate, listPublicationTemplates } from "@/lib/publicationData";
+import ComparePresentation from "@/components/studio/ComparePresentation";
 import { getCompanyIdentity } from "@/lib/identityData";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
@@ -308,12 +309,15 @@ export default function StudioPage() {
   useEffect(() => {
     getPublicationSettings().then((st) => { setPubBrand(st.brand); setPubWords(st.regionTexts); }).catch(() => {});
     getCompanyIdentity().then((co) => setPubCompany(projectIdentity(co.identity, co.policy))).catch(() => {});
+    listPublicationTemplates().then(setPubTemplates).catch(() => {});
     listPublicationThemes().then(setPubTenantThemes).catch(() => {});
   }, []);
   const [pubRoom, setPubRoom] = useState<PubRoom | null>(null);
   const [pubSection, setPubSection] = useState<string | null>(null);
   // v233 — the version's pinned imagery: render state, Save look commits.
   const [pubPins, setPubPins] = useState<PhotoPins | null>(null);
+  const [pubTemplates, setPubTemplates] = useState<PublicationTheme[]>([]);
+  const [compareTemplateId, setCompareTemplateId] = useState<string | null>(null);
   const [pubLibrary, setPubLibrary] = useState<PhotoRecord[]>([]);
   const [pubFocusSlot, setPubFocusSlot] = useState<string | null>(null);
   useEffect(() => { listPhotos().then(setPubLibrary).catch(() => {}); }, []);
@@ -1386,7 +1390,34 @@ export default function StudioPage() {
               <PresentationRoomRegion openRoom={pubRoom}
                 onOpenRoom={(r) => { setPubSection(null); setPubRoom(r); }}
                 onClose={() => setPubRoom(null)}>
-                {pubRoom === "photography" ? (
+                {pubRoom === "compare" && compareTemplateId ? (() => {
+                  const tpl = pubTemplates.filter((t) => t.id === compareTemplateId)[0];
+                  if (!tpl?.portable) return <p className="text-[11px] text-slate-400 px-3 py-4">That template has no portable payload.</p>;
+                  return (
+                    <ComparePresentation
+                      templateName={tpl.name}
+                      source={tpl.portable}
+                      dest={{ themeKey: pubThemeKey, override: pubOverride, pins: pubPins }}
+                      destSections={(stage?.sections ?? []).map((x) => ({ id: x.id, role: x.id, name: x.name }))}
+                      libraryPhotoIds={pubLibrary.map((ph) => ph.id)}
+                      onClose={() => { setCompareTemplateId(null); setPubRoom("appearance"); }}
+                      onApply={(decisions: MappingDecisions) => void (async () => {
+                        const applied = applyPortable(tpl.portable!,
+                          (stage?.sections ?? []).map((x) => ({ id: x.id, role: x.id })), decisions);
+                        const next = replaceOntoDestination(pubOverride, pubPins, applied);
+                        const provenance = makeProvenance(tpl.id, tpl.portable!, "midflight");
+                        setPubThemeKey(tpl.portable!.themeKey);
+                        setPubOverride(next.override); setPubPins(next.pins); setPubDirty(false);
+                        await supabase.from("proposal_versions").update({
+                          theme_key: tpl.portable!.themeKey, theme_override: next.override,
+                          photo_pins: next.pins, presentation_provenance: provenance,
+                        }).eq("id", version.id);
+                        setToast(`✓ "${tpl.name}" applied — component and item styling remained.`);
+                        setCompareTemplateId(null); setPubRoom(null);
+                      })()}
+                    />
+                  );
+                })() : pubRoom === "photography" ? (
                   <PhotographyRoom
                     slots={[{ id: "__document__", name: (stage?.title ?? "Document") }]
                       .concat((stage?.sections ?? []).map((x) => ({ id: x.id, name: x.name })))
@@ -1407,6 +1438,8 @@ export default function StudioPage() {
                   resolved={resolvedPub}
                   onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
                   onPatch={patchPub}
+                  templates={pubTemplates.map((t) => ({ id: t.id, name: t.name, description: t.description }))}
+                  onCompareTemplate={(id) => { setCompareTemplateId(id); setPubRoom("compare"); }}
                   onSaveTemplate={() => void (async () => {
                     const name = window.prompt("Template name — a named portable presentation:");
                     if (!name?.trim()) return;

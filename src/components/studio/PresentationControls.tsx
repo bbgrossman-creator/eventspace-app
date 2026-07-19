@@ -7,7 +7,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import React from "react";
 
-export type PubRoom = "appearance" | "typography" | "palette" | "paper" | "regions" | "photography";
+/** v242 — "compare" is a room STATE, not a nav door: reached only from a
+ *  template's Compare Presentation… verb in the Appearance room. */
+export type PubRoom = "appearance" | "typography" | "palette" | "paper" | "regions" | "photography" | "compare";
 const T = { navy: "#102F56" } as const;
 
 export default function PresentationControls(props: {
