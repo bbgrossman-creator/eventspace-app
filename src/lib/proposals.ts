@@ -58,6 +58,9 @@ export async function createProposal(
   title: string,
   seedFromOperational: boolean,
   fromBlueprint?: { sourceVersionId: string; name: string },
+  /** v221 — the answered archetype question. Blueprint and operational seeds
+   *  carry their own structure and ignore it; absent = legacy scaffold. */
+  archetypeSeed?: { key: string; label: string; sections: string[] } | null,
 ): Promise<Outcome> {
   const { data: p, error: pErr } = await supabase.from("proposals")
     .insert({ booking_id: booking.id, title: title.trim() || "Proposal" })
@@ -67,11 +70,18 @@ export async function createProposal(
     .insert({ proposal_id: p.id, version: 1 }).select("id").single();
   if (vErr || !v) return { ok: false, detail: vErr?.message ?? "version insert failed" };
 
-  // Scaffold: the event type's section headers land on v1 (labels only).
+  // The outline seed: the ANSWERED archetype when the question applied
+  // (labels only — content never comes from a seed); otherwise the legacy
+  // event-type scaffold.
   try {
-    const { data: bt } = await supabase.from("bookings").select("event_type").eq("id", booking.id).maybeSingle();
-    const scaffold = await scaffoldFor((bt as { event_type: string | null } | null)?.event_type ?? null);
-    await seedVersionSections(v.id, scaffold);
+    if (archetypeSeed && !fromBlueprint && !seedFromOperational) {
+      const { ensureSectionTypeIds } = await import("./sections");
+      await seedVersionSections(v.id, await ensureSectionTypeIds(archetypeSeed.sections));
+    } else {
+      const { data: bt } = await supabase.from("bookings").select("event_type").eq("id", booking.id).maybeSingle();
+      const scaffold = await scaffoldFor((bt as { event_type: string | null } | null)?.event_type ?? null);
+      await seedVersionSections(v.id, scaffold);
+    }
   } catch { /* pre-v181 DB — proposals still work, unsectioned */ }
   if (fromBlueprint) {
     // Blueprint seed: instantiate the source version's components (lineage,
@@ -94,7 +104,8 @@ export async function createProposal(
     await supabase.from("version_guests").insert({ version_id: v.id, category_id: firstCat.id, count: est });
   }
   await logActivity(booking.id, booking.invoice_num, "Proposal Created",
-    `🎨 "${title.trim() || "Proposal"}" v1${seedFromOperational ? " seeded from event components" : ""}`);
+    `🎨 "${title.trim() || "Proposal"}" v1${seedFromOperational ? " seeded from event components"
+      : archetypeSeed && !fromBlueprint ? ` (${archetypeSeed.label} outline)` : ""}`);
   return { ok: true, id: p.id };
 }
 

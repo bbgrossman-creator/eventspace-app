@@ -7,7 +7,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase } from "./supabase";
 
-export interface SectionType { id: string; name: string; position: number; active: boolean; }
+export interface SectionType { id: string; name: string; position: number; active: boolean; category?: string | null; }
 export interface VersionSection { section_type_id: string; position: number; }
 
 /** v219 — a NEW moment type, coined at the picker. Position lands after the
@@ -21,9 +21,33 @@ export async function createSectionType(name: string, afterPosition: number): Pr
 }
 
 export async function loadSectionTypes(): Promise<SectionType[]> {
+  // v221: `category` feeds the curated picker; a pre-migration DB simply
+  // answers without it (the picker's General group absorbs everything).
+  const withCat = await supabase.from("section_types")
+    .select("id,name,position,active,category").eq("active", true).order("position");
+  if (!withCat.error) return (withCat.data ?? []) as SectionType[];
   const { data } = await supabase.from("section_types")
     .select("id,name,position,active").eq("active", true).order("position");
   return (data ?? []) as SectionType[];
+}
+
+/** v221 — archetype names → section_type ids, in the archetype's order,
+ *  case-insensitively; missing names are COINED (createSectionType), because
+ *  a seed must never fail on vocabulary the tenant hasn't used yet. */
+export async function ensureSectionTypeIds(names: string[]): Promise<string[]> {
+  if (!names.length) return [];
+  const types = await loadSectionTypes();
+  const byName: Record<string, string> = {};
+  let maxPos = 0;
+  for (const t of types) { byName[t.name.trim().toLowerCase()] = t.id; if (t.position > maxPos) maxPos = t.position; }
+  const out: string[] = [];
+  for (const n of names) {
+    const hit = byName[n.trim().toLowerCase()];
+    if (hit) { out.push(hit); continue; }
+    const made = await createSectionType(n, maxPos);
+    if (made) { maxPos = made.position; byName[n.trim().toLowerCase()] = made.id; out.push(made.id); }
+  }
+  return out;
 }
 
 /** Section headers a new proposal starts with for this event type.

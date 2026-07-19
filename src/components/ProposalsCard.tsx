@@ -9,6 +9,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import ArchetypePick from "@/components/ArchetypePick";
+import { archetype } from "@/lib/archetypes";
 import { Booking } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import VersionPricing from "@/components/VersionPricing";
@@ -29,6 +31,7 @@ export default function ProposalsCard({ b }: { b: Booking }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [nArch, setNArch] = useState<string | null>(null);   // v221: the outline question — unanswered until answered
   const [nTitle, setNTitle] = useState("");
   const [nSeed, setNSeed] = useState(true);
   const [bps, setBps] = useState<Blueprint[]>([]);
@@ -131,13 +134,18 @@ export default function ProposalsCard({ b }: { b: Booking }) {
               onChange={(e) => setNSeed(e.target.checked)} />
             Start v1 from this event&apos;s current components
           </label>
+          {!nBlueprint && !nSeed && <ArchetypePick value={nArch} onChange={setNArch} />}
           <div className="flex gap-2">
-            <button className="btn-primary !py-1 !px-2.5 text-xs" disabled={busy}
+            <button className="btn-primary !py-1 !px-2.5 text-xs"
+              disabled={busy || (!nBlueprint && !nSeed && !nArch)}
+              title={!nBlueprint && !nSeed && !nArch ? "Choose how the event is organized first" : undefined}
               onClick={() => {
                 const bp = bps.find((x) => x.id === nBlueprint);
+                const arch = !bp && !nSeed && nArch ? archetype(nArch) : null;
                 run(() => createProposal(b, nTitle, nSeed && !bp,
                   bp?.source_version_id ? { sourceVersionId: bp.source_version_id, name: bp.name } : undefined,
-                )).then(() => { setNTitle(""); setNBlueprint(""); setAdding(false); });
+                  arch ? { key: arch.key, label: arch.label, sections: arch.sections } : null,
+                )).then(() => { setNTitle(""); setNBlueprint(""); setNArch(null); setAdding(false); });
               }}>
               Create
             </button>

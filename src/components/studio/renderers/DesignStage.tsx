@@ -639,6 +639,14 @@ export default function DesignStage(p: DesignStageProps) {
   // it is indistinguishable from a bug, which is exactly what happened here.
   const readOnly = !p.mayEdit;
   const [chMenu, setChMenu] = useState<string | null>(null);
+  // v221 — EMPTY CHAPTERS REST COLLAPSED (▶): the outline stays compact
+  // (structure before content, without the dead space), and expanding is one
+  // click. STRICTLY a rest-state dress: during a live drag the full
+  // structure renders exactly as before (chapters are the destination map,
+  // and the drag suites' DOM stays byte-identical). A populated chapter is
+  // always expanded; an expand override is render state and dies with the
+  // page. Empty-is-information stands — the chapter RENDERS, compactly.
+  const [expanded, setExpanded] = useState<Record<string, true>>({});
 
   if (!p.chapters.length) {
     return (
@@ -672,8 +680,42 @@ export default function DesignStage(p: DesignStageProps) {
       {p.chapters.map((ch) => {
         const legal = isLegalTarget(live, { parentId: ch.id });
         const dropIn = (pl: NodePayload, t: DropTarget) => { p.onDrop?.(pl, t); };
+        const collapsed = !live && ch.components.length === 0 && expanded[ch.id] !== true;
+        if (collapsed) {
+          return (
+            <div key={ch.id} data-chapter={ch.id} data-chapter-collapsed
+                 className="group/chhdr flex items-baseline gap-2 px-3 py-1.5 border-b"
+                 style={{ borderColor: T.rule }}>
+              <button data-chapter-expand={ch.id}
+                onClick={() => setExpanded((prev) => ({ ...prev, [ch.id]: true }))}
+                className="flex items-baseline gap-2 text-left">
+                <span className="text-[10px] text-slate-300">▶</span>
+                <span className="font-display font-semibold text-[13.5px] text-slate-400 hover:text-[#102F56] transition-colors">{ch.name}</span>
+              </button>
+              <span className="flex-1" />
+              {p.onChapterAction && p.mayEdit && ch.id !== "__none__" && (
+                <span className="relative">
+                  <button data-chapter-menu-btn={ch.id} aria-expanded={chMenu === ch.id}
+                    onClick={() => setChMenu(chMenu === ch.id ? null : ch.id)}
+                    className="text-[12px] text-slate-300 hover:text-slate-600 opacity-0 group-hover/chhdr:opacity-100 focus:opacity-100 transition-opacity px-1"
+                    title="This section — reorder or remove">⋯</button>
+                  {chMenu === ch.id && (
+                    <span data-chapter-menu className="absolute right-0 top-full mt-1 z-30 w-44 bg-white rounded-lg shadow-xl ring-1 ring-[#E7EDF5] py-1 block">
+                      <button data-chapter-act="up" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "up"); }}
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-slate-600 hover:bg-[#F4F9FF]">↑ Move earlier</button>
+                      <button data-chapter-act="down" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "down"); }}
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-slate-600 hover:bg-[#F4F9FF]">↓ Move later</button>
+                      <button data-chapter-act="remove" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "remove"); }}
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-[#B91C1C] hover:bg-[#FEF2F2]">Remove section…</button>
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          );
+        }
         return (
-          <div key={ch.id} className="mb-12" onDragEnter={() => { if (live) setAwake(ch.id); }}>
+          <div key={ch.id} data-chapter={ch.id} className="mb-12" onDragEnter={() => { if (live) setAwake(ch.id); }}>
             <div className={`group/chhdr flex items-baseline gap-2 px-3 py-2.5 sticky top-0 backdrop-blur border-b z-10 transition-all ${
                    landed === ch.id ? "ring-2 ring-[#C9A34E]" : ""}`}
                  style={{

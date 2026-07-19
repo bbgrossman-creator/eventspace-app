@@ -33,6 +33,7 @@ import { bootLibraryKinds } from "@/lib/libraryKinds";
 import { canvasDragMimes } from "@/lib/libraryRegistry";
 import LandingDecision from "@/components/studio/LandingDecision";
 import VersionGenesis from "@/components/studio/VersionGenesis";
+import SectionPicker from "@/components/studio/SectionPicker";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -65,7 +66,6 @@ import {
 } from "@/lib/pricingEngine";
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
 import { SectionType, loadSectionTypes, createSectionType } from "@/lib/sections";
-import { availableMomentTypes } from "@/lib/moments";
 import { promoteToBlueprint, getBlueprint, previewBlueprint, applyBlueprint, replaceWithBlueprint, applyBlueprintSubset, listBlueprints, Blueprint, BlueprintPreview } from "@/lib/blueprints";
 import { landingRoute } from "@/lib/landing";
 import { formatVersionDiff } from "@/lib/sheetChoice";
@@ -1066,52 +1066,23 @@ export default function StudioPage() {
         />
       )}
 
-      {/* ── v219 THE SECTION PICKER (user-facing vocabulary: "section"; docs retain "moment") — the Proposal's "+ moment" ceremony.
-           Offers active types not already on this version (a present type
-           would be a duplicate-in-waiting), plus the coining of a new one.
-           Commits nothing until chosen; Esc/away cancels. ── */}
       {sectionPicker && (
-        <div data-moment-picker className="fixed inset-0 z-50 flex items-center justify-center bg-black/25"
-             onClick={() => setSectionPicker(false)}>
-          <div className="bg-white rounded-xl shadow-2xl w-[380px] max-h-[70vh] overflow-y-auto p-4"
-               onClick={(e) => e.stopPropagation()}>
-            <p className="text-[13.5px] font-semibold mb-0.5" style={{ color: "#1F2A37" }}>Add a section</p>
-            <p className="text-[11px] text-slate-400 mb-3">Cocktail Hour, Dinner, Dessert — the proposal's chapters.</p>
-            <div className="space-y-1 mb-3">
-              {availableMomentTypes(sectionTypes, vSections).map((t) => (
-                <button key={t.id} data-moment-option={t.id}
-                  onClick={() => void addSectionType(t.id)}
-                  className="w-full text-left px-3 py-2 rounded-lg border text-[13px] hover:bg-[#F4F9FF]"
-                  style={{ borderColor: "#E7EDF5", color: "#1F2A37" }}>{t.name}</button>
-              ))}
-              {availableMomentTypes(sectionTypes, vSections).length === 0 && (
-                <p className="text-[11px] text-slate-400 px-1">Every existing section type is already on this version.</p>
-              )}
-            </div>
-            <form className="flex gap-2" onSubmit={(e) => {
-              e.preventDefault();
-              const input = (e.currentTarget.elements.namedItem("momentName") as HTMLInputElement);
-              const name = input.value.trim();
-              if (!name) return;
-              void (async () => {
-                const maxPos = sectionTypes.reduce((m, t) => Math.max(m, t.position), 0);
-                const created = await createSectionType(name, maxPos);
-                if (!created) { setErr("Could not create that section type."); return; }
-                setSectionTypes((prev) => prev.concat([created]));
-                await addSectionType(created.id);
-              })();
-            }}>
-              <input name="momentName" data-moment-new placeholder="Or coin a new one — e.g. Late Night"
-                className="field flex-1 !text-[12px]" />
-              <button type="submit" data-moment-create
-                className="text-[12px] font-semibold text-white rounded-lg px-3 py-1.5"
-                style={{ background: "#102F56" }}>Add</button>
-            </form>
-            <button data-moment-cancel onClick={() => setSectionPicker(false)}
-              className="mt-3 text-[11px] text-slate-400 hover:text-slate-700">Cancel</button>
-          </div>
-        </div>
+        <SectionPicker
+          types={sectionTypes}
+          present={vSections}
+          busy={busy}
+          onPick={(sid) => void addSectionType(sid)}
+          onCreate={(name) => void (async () => {
+            const maxPos = sectionTypes.reduce((m, t) => Math.max(m, t.position), 0);
+            const created = await createSectionType(name, maxPos);
+            if (!created) { setErr("Could not create that section type."); return; }
+            setSectionTypes((prev) => prev.concat([created]));
+            await addSectionType(created.id);
+          })()}
+          onCancel={() => setSectionPicker(false)}
+        />
       )}
+
 
       {genesis && (
         <VersionGenesis
