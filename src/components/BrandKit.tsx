@@ -13,7 +13,7 @@
 import React, { useState } from "react";
 import {
   ThemeDelta, ResolvedTheme, BUILT_IN_THEMES, FONT_PAIRINGS, PALETTES, PAPERS,
-  TREATMENT_OPTIONS, SectionTreatment,
+  TREATMENT_OPTIONS, SectionTreatment, RegionTexts,
 } from "@/lib/publication";
 
 const T = { ink: "#1F2A37", navy: "#102F56", rule: "#E7EDF5" } as const;
@@ -25,6 +25,9 @@ export default function BrandKit(props: {
   busy?: boolean;
   defaultThemeKey: string | null;           // "__brand__" | built-in key | tenant theme id
   themeChoices: { key: string; label: string }[];  // for the default-theme select
+  /** v231 — the region WORDS: company facts, draft until Save brand. */
+  regionTexts: RegionTexts;
+  onRegionText: (k: keyof RegionTexts, v: string) => void;
   onPatch: (d: ThemeDelta) => void;         // draft state
   onDefaultTheme: (key: string) => void;    // draft state
   onSave: () => void;                       // THE commit
@@ -102,6 +105,17 @@ export default function BrandKit(props: {
             </div>
           </div>
         ))}
+      </Section>
+
+      <Section title="Words on the paper" blurb="Footer, signature, and terms — used wherever a proposal turns those regions on.">
+        <div className="space-y-2">
+          <input data-brand-footer className="field !py-1.5 !text-[12px] w-full" placeholder="Footer — e.g. Burger Bar Catering · KCL supervised · (732) 555-0140"
+            value={props.regionTexts.footer ?? ""} onChange={(e) => props.onRegionText("footer", e.target.value)} />
+          <input data-brand-signature className="field !py-1.5 !text-[12px] w-full" placeholder="Signature — e.g. Ben Grossman, Director of Catering"
+            value={props.regionTexts.signature ?? ""} onChange={(e) => props.onRegionText("signature", e.target.value)} />
+          <textarea data-brand-terms rows={3} className="field !py-1.5 !text-[12px] w-full" placeholder="Terms — deposits, final counts, allergen notice…"
+            value={props.regionTexts.terms ?? ""} onChange={(e) => props.onRegionText("terms", e.target.value)} />
+        </div>
       </Section>
 
       <Section title="Default theme" blurb="What a new proposal wears at birth. 'Company brand' is the bare kit above.">

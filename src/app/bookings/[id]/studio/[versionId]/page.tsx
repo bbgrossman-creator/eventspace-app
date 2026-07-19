@@ -40,6 +40,7 @@ import PresentationRooms from "@/components/studio/PresentationRooms";
 import TreatmentToolbar from "@/components/studio/TreatmentToolbar";
 import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta } from "@/lib/publication";
 import { getPublicationSettings, listPublicationThemes, PublicationTheme } from "@/lib/publicationData";
+import { RegionTexts } from "@/lib/publication";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -293,9 +294,10 @@ export default function StudioPage() {
   // v226 THE CANVAS — one thing open, always: a ROOM or a selected
   // presentation identity, never both (§6.1/§6.3); both die on lens change.
   const [pubBrand, setPubBrand] = useState<ThemeDelta | null>(null);
+  const [pubWords, setPubWords] = useState<RegionTexts>({ footer: null, signature: null, terms: null });
   const [pubTenantThemes, setPubTenantThemes] = useState<PublicationTheme[]>([]);
   useEffect(() => {
-    getPublicationSettings().then((st) => setPubBrand(st.brand)).catch(() => {});
+    getPublicationSettings().then((st) => { setPubBrand(st.brand); setPubWords(st.regionTexts); }).catch(() => {});
     listPublicationThemes().then(setPubTenantThemes).catch(() => {});
   }, []);
   const [pubRoom, setPubRoom] = useState<PubRoom | null>(null);
@@ -1400,7 +1402,7 @@ export default function StudioPage() {
               )}
               {lens === "customer" && (
                 stage
-                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub}
+                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub} regions={pubWords}
                       onSectionSelect={!locked && session?.perms.includes("bookings.edit") && lensSelects(activeLensDef, "section")
                         ? (sid) => { setPubRoom(null); setPubSection(sid === pubSection ? null : sid); }
                         : undefined}

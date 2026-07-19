@@ -7,7 +7,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import React from "react";
 
-export type PubRoom = "appearance" | "typography" | "palette" | "paper";
+export type PubRoom = "appearance" | "typography" | "palette" | "paper" | "regions";
 const T = { navy: "#102F56" } as const;
 
 export default function PresentationControls(props: {

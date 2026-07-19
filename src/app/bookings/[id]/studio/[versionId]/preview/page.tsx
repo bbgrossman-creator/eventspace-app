@@ -11,13 +11,14 @@ import Link from "next/link";
 import { buildPresentationModel, PresentationModel } from "@/lib/presentation";
 import ProposalRenderer from "@/components/ProposalRenderer";
 import { supabase } from "@/lib/supabase";
-import { ResolvedTheme, ThemeDelta, resolveTheme, resolveThemeKey } from "@/lib/publication";
+import { ResolvedTheme, ThemeDelta, RegionTexts, resolveTheme, resolveThemeKey } from "@/lib/publication";
 import { getPublicationSettings, listPublicationThemes } from "@/lib/publicationData";
 
 export default function ProposalPreviewPage() {
   const params = useParams<{ id: string; versionId: string }>();
   const [model, setModel] = useState<PresentationModel | null>(null);
   const [pubTheme, setPubTheme] = useState<ResolvedTheme | null>(null);
+  const [pubWords, setPubWords] = useState<RegionTexts>({ footer: null, signature: null, terms: null });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,9 +34,13 @@ export default function ProposalPreviewPage() {
       const v = data as { status: string; theme_key: string | null; theme_override: unknown; presentation_snapshot: unknown } | null;
       if (!v) return;
       if ((v.status === "sent" || v.status === "approved") && v.presentation_snapshot) {
-        setPubTheme(v.presentation_snapshot as ResolvedTheme);
+        // v231 — a stamped document is WHOLE: its words froze with its dress.
+        const snap = v.presentation_snapshot as ResolvedTheme & { regionTexts?: RegionTexts };
+        setPubTheme(snap);
+        if (snap.regionTexts) setPubWords(snap.regionTexts);
       } else {
         const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
+        setPubWords(settings.regionTexts);
         setPubTheme(resolveTheme(settings.brand, resolveThemeKey(v.theme_key, tenantThemes),
           (v.theme_override as ThemeDelta | null) ?? null).theme);
       }
@@ -62,7 +67,7 @@ export default function ProposalPreviewPage() {
             </div>
           )}
           <div className="shadow-xl rounded-lg overflow-hidden mx-4 sm:mx-auto max-w-3xl">
-            <ProposalRenderer model={model} theme={pubTheme ?? undefined} />
+            <ProposalRenderer model={model} theme={pubTheme ?? undefined} regions={pubWords} />
           </div>
         </>
       )}

@@ -287,9 +287,11 @@ export async function sendVersion(
   const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
   const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
   const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
+  // v231 — the WORDS freeze with the dress: a sent document is whole.
+  const snapshot = { ...resolved.theme, regionTexts: settings.regionTexts };
   const patch: Record<string, unknown> = {
     status: "sent",
-    presentation_snapshot: resolved.theme,
+    presentation_snapshot: snapshot,
     presentation_stamped_at: new Date().toISOString(),
   };
   if (!v.sent_at) patch.sent_at = new Date().toISOString();
@@ -320,7 +322,7 @@ export async function setVersionStatus(
     const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
     const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
     const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
-    patch.presentation_snapshot = resolved.theme;
+    patch.presentation_snapshot = { ...resolved.theme, regionTexts: settings.regionTexts };
     patch.presentation_stamped_at = new Date().toISOString();
   }
   if (status === "approved") { patch.approved_at = new Date().toISOString(); patch.approved_by = approvedBy ?? null; }

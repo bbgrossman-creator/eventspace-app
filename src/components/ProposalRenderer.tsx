@@ -132,9 +132,9 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
 // callers render exactly the historical dress: every themed value falls back
 // to the constants that were always here. The theme decides how things look
 // — nothing here lets it decide what exists.
-import { ResolvedTheme, effectiveSectionTreatment, SectionTreatment, DocumentTreatment } from "@/lib/publication";
+import { ResolvedTheme, effectiveSectionTreatment, SectionTreatment, DocumentTreatment, RegionTexts } from "@/lib/publication";
 
-export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected }: {
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions }: {
   model: PresentationModel; draftRibbon?: boolean;
   /** v226 THE CANVAS — Studio-only interactivity: the paper is the primary
    *  interaction surface; clicking a section head selects its PRESENTATION
@@ -145,6 +145,8 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   onDocumentSelect?: () => void;
   selectedSectionId?: string | null;
   documentSelected?: boolean;
+  /** v231 — the region WORDS (footer/signature/terms), brand-owned. */
+  regions?: RegionTexts;
   /** v196: chrome only. The MODEL already decided what exists — an internal
    *  item is absent from a non-xray model, so this flag cannot leak one. It
    *  only labels the page as an authoring surface. */
@@ -156,7 +158,8 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   const A = theme?.colors.accent ?? T.gold;
   const docTr: Required<DocumentTreatment> = theme
     ? theme.treatments.document
-    : { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard" };
+    : { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard",
+        cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none" };
   const isDraft = model.status !== "approved" && model.status !== "sent";
   return (
     // v229 — the ROOT is themed (repairing a silent v225 miss: the wrap
@@ -184,12 +187,29 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
         </div>
       )}
 
-      <header data-pub-doc data-pub-titlestyle={docTr.title}
+      {/* v231 — THE WATERMARK REGION: a ghost across the paper, never over
+           the reader's patience. Behind everything, pointer-transparent. */}
+      {docTr.watermark !== "none" && (
+        <div data-pub-watermark aria-hidden
+          className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden">
+          <span className="font-display font-extrabold uppercase tracking-[0.3em] opacity-[0.05] rotate-[-28deg] whitespace-nowrap"
+            style={{ fontSize: 110, color: theme?.colors.primary ?? T.navy }}>
+            {docTr.watermark === "draft" ? "Draft" : "Confidential"}
+          </span>
+        </div>
+      )}
+
+      <header data-pub-doc data-pub-titlestyle={docTr.title} data-pub-cover={docTr.cover}
         onClick={onDocumentSelect ? () => onDocumentSelect() : undefined}
         title={onDocumentSelect ? "Style this document" : undefined}
-        className={`mb-10 rounded-sm ${docTr.title === "standard" ? "text-center" : docTr.title === "centered" ? "text-center" : "text-left"}${
+        className={`rounded-sm ${docTr.cover === "banner" ? "-mx-8 sm:-mx-12 -mt-10 sm:-mt-14 px-8 sm:px-12 pt-12 pb-10 mb-10" : docTr.cover === "classic" ? "py-14 mb-10" : "mb-10"} ${
+          docTr.title === "understated" && docTr.cover === "none" ? "text-left" : "text-center"}${
           onDocumentSelect ? " cursor-pointer hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-4" : ""}${
-          documentSelected ? " ring-2 ring-[#4A9EFF]/60 ring-offset-4" : ""}`}>
+          documentSelected ? " ring-2 ring-[#4A9EFF]/60 ring-offset-4" : ""}`}
+        style={docTr.cover === "banner" ? { background: `${A}14` } : undefined}>
+        {docTr.cover !== "none" && (
+          <p className="text-[11px] font-bold uppercase tracking-[0.3em] mb-3" style={{ color: A }}>Proposal</p>
+        )}
         <h1 data-pub-title className={`font-display tracking-tight ${
           docTr.title === "understated" ? "font-semibold text-2xl" : "font-extrabold text-3xl sm:text-4xl"}`} style={H}>{model.title}</h1>
         {model.eventLine && <p className="mt-2 text-sm tracking-wide text-slate-500 uppercase">{model.eventLine}</p>}
@@ -199,6 +219,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
       </header>
 
       {model.intro && <p className="text-[15px] leading-relaxed text-slate-600 mb-10 whitespace-pre-wrap">{model.intro}</p>}
+      {/* content sits above the watermark plane */}
 
       <div className="space-y-10">
         {model.sections.map((section, si) => {
@@ -309,6 +330,40 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
       ) : null}
 
       {model.closing && <p className="text-[15px] leading-relaxed text-slate-600 mt-10 whitespace-pre-wrap">{model.closing}</p>}
+
+      {/* ── v231 — THE END REGIONS. The dress rides the ladder; the WORDS
+           are brand facts. A toggled region with no words renders nothing
+           for the customer — and a quiet coaching line in the Studio
+           (draftRibbon is the Studio/preview tell). ── */}
+      {docTr.signature === "line" && (
+        regions?.signature ? (
+          <div data-pub-signature className="mt-14">
+            <div className="w-56 border-t pt-2" style={{ borderColor: T.goldSoft }}>
+              <p className="text-[13px] font-semibold" style={H}>{regions.signature}</p>
+            </div>
+          </div>
+        ) : draftRibbon ? (
+          <p data-pub-signature-hint className="mt-14 text-[11px] text-slate-300 italic">Signature is on — add the name in Brand Studio.</p>
+        ) : null
+      )}
+      {docTr.terms === "standard" && (
+        regions?.terms ? (
+          <div data-pub-terms className="mt-10 pt-4 border-t" style={{ borderColor: T.goldFaint }}>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Terms</p>
+            <p className="text-[11px] leading-relaxed text-slate-400 whitespace-pre-wrap">{regions.terms}</p>
+          </div>
+        ) : draftRibbon ? (
+          <p data-pub-terms-hint className="mt-10 text-[11px] text-slate-300 italic">Terms are on — add the words in Brand Studio.</p>
+        ) : null
+      )}
+      {docTr.footer === "line" && (
+        regions?.footer ? (
+          <p data-pub-footer className="mt-12 pt-3 border-t text-center text-[11px] tracking-wide text-slate-400"
+            style={{ borderColor: T.goldFaint }}>{regions.footer}</p>
+        ) : draftRibbon ? (
+          <p data-pub-footer-hint className="mt-12 text-center text-[11px] text-slate-300 italic">Footer is on — add the line in Brand Studio.</p>
+        ) : null
+      )}
     </div>
   );
 }

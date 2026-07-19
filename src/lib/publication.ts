@@ -87,6 +87,24 @@ export interface SectionTreatment {
  *  (as the publication's defaults) plus document-only leaves. */
 export interface DocumentTreatment extends SectionTreatment {
   title?: "standard" | "centered" | "understated";
+  /** v231 — PUBLICATION REGIONS: each an optional slot on the paper.
+   *  Style/visibility ride the ladder here; the WORDS (footer, signature,
+   *  terms) are company facts and live in Brand Studio (§8). Page numbers
+   *  are deliberately absent until real pagination exists (print/PDF slice)
+   *  — a page number in continuous scroll is a lie. */
+  cover?: "none" | "classic" | "banner";
+  watermark?: "none" | "draft" | "confidential";
+  footer?: "none" | "line";
+  signature?: "none" | "line";
+  terms?: "none" | "standard";
+}
+
+/** v231 — the region WORDS, loaded from Brand settings and frozen into the
+ *  presentation snapshot at the send ceremony. */
+export interface RegionTexts {
+  footer: string | null;
+  signature: string | null;
+  terms: string | null;
 }
 
 export interface ThemeDelta {
@@ -127,7 +145,7 @@ export const SYSTEM_DEFAULT_THEME: Required<ThemeDelta> = {
   colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37" },
   paper: { tint: "#FFFFFF", texture: "none" },
   margins: { measure: 760, sectionGap: 40 },
-  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard" }, sections: {} },
+  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none" }, sections: {} },
 };
 
 /** THE LADDER, resolved. One pure walk; per-leaf most-specific-wins; the
@@ -304,6 +322,24 @@ export const TREATMENT_OPTIONS: {
 export const DOCUMENT_TITLE_OPTIONS: { value: NonNullable<DocumentTreatment["title"]>; label: string }[] = [
   { value: "standard", label: "Standard" }, { value: "centered", label: "Centered" },
   { value: "understated", label: "Understated" },
+];
+
+/** v231 — the REGIONS registry: semantic slots, semantic options. */
+export const REGION_OPTIONS: {
+  key: "cover" | "watermark" | "footer" | "signature" | "terms";
+  label: string; blurb: string;
+  options: { value: string; label: string }[];
+}[] = [
+  { key: "cover", label: "Cover", blurb: "How the document opens.", options: [
+    { value: "none", label: "None" }, { value: "classic", label: "Classic" }, { value: "banner", label: "Banner" } ] },
+  { key: "watermark", label: "Watermark", blurb: "A ghost across the paper.", options: [
+    { value: "none", label: "None" }, { value: "draft", label: "Draft" }, { value: "confidential", label: "Confidential" } ] },
+  { key: "footer", label: "Footer", blurb: "The company line at the foot. Words live in Brand Studio.", options: [
+    { value: "none", label: "None" }, { value: "line", label: "Line" } ] },
+  { key: "signature", label: "Signature", blurb: "A closing hand. Name lives in Brand Studio.", options: [
+    { value: "none", label: "None" }, { value: "line", label: "Line" } ] },
+  { key: "terms", label: "Terms", blurb: "Small print at the end. Words live in Brand Studio.", options: [
+    { value: "none", label: "None" }, { value: "standard", label: "Standard" } ] },
 ];
 
 /** Semantic measure — labels for humans, numbers for margins.measure. */

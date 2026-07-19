@@ -11,7 +11,7 @@
 import React from "react";
 import {
   ThemeDelta, ResolvedTheme, BUILT_IN_THEMES, FONT_PAIRINGS, PALETTES, PAPERS,
-  TREATMENT_OPTIONS, SectionTreatment,
+  TREATMENT_OPTIONS, SectionTreatment, DocumentTreatment, REGION_OPTIONS,
 } from "@/lib/publication";
 import { PubRoom } from "./PresentationControls";
 
@@ -129,6 +129,29 @@ export default function PresentationRooms(props: {
               </button>
             ))}
           </div>
+        </>
+      )}
+      {r === "regions" && (
+        <>
+          <p className="text-[10.5px] text-slate-400 -mt-1">The paper's optional slots. Style lives here and saves with the look; the words live in Brand Studio. Page numbers arrive with print.</p>
+          {REGION_OPTIONS.map((g) => (
+            <div key={g.key}>
+              <p className="text-[11px] font-semibold text-slate-500">{g.label}</p>
+              <p className="text-[10px] text-slate-400 mb-1">{g.blurb}</p>
+              <div className="flex gap-1 flex-wrap">
+                {g.options.map((o) => {
+                  const cur = props.resolved.treatments.document[g.key];
+                  return (
+                    <button key={o.value} data-room-region={`${g.key}:${o.value}`}
+                      onClick={() => props.onPatch({ treatments: { document: { [g.key]: o.value } as DocumentTreatment } })}
+                      className={`text-[11px] px-2 py-1 rounded-md border ${cur === o.value ? "bg-[#102F56] text-white border-[#102F56]" : "text-slate-500 border-slate-200 hover:border-slate-300"}`}>
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </>
       )}
     </div>

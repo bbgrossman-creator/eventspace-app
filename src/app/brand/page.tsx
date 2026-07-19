@@ -10,9 +10,9 @@ import PageGuard from "@/components/PageGuard";
 import BrandKit from "@/components/BrandKit";
 import ProposalRenderer from "@/components/ProposalRenderer";
 import { PresentationModel } from "@/lib/presentation";
-import { ThemeDelta, resolveTheme, mergeDelta, BUILT_IN_THEMES } from "@/lib/publication";
+import { ThemeDelta, RegionTexts, resolveTheme, mergeDelta, BUILT_IN_THEMES } from "@/lib/publication";
 import {
-  getPublicationSettings, saveBrand, saveDefaultTheme,
+  getPublicationSettings, saveBrand, saveDefaultTheme, saveRegionTexts,
   listPublicationThemes, createPublicationTheme, PublicationTheme,
 } from "@/lib/publicationData";
 
@@ -35,9 +35,10 @@ const SPECIMEN: PresentationModel = {
 } as unknown as PresentationModel;
 
 function BrandStudio() {
-  const [saved, setSaved] = useState<{ brand: ThemeDelta | null; def: string | null } | null>(null);
+  const [saved, setSaved] = useState<{ brand: ThemeDelta | null; def: string | null; words: RegionTexts } | null>(null);
   const [draft, setDraft] = useState<ThemeDelta | null>(null);
   const [defKey, setDefKey] = useState<string | null>(null);
+  const [words, setWords] = useState<RegionTexts>({ footer: null, signature: null, terms: null });
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [themes, setThemes] = useState<PublicationTheme[]>([]);
@@ -45,8 +46,8 @@ function BrandStudio() {
 
   useEffect(() => {
     getPublicationSettings().then((st) => {
-      setSaved({ brand: st.brand, def: st.defaultThemeKey });
-      setDraft(st.brand); setDefKey(st.defaultThemeKey);
+      setSaved({ brand: st.brand, def: st.defaultThemeKey, words: st.regionTexts });
+      setDraft(st.brand); setDefKey(st.defaultThemeKey); setWords(st.regionTexts);
     });
     listPublicationThemes().then(setThemes);
   }, []);
@@ -72,6 +73,8 @@ function BrandStudio() {
           dirty={dirty}
           busy={busy}
           defaultThemeKey={defKey}
+          regionTexts={words}
+          onRegionText={(k, v) => { setWords((prev) => ({ ...prev, [k]: v || null })); setDirty(true); }}
           themeChoices={[
             ...BUILT_IN_THEMES.map((t) => ({ key: t.key, label: t.label })),
             ...themes.map((t) => ({ key: t.id, label: t.name })),
@@ -80,13 +83,13 @@ function BrandStudio() {
           onDefaultTheme={(k) => { setDefKey(k === "__brand__" ? null : k); setDirty(true); }}
           onSave={() => void (async () => {
             setBusy(true);
-            const ok = (await saveBrand(draft)) && (await saveDefaultTheme(defKey));
+            const ok = (await saveBrand(draft)) && (await saveDefaultTheme(defKey)) && (await saveRegionTexts(words));
             setBusy(false);
             if (!ok) { setNote(""); alert("Could not save — run v227_brand.sql?"); return; }
-            setSaved({ brand: draft, def: defKey }); setDirty(false);
+            setSaved({ brand: draft, def: defKey, words }); setDirty(false);
             setNote("✓ Brand saved — new proposals are born wearing it.");
           })()}
-          onDiscard={() => { setDraft(saved.brand); setDefKey(saved.def); setDirty(false); }}
+          onDiscard={() => { setDraft(saved.brand); setDefKey(saved.def); setWords(saved.words); setDirty(false); }}
           onSaveAsTheme={(name) => void (async () => {
             setBusy(true);
             const made = await createPublicationTheme(name, draft ?? {});
@@ -99,7 +102,7 @@ function BrandStudio() {
         <div className="flex-1 min-w-[380px]">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Specimen — live</p>
           <div className="rounded-lg shadow-xl overflow-hidden ring-1 ring-[#E7EDF5]">
-            <ProposalRenderer model={SPECIMEN} draftRibbon={false} theme={resolved} />
+            <ProposalRenderer model={SPECIMEN} draftRibbon={false} theme={resolved} regions={words} />
           </div>
         </div>
       </div>

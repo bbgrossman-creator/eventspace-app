@@ -8,11 +8,13 @@
 // brand rung simply stays empty.
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase } from "./supabase";
-import { ThemeDelta } from "./publication";
+import { ThemeDelta, RegionTexts } from "./publication";
 
 export interface PublicationSettings {
   brand: ThemeDelta | null;
   defaultThemeKey: string | null;
+  /** v231 — the region words: company facts, Brand Studio's to edit. */
+  regionTexts: RegionTexts;
 }
 
 export interface PublicationTheme {
@@ -22,18 +24,31 @@ export interface PublicationTheme {
 export async function getPublicationSettings(): Promise<PublicationSettings> {
   try {
     const { data } = await supabase.from("app_settings").select("key,value")
-      .in("key", ["publication.brand", "publication.default_theme"]);
+      .in("key", ["publication.brand", "publication.default_theme",
+        "publication.footer", "publication.signature", "publication.terms"]);
     const rows = (data ?? []) as { key: string; value: string | null }[];
-    const brandRaw = rows.filter((r) => r.key === "publication.brand")[0]?.value ?? null;
+    const val = (k: string) => rows.filter((r) => r.key === k)[0]?.value ?? null;
+    const brandRaw = val("publication.brand");
     let brand: ThemeDelta | null = null;
     if (brandRaw) { try { brand = JSON.parse(brandRaw) as ThemeDelta; } catch { brand = null; } }
-    return { brand, defaultThemeKey: rows.filter((r) => r.key === "publication.default_theme")[0]?.value ?? null };
-  } catch { return { brand: null, defaultThemeKey: null }; }
+    return { brand, defaultThemeKey: val("publication.default_theme"),
+      regionTexts: { footer: val("publication.footer"), signature: val("publication.signature"), terms: val("publication.terms") } };
+  } catch { return { brand: null, defaultThemeKey: null, regionTexts: { footer: null, signature: null, terms: null } }; }
 }
 
 export async function saveBrand(delta: ThemeDelta | null): Promise<boolean> {
   const { error } = await supabase.from("app_settings")
     .upsert({ key: "publication.brand", value: delta ? JSON.stringify(delta) : null }, { onConflict: "key" });
+  return !error;
+}
+
+export async function saveRegionTexts(t: RegionTexts): Promise<boolean> {
+  const rows = [
+    { key: "publication.footer", value: t.footer },
+    { key: "publication.signature", value: t.signature },
+    { key: "publication.terms", value: t.terms },
+  ];
+  const { error } = await supabase.from("app_settings").upsert(rows, { onConflict: "key" });
   return !error;
 }
 
