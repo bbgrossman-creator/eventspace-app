@@ -40,7 +40,9 @@ export default function StudioLine(p: {
   versions: { id: string; label: string }[];
   versionId: string;
   onVersion: (id: string) => void;
-  flow?: { label: string; color?: string } | null;
+  flow?: { label: string; color?: string; value?: string } | null;
+  /** v237 — the version identity menu's verbs (the disposal ruling). */
+  onVersionAction?: (action: "duplicate" | "reset-presentation" | "archive" | "delete") => void;
   locked: boolean;
   // the Ask line (summon) — host-owned value
   ask: string;
@@ -119,6 +121,14 @@ export default function StudioLine(p: {
   }, []);
   const yieldHint = lineW < 1200;
   const collapse = lineW < 1060;
+  const [verOpen, setVerOpen] = React.useState(false);
+  const verRef = React.useRef<HTMLSpanElement>(null);
+  React.useEffect(() => {
+    if (!verOpen) return;
+    const onDown = (e: MouseEvent) => { if (!verRef.current?.contains(e.target as Node)) setVerOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [verOpen]);
   const activeDef = p.lenses.filter((l) => l.key === p.active)[0] ?? null;
 
   return (
@@ -139,6 +149,40 @@ export default function StudioLine(p: {
           onChange={(e) => p.onVersion(e.target.value)} aria-label="Version">
           {p.versions.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
+        {/* v237 — THE VERSION IDENTITY MENU (the disposal ruling): the
+             Studio owns the OPEN VERSION's lifecycle; the actions live
+             behind the version's own name in the identity zone, never as a
+             fifth peer control. Gated: sent/approved versions are history
+             and refuse disposal. */}
+        {p.onVersionAction && (
+          <span className="relative shrink-0" ref={verRef}>
+            <button data-version-menu aria-expanded={verOpen}
+              onClick={() => { setDialOpen(false); setDeskOpen(false); setVerOpen((o) => !o); }}
+              className="text-[10px] px-1 py-0.5 rounded border border-slate-200 text-slate-400 hover:text-slate-600"
+              title="This version — duplicate, reset its look, archive, or delete">⌄</button>
+            {verOpen && (
+              <span data-version-menu-list className="absolute left-0 top-full mt-1 z-40 w-56 bg-white rounded-lg shadow-xl ring-1 ring-[#E7EDF5] py-1 block">
+                {([
+                  { key: "duplicate", label: "Duplicate version…", gated: false },
+                  { key: "reset-presentation", label: "Reset presentation…", gated: false },
+                  { key: "archive", label: "Archive draft…", gated: true },
+                  { key: "delete", label: "Delete draft…", gated: true, danger: true },
+                ] as const).map((a) => {
+                  const locked = a.gated && (p.flow?.value === "sent" || p.flow?.value === "approved");
+                  return (
+                    <button key={a.key} data-version-action={a.key} disabled={locked}
+                      title={locked ? "Sent and approved versions are history — create a new version instead." : undefined}
+                      onClick={() => { setVerOpen(false); p.onVersionAction?.(a.key); }}
+                      className={`w-full text-left px-3 py-1.5 text-[12.5px] ${locked ? "text-slate-300"
+                        : (a as { danger?: boolean }).danger ? "text-[#B4232A] hover:bg-[#FEF2F2]" : "text-slate-600 hover:bg-[#F4F9FF]"}`}>
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </span>
+            )}
+          </span>
+        )}
         {/* v223 — status is DOCUMENT METADATA, not a control. Semantic
              correctness (v222) wasn't enough: the pill, dot, toolbar dress
              and tooltip all still said "button". Visual grammar must match

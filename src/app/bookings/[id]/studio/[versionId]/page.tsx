@@ -37,6 +37,7 @@ import SectionPicker from "@/components/studio/SectionPicker";
 import PresentationControls, { PubRoom } from "@/components/studio/PresentationControls";
 import PresentationRoomRegion from "@/components/studio/PresentationRoomRegion";
 import PhotographyRoom from "@/components/studio/PhotographyRoom";
+import InspectorRegion from "@/components/studio/InspectorRegion";
 import { PhotoRecord, PhotoPins, pinPhoto, unpinPhoto } from "@/lib/photos";
 import { listPhotos } from "@/lib/photoData";
 import PresentationRooms from "@/components/studio/PresentationRooms";
@@ -68,7 +69,7 @@ import { ProductionModel } from "@/lib/productionLens";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
 import { loadSession, Session } from "@/lib/permissions";
 import { PRICING } from "@/lib/pricing";
-import { Proposal, ProposalVersion, VERSION_FLOW, createVersion, createBlankVersion } from "@/lib/proposals";
+import { Proposal, ProposalVersion, VERSION_FLOW, createVersion, createBlankVersion, archiveVersion, deleteVersionPermanently } from "@/lib/proposals";
 import {
   GuestCategory, Adjustment, PricedItem, MemoryPoint, PackageLine, isActive,
   loadGuestCategories, loadPriceMemory, computeVersionTotals, promoteToCatalog,
@@ -1058,7 +1059,35 @@ export default function StudioPage() {
         versions={versions.map((v) => ({ id: v.id, label: `v${v.version}` }))}
         versionId={version.id}
         onVersion={(id) => { window.location.href = `/bookings/${b.id}/studio/${id}`; }}
-        flow={flow ? { label: flow.label, color: flow.color } : null}
+        flow={flow ? { label: flow.label, color: flow.color, value: flow.value } : null}
+        onVersionAction={!locked && session?.perms.includes("bookings.edit") ? (action) => {
+          // v237 — the disposal ruling wired to EXISTING machinery: version-
+          // scoped only; the proposal and its other versions are untouchable
+          // from here; lifecycle gates live in the menu AND in the verbs.
+          if (action === "duplicate") { void commitGenesis(() => createVersion(b, proposal, version)); }
+          else if (action === "reset-presentation") {
+            if (!confirm("Reset this version's presentation? The look falls back to Brand + Theme; content is untouched.")) return;
+            setPubThemeKey(null); setPubOverride(null); setPubPins(null); setPubDirty(false);
+            void supabase.from("proposal_versions")
+              .update({ theme_key: null, theme_override: null, photo_pins: null }).eq("id", version.id)
+              .then(() => setToast("🎨 Presentation reset — wearing the company look"));
+          }
+          else if (action === "archive") {
+            const reason = prompt("Archive this draft? It stays in the thread, decorated in place. Reason (optional):");
+            if (reason === null) return;
+            void archiveVersion(b, version, reason).then((r) => {
+              if (!r.ok) setErr(r.detail ?? "Archive failed"); else setToast("🗄 Draft archived");
+            });
+          }
+          else if (action === "delete") {
+            if (!confirm("Delete this draft permanently? This cannot be undone. Other versions and the proposal are untouched.")) return;
+            void deleteVersionPermanently(b, version, proposal).then((r) => {
+              if (!r.ok) { setErr(r.detail ?? "Delete refused"); return; }
+              const other = versions.filter((x) => x.id !== version.id)[0];
+              window.location.href = other ? `/bookings/${b.id}/studio/${other.id}` : `/bookings/${b.id}`;
+            });
+          }
+        } : undefined}
         locked={locked}
         ask={ask}
         onAsk={setAsk}
@@ -1339,10 +1368,13 @@ export default function StudioPage() {
 
           {/* v230 — THE ROOM RESHAPES THE WORKSPACE (§6.1): Room | Paper.
                The paper contracts and stays fully visible; never obscured. */}
+          {(() => { const inspectorWing = tab === "build" && !!inspected && lensEdits(activeLensDef, "content"); return (
           <div data-stage-body
-            className={pubRoom && lens === "customer" ? "grid gap-6 px-6" : split ? "grid grid-cols-2 gap-6 px-6" : "px-6"}
+            className={(pubRoom && lens === "customer") || inspectorWing ? "grid gap-6 px-6" : split ? "grid grid-cols-2 gap-6 px-6" : "px-6"}
             style={pubRoom && lens === "customer"
               ? { gridTemplateColumns: split ? "minmax(260px,320px) 1fr 1fr" : "minmax(280px,360px) 1fr" }
+              : inspectorWing
+              ? { gridTemplateColumns: split ? "1fr 1fr minmax(280px,360px)" : "1fr minmax(300px,380px)" }
               : undefined}>
             {pubRoom && lens === "customer" && (
               <PresentationRoomRegion openRoom={pubRoom}
@@ -1505,28 +1537,11 @@ export default function StudioPage() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* ── THE METER — floating facts; never lies, stores nothing (§10) ── */}
-          <Meter
-            perPerson={totalGuests > 0 ? money(totals.total / totalGuests) : null}
-            totalLabel={b.contact_name || proposal.title}
-            total={money(totals.total)}
-            debt={totals.unconfirmed + totals.unpriced}
-            onDebt={() => {
-              const bad = items.filter((i) => i.price_confirmed === false || i.unit_price == null)[0];
-              if (bad) setSelectedId(bad.id);
-            }}
-          />
-        </div>
-      )}
-
-      {/* ── THE INSPECTOR DRAWER — selection is interrogation; content
-           lenses only (v226): the Presentation lens answers selection with
-           the contextual toolbar instead. ── */}
-      <Drawer open={tab === "build" && !!inspected && lensEdits(activeLensDef, "content")}
-        title="Inspector" onClose={() => setSelectedId(null)}>
-        {inspected && (
+            {/* ── THE INSPECTOR WING (v237) — the hinge is the paper. ── */}
+            {inspectorWing && inspected && (
+              <InspectorRegion
+                subjectLabel={(inspected as { title?: string }).title ?? "Selection"}
+                onClose={() => setSelectedId(null)}>
           <Inspector
             selection={inspected}
             lens={lens}
@@ -1568,8 +1583,25 @@ export default function StudioPage() {
             }}
             designPanel={null}
           />
-        )}
-      </Drawer>
+              </InspectorRegion>
+            )}
+          </div>
+          ); })()}
+
+          {/* ── THE METER — floating facts; never lies, stores nothing (§10) ── */}
+          <Meter
+            perPerson={totalGuests > 0 ? money(totals.total / totalGuests) : null}
+            totalLabel={b.contact_name || proposal.title}
+            total={money(totals.total)}
+            debt={totals.unconfirmed + totals.unpriced}
+            onDebt={() => {
+              const bad = items.filter((i) => i.price_confirmed === false || i.unit_price == null)[0];
+              if (bad) setSelectedId(bad.id);
+            }}
+          />
+        </div>
+      )}
+
 
 
       {tab === "notes" && (
