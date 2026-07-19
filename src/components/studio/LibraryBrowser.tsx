@@ -51,9 +51,14 @@ export interface LibraryBrowserProps {
   /** v207: open the definition (curation surface) for a result whose
    *  registration offers that secondary affordance. */
   onViewDefinition?: (definitionId: string, name: string) => void;
+  /** v216: land a whole design here (the host routes it through the landing
+   *  decision — never a silent merge). Absent = no Canvas in context; the
+   *  browser falls back to the entry's pointer. Every drag has a click path:
+   *  this is the click path for the blueprint card's drag. */
+  onLandDesign?: (id: string, name: string) => void;
 }
 
-export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDefinition, docked }: LibraryBrowserProps) {
+export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDefinition, onLandDesign, docked }: LibraryBrowserProps) {
   const [q, setQ] = useState("");
   const [res, setRes] = useState<LibraryRails>(IDLE_RAILS);
   const [busy, setBusy] = useState(false);
@@ -103,8 +108,13 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
       onClose();                       // closes ON PICK — the gesture is complete
       return;
     }
+    if (action.type === "land" && onLandDesign) {
+      onLandDesign(action.id, action.name);
+      onClose();                       // the decision opens beyond the browser
+      return;
+    }
     const href = action.type === "navigate" ? action.href
-      : action.type === "instantiate" ? entry.pointer.href : null;
+      : (action.type === "instantiate" || action.type === "land") ? entry.pointer.href : null;
     if (href) { window.location.href = href; onClose(); }
   }
 
@@ -114,7 +124,9 @@ export default function LibraryBrowser({ open, onClose, onInstantiate, onViewDef
     if (!reg) return null;
     const action = reg.pick(entry);
     if (action.type === "instantiate" && onInstantiate) return "↵ add to event";
-    if (action.type === "navigate" || (action.type === "instantiate" && entry.pointer.href)) return "↵ open";
+    if (action.type === "land" && onLandDesign) return "↵ use this design";
+    if (action.type === "navigate"
+      || ((action.type === "instantiate" || action.type === "land") && entry.pointer.href)) return "↵ open";
     return null;
   }
 

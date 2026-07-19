@@ -92,6 +92,10 @@ export function bootLibraryKinds(): void {
     // supplies the event context; without one the browser has an honest
     // nothing, because an identity has no detail route yet.
     pick: (e) => ({ type: "instantiate", instantiateId: e.id, name: e.title }),
+    // v216: legality declared (KA §6). The mime is registration-level so the
+    // Canvas computes acceptance from declarations (canvasDragMimes).
+    legalDestinations: ["canvas"],
+    dragMime: "text/eventcore-identity",
     drag: (e) => ({
       mime: "text/eventcore-identity",
       payload: JSON.stringify({ identityId: e.id, name: e.title }),
@@ -143,8 +147,16 @@ export function bootLibraryKinds(): void {
           weight: rankPrefix(bp.name, q),
         }));
     },
-    pick: (e) => e.pointer.href
-      ? { type: "navigate", href: e.pointer.href }
-      : { type: "none" },
+    // v216: a blueprint is a WHOLE DESIGN — its verb is "land", and landing
+    // is never a silent merge (the host routes it through the landing
+    // decision; UI_GRAMMAR §10 row "Menu / Blueprint → Canvas"). Without a
+    // landing host, the browser falls back to the pointer.
+    pick: (e) => ({ type: "land", id: e.id, name: e.title }),
+    legalDestinations: ["canvas"],
+    dragMime: "text/eventcore-blueprint",
+    drag: (e) => ({
+      mime: "text/eventcore-blueprint",
+      payload: JSON.stringify({ blueprintId: e.id, name: e.title }),
+    }),
   });
 }

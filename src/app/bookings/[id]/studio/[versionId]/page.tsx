@@ -29,6 +29,8 @@ import LibraryBrowser from "@/components/studio/LibraryBrowser";
 import ConfigureFacet from "@/components/studio/ConfigureFacet";
 import { bootMoves } from "@/lib/moves/boot";
 import { bootLibraryKinds } from "@/lib/libraryKinds";
+import { canvasDragMimes } from "@/lib/libraryRegistry";
+import LandingDecision from "@/components/studio/LandingDecision";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -62,7 +64,8 @@ import {
 } from "@/lib/pricingEngine";
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
 import { SectionType, loadSectionTypes } from "@/lib/sections";
-import { promoteToBlueprint } from "@/lib/blueprints";
+import { promoteToBlueprint, getBlueprint, previewBlueprint, applyBlueprint, replaceWithBlueprint, applyBlueprintSubset, Blueprint, BlueprintPreview } from "@/lib/blueprints";
+import { landingRoute } from "@/lib/landing";
 import SourceEventPane from "@/components/SourceEventPane";
 import FilesPanel from "@/components/FilesPanel";
 
@@ -407,6 +410,48 @@ export default function StudioPage() {
   // afternoon's promotions in provenance; never a transaction.
   const [reviewSessionKey] = useState(() =>
     `review-${new Date().toISOString().slice(0, 10)}-${Math.random().toString(36).slice(2, 6)}`);
+
+  // v216: the LANDING DECISION — a whole design meeting this Canvas. The
+  // routing rule is landingRoute (blueprints.ts): empty Canvas ⇒ direct (no
+  // ceremony without a decision); populated ⇒ the decision, and nothing
+  // commits until chosen.
+  const [landing, setLanding] = useState<{ bp: Blueprint; preview: BlueprintPreview } | null>(null);
+  const [landingBusy, setLandingBusy] = useState(false);
+  async function openLanding(blueprintId: string, name: string) {
+    // This function is defined above the page's !booking early-return, so
+    // narrow here: no booking, no landing. (Caught by Ben's strict
+    // production build — the test config is strict:false and cannot see
+    // nullability; the standing request for the production tsconfig stands.)
+    if (!b) return;
+    if (locked || !session?.perms.includes("bookings.edit")) return;
+    setBusy(true);
+    const bp = await getBlueprint(blueprintId);
+    if (!bp) { setBusy(false); setErr(`"${name}" is in the Library but its blueprint row is gone.`); return; }
+    const preview = await previewBlueprint(bp);
+    setBusy(false);
+    if (!preview.components.length) { setErr(`"${bp.name}" has no content — its source may have been deleted. Retire it.`); return; }
+    if (landingRoute(comps.length) === "direct") {
+      // An empty Canvas: there is nothing to protect — instantiate directly.
+      setLandingBusy(true);
+      const r = await applyBlueprint(b, versionId, bp);
+      setLandingBusy(false);
+      if (!r.ok) { setErr(r.detail ?? "Landing failed."); return; }
+      setToast(`📐 "${bp.name}" landed — ${r.copied} component${r.copied === 1 ? "" : "s"}, prices carried`);
+      loadCanvas();
+      return;
+    }
+    setLanding({ bp, preview });   // the drop is the request, not the commit
+  }
+  async function commitLanding(run: () => Promise<{ ok: boolean; detail?: string; copied: number }>, verb: string) {
+    if (!landing) return;
+    setLandingBusy(true);
+    const r = await run();
+    setLandingBusy(false);
+    if (!r.ok) { setErr(r.detail ?? "Landing failed."); return; }
+    setLanding(null);
+    setToast(`📐 ${verb} — ${r.copied} component${r.copied === 1 ? "" : "s"}, prices carried`);
+    loadCanvas();
+  }
 
   // v208: the Promotion review overlay.
   const [promoView, setPromoView] = useState<{
@@ -926,12 +971,25 @@ export default function StudioPage() {
             open={libraryOpen}
             onClose={() => setLibraryOpen(false)}
             onViewDefinition={(definitionId, name) => void openDefinition(definitionId, name)}
+            onLandDesign={(id, name) => void openLanding(id, name)}
             onInstantiate={(identityId, name) => {
               if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
               setAskChapterFor({ identityId, name });   // ask; never guess
             }}
           />
         </div>
+      )}
+
+      {landing && (
+        <LandingDecision
+          name={landing.bp.name}
+          preview={landing.preview}
+          busy={landingBusy}
+          onAdd={() => void commitLanding(() => applyBlueprint(b, versionId, landing.bp), `"${landing.bp.name}" added to current`)}
+          onReplace={() => void commitLanding(() => replaceWithBlueprint(b, versionId, landing.bp), `Draft replaced with "${landing.bp.name}"`)}
+          onChoose={(ids) => void commitLanding(() => applyBlueprintSubset(b, versionId, landing.bp, ids), `${ids.length} chosen from "${landing.bp.name}"`)}
+          onCancel={() => setLanding(null)}
+        />
       )}
 
       {promoView && (
@@ -1091,12 +1149,27 @@ export default function StudioPage() {
                and the Stage never did. */}
           <div className="min-h-0 overflow-y-auto bg-white"
             onDragOver={(e) => {
-              if (e.dataTransfer.types.includes("text/eventcore-identity")
-                || e.dataTransfer.types.includes("text/eventcore-component")) { e.preventDefault(); setDropHot(true); }
+              // v216: legality is DECLARED — the accepted mimes come from the
+              // kind registrations (canvasDragMimes), plus the non-Library
+              // component-copy mime the SourceEventPane emits. No list of
+              // Library kinds lives here.
+              const accepted = canvasDragMimes().concat(["text/eventcore-component"]);
+              for (const m of accepted) {
+                if (e.dataTransfer.types.includes(m)) { e.preventDefault(); setDropHot(true); return; }
+              }
             }}
             onDragLeave={() => setDropHot(false)}
             onDrop={(e) => {
               setDropHot(false);
+              // A whole design: the drop is the REQUEST — it opens the
+              // landing flow (direct only onto an empty Canvas), never a
+              // silent merge.
+              const bpRaw = e.dataTransfer.getData("text/eventcore-blueprint");
+              if (bpRaw) {
+                e.preventDefault();
+                try { const d = JSON.parse(bpRaw); void openLanding(d.blueprintId, d.name); } catch {}
+                return;
+              }
               const ident = e.dataTransfer.getData("text/eventcore-identity");
               if (ident) {
                 e.preventDefault();

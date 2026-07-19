@@ -93,3 +93,46 @@ export async function applyBlueprintSeed(
   if (!ids.length) return { ok: false, detail: "Blueprint source is empty or gone.", copied: 0 };
   return copyIntoVersion(booking, targetVersionId, ids, `blueprint "${name}"`);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v216 — THE LANDING DECISION's data side. The decision itself is a
+// component (LandingDecision.tsx); these are the routes it commits through,
+// kept here so the destructive path is ONE audited place.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** One blueprint, by id — the landing flow's loader. */
+export async function getBlueprint(id: string): Promise<Blueprint | null> {
+  const { data } = await supabase.from("blueprints").select("*").eq("id", id).maybeSingle();
+  return (data ?? null) as Blueprint | null;
+}
+
+/** REPLACE CURRENT DRAFT — the destructive branch, and the reason the
+ *  decision confirms twice. Deletes THIS VERSION's components (items cascade)
+ *  and applies the blueprint through the same one copy path as everything
+ *  else. Scoped strictly to the version: other versions, the booking, and
+ *  the blueprint's source are untouched (instantiate never edits its
+ *  source). */
+export async function replaceWithBlueprint(
+  booking: { id: string; invoice_num: string },
+  targetVersionId: string,
+  bp: Blueprint,
+): Promise<{ ok: boolean; detail?: string; copied: number }> {
+  const { error } = await supabase.from("event_components")
+    .delete().eq("proposal_version_id", targetVersionId);
+  if (error) return { ok: false, detail: error.message, copied: 0 };
+  await logActivity(booking.id, booking.invoice_num, "Draft Replaced",
+    `📐 Draft replaced with blueprint "${bp.name}"`);
+  return applyBlueprint(booking, targetVersionId, bp);
+}
+
+/** CHOOSE CONTENT — the subset branch: exactly the chosen source components,
+ *  through the same copy path. */
+export async function applyBlueprintSubset(
+  booking: { id: string; invoice_num: string },
+  targetVersionId: string,
+  bp: Blueprint,
+  sourceComponentIds: string[],
+): Promise<{ ok: boolean; detail?: string; copied: number }> {
+  if (!sourceComponentIds.length) return { ok: false, detail: "Nothing chosen.", copied: 0 };
+  return copyIntoVersion(booking, targetVersionId, sourceComponentIds, `blueprint "${bp.name}" (chosen)`);
+}

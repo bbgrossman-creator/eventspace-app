@@ -79,6 +79,11 @@ export type LibraryPickAction =
    *  The HOST decides whether an event is in context; absent a host handler,
    *  the browser falls back to navigate when a pointer exists. */
   | { type: "instantiate"; instantiateId: string; name: string }
+  /** v216: land a WHOLE DESIGN (menu/blueprint) — never a silent merge: the
+   *  host routes this through the landing decision (UI_GRAMMAR §10/§11; KA
+   *  §6). Same host contract as instantiate: absent a handler, the browser
+   *  falls back to navigate. */
+  | { type: "land"; id: string; name: string }
   /** Open the object's home. */
   | { type: "navigate"; href: string }
   /** Nothing to do — a legal state (an identity with no route and no host). */
@@ -127,12 +132,21 @@ export interface LibraryKindRegistration {
   drag?(entry: LibraryEntry): LibraryDragPayload | null;
   /** Optional row affordance (a component's "definition"). */
   secondary?(entry: LibraryEntry): LibrarySecondaryAction | null;
+  /** v216 — LEGALITY IS DECLARED, NOT INFERRED (KA §6): the surfaces this
+   *  kind's drag may land on. Today's only value is "canvas"; chapter-gap
+   *  and layer refinement stay the DropBand machinery's job inside the
+   *  destination. A kind without this (or without drag) simply cannot land
+   *  anywhere — refused, not rendered as a faint maybe. */
+  legalDestinations?: string[];
+  /** v216 — the mime this kind's drag() emits, declared at registration
+   *  level so a DESTINATION can compute what it accepts from declarations
+   *  rather than keeping its own list (see canvasDragMimes). */
+  dragMime?: string;
   /** Reserved slots (KA §4) — a kind MAY ship these; the browser uses its
    *  default card/preview when absent. Typed now so shipping them later is
    *  a registration change, never a Library change. */
   renderCard?: unknown;
   preview?: unknown;
-  legalDestinations?: unknown;
 }
 
 /** Registration by declaration; duplicate kind = build error — the
@@ -225,6 +239,22 @@ export async function searchLibraryRails(query: string): Promise<LibraryRails> {
     .map((x) => x.rail);
 
   return { idle: false, rails };
+}
+
+/** v216 — the Canvas asks the DECLARATIONS what it accepts: every registered
+ *  kind that both drags and names "canvas" a legal destination. The drop
+ *  zone keeps no list of its own; adding a landable kind is a registration,
+ *  never a drop-zone edit. */
+export function canvasDragMimes(): string[] {
+  const mimes: string[] = [];
+  for (const reg of KIND_ORDER) {
+    if (!reg.dragMime) continue;
+    const legal = reg.legalDestinations ?? [];
+    let ok = false;
+    for (const d of legal) if (d === "canvas") ok = true;
+    if (ok) mimes.push(reg.dragMime);
+  }
+  return mimes;
 }
 
 export const railCount = (r: LibraryRails) => {
