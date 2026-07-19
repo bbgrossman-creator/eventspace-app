@@ -35,6 +35,7 @@ import LandingDecision from "@/components/studio/LandingDecision";
 import VersionGenesis from "@/components/studio/VersionGenesis";
 import SectionPicker from "@/components/studio/SectionPicker";
 import PresentationControls, { PubRoom } from "@/components/studio/PresentationControls";
+import PresentationRoomRegion from "@/components/studio/PresentationRoomRegion";
 import PresentationRooms from "@/components/studio/PresentationRooms";
 import TreatmentToolbar from "@/components/studio/TreatmentToolbar";
 import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta } from "@/lib/publication";
@@ -56,7 +57,7 @@ import Inspector, { InspectorSelection } from "@/components/studio/Inspector";
 import { buildDesignStage, outlineFromDesignChapters, RawComp, RawItem } from "@/lib/designStageModel";
 import { sourceForIdentity } from "@/lib/library";
 import { NodePayload, DropTarget, operationFor, reorder, isNoOp, splitCatKey } from "@/lib/dragGrammar";
-import { visibleLenses, resolveLens, LensKey , lensEdits } from "@/lib/lenses";
+import { visibleLenses, resolveLens, LensKey , lensEdits , lensSelects } from "@/lib/lenses";
 import ProductionSheet from "@/components/studio/renderers/ProductionSheet";
 import { loadProductionModel } from "@/lib/productionLensSupabase";
 import { ProductionModel } from "@/lib/productionLens";
@@ -1065,17 +1066,6 @@ export default function StudioPage() {
             canEdit={!locked && !!session?.perms.includes("bookings.edit")}
             onOpenRoom={(r) => { setPubSection(null); setPubRoom(r); }}
             onClose={() => setPubRoom(null)}
-            roomContent={pubRoom ? (
-              <PresentationRooms
-                room={pubRoom}
-                tenantThemes={pubTenantThemes.map((t) => ({ id: t.id, name: t.name }))}
-                themeKey={pubThemeKey}
-                override={pubOverride}
-                resolved={resolvedPub}
-                onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
-                onPatch={patchPub}
-              />
-            ) : null}
             onSave={() => void savePublication()}
             onDiscard={() => {
               setPubThemeKey((version?.theme_key as string | null) ?? null);
@@ -1320,7 +1310,28 @@ export default function StudioPage() {
             />
           )}
 
-          <div className={split ? "grid grid-cols-2 gap-6 px-6" : "px-6"} data-stage-body>
+          {/* v230 — THE ROOM RESHAPES THE WORKSPACE (§6.1): Room | Paper.
+               The paper contracts and stays fully visible; never obscured. */}
+          <div data-stage-body
+            className={pubRoom && lens === "customer" ? "grid gap-6 px-6" : split ? "grid grid-cols-2 gap-6 px-6" : "px-6"}
+            style={pubRoom && lens === "customer"
+              ? { gridTemplateColumns: split ? "minmax(260px,320px) 1fr 1fr" : "minmax(280px,360px) 1fr" }
+              : undefined}>
+            {pubRoom && lens === "customer" && (
+              <PresentationRoomRegion openRoom={pubRoom}
+                onOpenRoom={(r) => { setPubSection(null); setPubRoom(r); }}
+                onClose={() => setPubRoom(null)}>
+                <PresentationRooms
+                  room={pubRoom}
+                  tenantThemes={pubTenantThemes.map((t) => ({ id: t.id, name: t.name }))}
+                  themeKey={pubThemeKey}
+                  override={pubOverride}
+                  resolved={resolvedPub}
+                  onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
+                  onPatch={patchPub}
+                />
+              </PresentationRoomRegion>
+            )}
             {/* ── THE PAPER — first (and usually only) sheet ── */}
             <main data-paper className={`bg-white rounded-[4px] ring-1 ring-black/5 my-10 min-h-[70vh] ${split ? "" : "max-w-[840px] mx-auto"}`}
               style={dropHot ? { outline: "2px dashed #C9A34E", outlineOffset: -4, boxShadow: PAPER_SHADOW } : { boxShadow: PAPER_SHADOW }}
@@ -1390,10 +1401,10 @@ export default function StudioPage() {
               {lens === "customer" && (
                 stage
                   ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub}
-                      onSectionSelect={!locked && session?.perms.includes("bookings.edit")
+                      onSectionSelect={!locked && session?.perms.includes("bookings.edit") && lensSelects(activeLensDef, "section")
                         ? (sid) => { setPubRoom(null); setPubSection(sid === pubSection ? null : sid); }
                         : undefined}
-                      onDocumentSelect={!locked && session?.perms.includes("bookings.edit")
+                      onDocumentSelect={!locked && session?.perms.includes("bookings.edit") && lensSelects(activeLensDef, "document")
                         ? () => { setPubRoom(null); setPubSection(pubSection === "__document__" ? null : "__document__"); }
                         : undefined}
                       selectedSectionId={pubSection}

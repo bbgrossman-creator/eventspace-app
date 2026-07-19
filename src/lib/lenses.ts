@@ -78,6 +78,11 @@ export interface LensDef {
    *  rendering; absent = does not apply). */
   edits?: { presentation?: true; content?: true; structure?: true; pricing?: true };
   supports?: { xray?: "inherent" | "modifier"; print?: true; compare?: true };
+  /** v230 — SELECTION CAPABILITIES (§6.3): which PRESENTATION identities
+   *  this lens lets you select on the paper. Contextual toolbars render
+   *  from this + the treatment registries — never from scattered
+   *  type checks. Component/item join here when their treatments ship. */
+  selects?: { document?: true; section?: true };
   /** Tenant capability required. The ONLY gate this file applies (condition 3).
    *  null = always available wherever the Studio itself is. */
   cap: keyof Capabilities | null;
@@ -130,6 +135,7 @@ const SEED_LENSES: LensDef[] = [
     blurb: "The live customer publication — exactly what the client receives.",
     edits: { presentation: true },
     supports: { xray: "modifier", print: true, compare: true },
+    selects: { document: true, section: true },
     cap: "proposals", perm: "bookings.view", module: "events", editable: false,
     concern: "what the client receives", capability: "proposal.customer_view",
     verbs: [], anatomy: "editing",
@@ -332,6 +338,12 @@ export function lensAllowed(key: LensKey, config: LensConfig, session: Session |
 
 /** v224 — the one question chrome may ask: does this lens edit this layer?
  *  (Chrome consults declarations, never names.) */
+/** The selection twin of lensEdits. */
+export const lensSelects = (
+  def: LensDef | null | undefined,
+  kind: "document" | "section",
+): boolean => def?.selects?.[kind] === true;
+
 export const lensEdits = (
   def: LensDef | null | undefined,
   layer: "presentation" | "content" | "structure" | "pricing",
