@@ -10,6 +10,16 @@ import { supabase } from "./supabase";
 export interface SectionType { id: string; name: string; position: number; active: boolean; }
 export interface VersionSection { section_type_id: string; position: number; }
 
+/** v219 — a NEW moment type, coined at the picker. Position lands after the
+ *  current tail; active by default; the id comes back for immediate use. */
+export async function createSectionType(name: string, afterPosition: number): Promise<SectionType | null> {
+  const { data, error } = await supabase.from("section_types")
+    .insert({ name: name.trim(), position: afterPosition + 1, active: true })
+    .select("id,name,position,active").maybeSingle();
+  if (error) return null;
+  return (data ?? null) as SectionType | null;
+}
+
 export async function loadSectionTypes(): Promise<SectionType[]> {
   const { data } = await supabase.from("section_types")
     .select("id,name,position,active").eq("active", true).order("position");

@@ -68,6 +68,12 @@ export interface InspectorProps {
    *  an object too, and its context (guests, adjustments) has to live
    *  somewhere that isn't the menu. */
   designPanel?: React.ReactNode;
+  /** v219 THE ADVERTISING RULE: every object advertises how it can be
+   *  removed, in its context surface. The HOST owns the ceremony (confirm,
+   *  cascade honesty); this surface advertises and reports. Absent or
+   *  read-only = no affordance. */
+  onRemove?: () => void;
+  removeLabel?: string;
   /** SPEC-002: the Configure facet, mounted by the page ONLY for component
    *  selections. The Inspector renders it; it never owns it. */
   configureFacet?: React.ReactNode;
@@ -236,6 +242,17 @@ export default function Inspector(p: InspectorProps) {
             </Section>
           )}
         </>
+      )}
+      {p.onRemove && p.canEdit && (
+        <div className="px-3 py-3 mt-2 border-t" style={{ borderColor: T.rule }}>
+          <button data-inspector-remove onClick={p.onRemove}
+            className="text-[11.5px] font-semibold text-[#B91C1C] hover:underline">
+            {p.removeLabel ?? "Remove from this design…"}
+          </button>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            Removes it from this version only — the Library keeps its identity.
+          </p>
+        </div>
       )}
     </div>
   );

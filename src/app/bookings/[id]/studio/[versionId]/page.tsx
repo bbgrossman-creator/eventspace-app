@@ -63,7 +63,8 @@ import {
   ChoiceGroupDef,
 } from "@/lib/pricingEngine";
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
-import { SectionType, loadSectionTypes } from "@/lib/sections";
+import { SectionType, loadSectionTypes, createSectionType } from "@/lib/sections";
+import { availableMomentTypes } from "@/lib/moments";
 import { promoteToBlueprint, getBlueprint, previewBlueprint, applyBlueprint, replaceWithBlueprint, applyBlueprintSubset, Blueprint, BlueprintPreview } from "@/lib/blueprints";
 import { landingRoute } from "@/lib/landing";
 import { formatVersionDiff } from "@/lib/sheetChoice";
@@ -1055,6 +1056,53 @@ export default function StudioPage() {
         />
       )}
 
+      {/* ── v219 THE MOMENT PICKER — the Proposal's "+ moment" ceremony.
+           Offers active types not already on this version (a present type
+           would be a duplicate-in-waiting), plus the coining of a new one.
+           Commits nothing until chosen; Esc/away cancels. ── */}
+      {sectionPicker && (
+        <div data-moment-picker className="fixed inset-0 z-50 flex items-center justify-center bg-black/25"
+             onClick={() => setSectionPicker(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-[380px] max-h-[70vh] overflow-y-auto p-4"
+               onClick={(e) => e.stopPropagation()}>
+            <p className="text-[13.5px] font-semibold mb-0.5" style={{ color: "#1F2A37" }}>Add a moment</p>
+            <p className="text-[11px] text-slate-400 mb-3">Cocktail Hour, Dinner, Dessert — the evening's chapters.</p>
+            <div className="space-y-1 mb-3">
+              {availableMomentTypes(sectionTypes, vSections).map((t) => (
+                <button key={t.id} data-moment-option={t.id}
+                  onClick={() => void addSectionType(t.id)}
+                  className="w-full text-left px-3 py-2 rounded-lg border text-[13px] hover:bg-[#F4F9FF]"
+                  style={{ borderColor: "#E7EDF5", color: "#1F2A37" }}>{t.name}</button>
+              ))}
+              {availableMomentTypes(sectionTypes, vSections).length === 0 && (
+                <p className="text-[11px] text-slate-400 px-1">Every existing moment type is already on this version.</p>
+              )}
+            </div>
+            <form className="flex gap-2" onSubmit={(e) => {
+              e.preventDefault();
+              const input = (e.currentTarget.elements.namedItem("momentName") as HTMLInputElement);
+              const name = input.value.trim();
+              if (!name) return;
+              void (async () => {
+                const maxPos = sectionTypes.reduce((m, t) => Math.max(m, t.position), 0);
+                const created = await createSectionType(name, maxPos);
+                if (!created) { setErr("Could not create that moment type."); return; }
+                setSectionTypes((prev) => prev.concat([created]));
+                await addSectionType(created.id);
+              })();
+            }}>
+              <input name="momentName" data-moment-new placeholder="Or coin a new one — e.g. Late Night"
+                className="field flex-1 !text-[12px]" />
+              <button type="submit" data-moment-create
+                className="text-[12px] font-semibold text-white rounded-lg px-3 py-1.5"
+                style={{ background: "#102F56" }}>Add</button>
+            </form>
+            <button data-moment-cancel onClick={() => setSectionPicker(false)}
+              className="mt-3 text-[11px] text-slate-400 hover:text-slate-700">Cancel</button>
+          </div>
+        </div>
+      )}
+
       {landing && (
         <LandingDecision
           name={landing.bp.name}
@@ -1213,6 +1261,14 @@ export default function StudioPage() {
                   onPatchComponent={(id, patch) => patchComp(id, patch as Partial<CompRow>)}
                   onPatchItem={(id, patch) => patchItem(id, patch as Partial<PricedItem>)}
                   onAddComponent={(chapterId) => addComponentIn(chapterId === "__none__" ? null : chapterId)}
+                  onAddChapter={() => setSectionPicker(true)}
+                  onChapterAction={(chId, action) => {
+                    const g = { sectionTypeId: chId,
+                      name: (sectionTypes.filter((t) => t.id === chId)[0]?.name) ?? "this moment",
+                      comps: comps.filter((c) => c.section_type_id === chId) };
+                    if (action === "remove") void removeSection(g);
+                    else void moveSection(g, action === "up" ? -1 : 1);
+                  }}
                   onAddItem={(compId, categoryKey) => void addItem(compId, categoryKey)}
                   money={money}
                   onDrop={applyDrop}
@@ -1312,6 +1368,15 @@ export default function StudioPage() {
                 onOpenCanvas={() => { /* the canvas is beside us */ }}
               />
             ) : null}
+            onRemove={!locked && session?.perms.includes("bookings.edit") ? () => {
+              if (inspected.kind === "component") {
+                const c = comps.filter((x) => x.id === inspected.id)[0];
+                if (c) { void deleteComp(c).then(() => setSelectedId(null)); }
+              } else if (inspected.kind === "item") {
+                void deleteItem(inspected.id).then(() => setSelectedId(null));
+              }
+            } : undefined}
+            removeLabel={inspected.kind === "component" ? "Remove this component from the design…" : "Remove this item…"}
             onLoadMemory={(id) => {
               const it = items.find((x) => x.id === id);
               if (!it) return;

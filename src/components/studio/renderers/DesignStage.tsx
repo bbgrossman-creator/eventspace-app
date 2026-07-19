@@ -76,6 +76,15 @@ export interface DesignStageProps {
   onPatchComponent: (id: string, patch: Record<string, unknown>) => void;
   onPatchItem: (id: string, patch: Record<string, unknown>) => void;
   onAddComponent?: (chapterId: string) => void;
+  /** v219 THE ADVERTISING RULE (STUDIO_COMPOSITION §14): every node
+   *  advertises what children it can create — the Proposal advertises
+   *  moments the way a moment advertises components. Absent = hidden
+   *  (read-only), same contract as every other affordance here. */
+  onAddChapter?: () => void;
+  /** v219: a moment advertises its own lifecycle — remove and reorder —
+   *  from a quiet menu on its head. The HOST owns the ceremony (populated
+   *  moments confirm); this component only advertises and reports. */
+  onChapterAction?: (chapterId: string, action: "remove" | "up" | "down") => void;
   /** Item creation, per category. Absent = affordance hidden (read-only). */
   onAddItem?: (componentId: string, categoryKey: string | null) => void;
   money: (n: number) => string;
@@ -602,6 +611,7 @@ export default function DesignStage(p: DesignStageProps) {
   // A read-only Stage that LOOKS editable and silently ignores you is not —
   // it is indistinguishable from a bug, which is exactly what happened here.
   const readOnly = !p.mayEdit;
+  const [chMenu, setChMenu] = useState<string | null>(null);
 
   if (!p.chapters.length) {
     return (
@@ -611,6 +621,12 @@ export default function DesignStage(p: DesignStageProps) {
           Press <kbd className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">Ctrl K</kbd> to
           start from a blueprint or a past event.
         </p>
+        {p.onAddChapter && p.mayEdit && (
+          <button data-add-moment onClick={() => p.onAddChapter?.()}
+            className="mt-4 text-[12px] font-semibold text-slate-400 hover:text-[#102F56]">
+            ＋ or begin with a moment — Cocktail Hour, Dinner…
+          </button>
+        )}
       </div>
     );
   }
@@ -631,7 +647,7 @@ export default function DesignStage(p: DesignStageProps) {
         const dropIn = (pl: NodePayload, t: DropTarget) => { p.onDrop?.(pl, t); };
         return (
           <div key={ch.id} className="mb-12" onDragEnter={() => { if (live) setAwake(ch.id); }}>
-            <div className={`flex items-baseline gap-2 px-3 py-2.5 sticky top-0 backdrop-blur border-b z-10 transition-all ${
+            <div className={`group/chhdr flex items-baseline gap-2 px-3 py-2.5 sticky top-0 backdrop-blur border-b z-10 transition-all ${
                    landed === ch.id ? "ring-2 ring-[#C9A34E]" : ""}`}
                  style={{
                    borderColor: T.rule,
@@ -650,6 +666,24 @@ export default function DesignStage(p: DesignStageProps) {
               {p.onAddComponent && p.mayEdit && !live && (
                 <button onClick={() => p.onAddComponent?.(ch.id)}
                   className="text-[10px] text-slate-400 hover:text-slate-700">+ component</button>
+              )}
+              {p.onChapterAction && p.mayEdit && !live && ch.id !== "__none__" && (
+                <span className="relative">
+                  <button data-chapter-menu-btn={ch.id} aria-expanded={chMenu === ch.id}
+                    onClick={() => setChMenu(chMenu === ch.id ? null : ch.id)}
+                    className="text-[12px] text-slate-300 hover:text-slate-600 opacity-0 group-hover/chhdr:opacity-100 focus:opacity-100 aria-expanded:opacity-100 transition-opacity px-1"
+                    title="This moment — reorder or remove">⋯</button>
+                  {chMenu === ch.id && (
+                    <span data-chapter-menu className="absolute right-0 top-full mt-1 z-30 w-44 bg-white rounded-lg shadow-xl ring-1 ring-[#E7EDF5] py-1 block">
+                      <button data-chapter-act="up" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "up"); }}
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-slate-600 hover:bg-[#F4F9FF]">↑ Move earlier</button>
+                      <button data-chapter-act="down" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "down"); }}
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-slate-600 hover:bg-[#F4F9FF]">↓ Move later</button>
+                      <button data-chapter-act="remove" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "remove"); }}
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-[#B91C1C] hover:bg-[#FEF2F2]">Remove moment…</button>
+                    </span>
+                  )}
+                </span>
               )}
             </div>
 
@@ -671,6 +705,14 @@ export default function DesignStage(p: DesignStageProps) {
           </div>
         );
       })}
+      {p.onAddChapter && p.mayEdit && !live && (
+        <div className="text-center pt-2 pb-6">
+          <button data-add-moment onClick={() => p.onAddChapter?.()}
+            className="text-[11.5px] font-semibold text-slate-300 hover:text-[#102F56] transition-colors">
+            ＋ moment
+          </button>
+        </div>
+      )}
     </div>
   );
 }
