@@ -257,6 +257,36 @@ async function copyComponentsBetween(
 
 /** Version lifecycle transitions. Approved is terminal + immutable; approving
  *  also marks the proposal won and records WHICH version won. */
+/** v225b — THE SEND CEREMONY. Sending is an ACT, and the act is what
+ *  stamps: every explicit send takes a fresh snapshot of the resolved
+ *  presentation actually sent and logs it — INCLUDING re-sending an
+ *  already-sent version (sent → Send → sent). Approval elsewhere locks the
+ *  last stamp forever. This is the ONE door for the send act; the UI routes
+ *  every "send" through here. */
+export async function sendVersion(
+  booking: { id: string; invoice_num: string },
+  proposal: Proposal,
+  v: ProposalVersion,
+): Promise<Outcome> {
+  if (v.status === "approved") return { ok: false, detail: "Approved versions are immutable — create a new version instead." };
+  const resend = v.status === "sent";
+  const named = builtInTheme((v.theme_key as string | null) ?? null);
+  const resolved = resolveTheme(null /* brand: v226 */, named, (v.theme_override as ThemeDelta | null) ?? null);
+  const patch: Record<string, unknown> = {
+    status: "sent",
+    presentation_snapshot: resolved.theme,
+    presentation_stamped_at: new Date().toISOString(),
+  };
+  if (!v.sent_at) patch.sent_at = new Date().toISOString();
+  const { error } = await supabase.from("proposal_versions").update(patch).eq("id", v.id);
+  if (error) return { ok: false, detail: error.message };
+  await logActivity(booking.id, booking.invoice_num, resend ? "Proposal Re-sent" : "Proposal Sent",
+    `📤 ${proposal.title} v${v.version}${resend ? " re-sent" : " sent"}`);
+  await logActivity(booking.id, booking.invoice_num, "Presentation Stamped",
+    `🎨 v${v.version} presentation stamped${resend ? " (re-send — fresh snapshot)" : " as sent"}`);
+  return { ok: true, id: v.id };
+}
+
 export async function setVersionStatus(
   booking: { id: string; invoice_num: string },
   proposal: Proposal,
@@ -267,9 +297,10 @@ export async function setVersionStatus(
   if (v.status === "approved") return { ok: false, detail: "Approved versions are immutable — create a new version instead." };
   const patch: Record<string, unknown> = { status };
   if (status === "sent" && !v.sent_at) patch.sent_at = new Date().toISOString();
-  // v225 THE SNAPSHOT RULE (PUBLICATION §3): every transition INTO "sent"
-  // stamps the resolved presentation actually sent. Re-send re-stamps;
-  // editing alone never touches a prior stamp; approval locks the last one.
+  // v225b: the SEND ACT lives in sendVersion() and always stamps. This
+  // transition-based stamp remains as the safety net for programmatic
+  // status writes that bypass the ceremony — it fires only on transitions
+  // INTO "sent"; editing alone never stamps; approval locks the last stamp.
   if (shouldStampPresentation(v.status, status)) {
     const named = builtInTheme((v.theme_key as string | null) ?? null);
     const resolved = resolveTheme(null /* brand: v226 */, named, (v.theme_override as ThemeDelta | null) ?? null);

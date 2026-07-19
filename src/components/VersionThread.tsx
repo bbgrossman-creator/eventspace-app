@@ -84,6 +84,11 @@ function Row(p: {
             title={STATUS_TITLES[s] ?? undefined}
             onClick={() => p.onStatus(s)}>→ {VERSION_FLOW.find((f) => f.value === s)?.label}</button>
         ))}
+        {p.v.status === "sent" && p.open && !isArchived && (
+          <button data-version-resend={p.v.id} className="text-[11px] text-accent-ink hover:underline" disabled={p.busy}
+            title="Send again — takes a FRESH snapshot of the presentation actually sent and logs it. The prior send's stamp stays on the record."
+            onClick={() => p.onStatus("sent")}>↻ Send again</button>
+        )}
         {p.v.status === "revision_requested" && p.open && (
           <span className="text-[11px] text-slate-400 italic">changes go in a new version →</span>
         )}

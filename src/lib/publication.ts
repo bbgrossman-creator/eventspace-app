@@ -59,21 +59,28 @@ export const fontPairing = (key: string | null | undefined): FontPairing | null 
  *  resolution change. */
 export interface ThemeDelta {
   fonts?: { pairing?: string };
-  colors?: { primary?: string; accent?: string; ink?: string; paper?: string };
+  colors?: { primary?: string; accent?: string; ink?: string };
+  /** §1: paper is its OWN field — tint now, texture and page proportions
+   *  when their slices land. (v225b: it was a colors leaf; the canon says
+   *  otherwise, and the stored shape must match the canon before anything
+   *  is stored.) */
+  paper?: { tint?: string; texture?: string };
   margins?: { measure?: number; sectionGap?: number };
 }
 
 /** The complete resolved theme — every implemented leaf present. */
 export interface ResolvedTheme {
   fonts: { pairing: string; headingStack: string; bodyStack: string };
-  colors: { primary: string; accent: string; ink: string; paper: string };
+  colors: { primary: string; accent: string; ink: string };
+  paper: { tint: string; texture: string };
   margins: { measure: number; sectionGap: number };
 }
 
 export type ThemeRung = "system" | "brand" | "theme" | "override";
 export type ThemeProvenance = {
   fonts: { pairing: ThemeRung };
-  colors: { primary: ThemeRung; accent: ThemeRung; ink: ThemeRung; paper: ThemeRung };
+  colors: { primary: ThemeRung; accent: ThemeRung; ink: ThemeRung };
+  paper: { tint: ThemeRung; texture: ThemeRung };
   margins: { measure: ThemeRung; sectionGap: ThemeRung };
 };
 
@@ -83,7 +90,8 @@ export type ThemeProvenance = {
  *  has. */
 export const SYSTEM_DEFAULT_THEME: Required<ThemeDelta> = {
   fonts: { pairing: "playfair-inter" },
-  colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37", paper: "#FFFFFF" },
+  colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37" },
+  paper: { tint: "#FFFFFF", texture: "none" },
   margins: { measure: 760, sectionGap: 40 },
 };
 
@@ -111,19 +119,21 @@ export function resolveTheme(
 
   const fp = leaf("fonts", "pairing");
   const pairing = fontPairing(fp.v as string) ?? fontPairing(SYSTEM_DEFAULT_THEME.fonts.pairing)!;
-  const primary = leaf("colors", "primary"), accent = leaf("colors", "accent");
-  const ink = leaf("colors", "ink"), paper = leaf("colors", "paper");
+  const primary = leaf("colors", "primary"), accent = leaf("colors", "accent"), ink = leaf("colors", "ink");
+  const tint = leaf("paper", "tint"), texture = leaf("paper", "texture");
   const measure = leaf("margins", "measure"), gap = leaf("margins", "sectionGap");
 
   return {
     theme: {
       fonts: { pairing: pairing.key, headingStack: pairing.headingStack, bodyStack: pairing.bodyStack },
-      colors: { primary: primary.v as string, accent: accent.v as string, ink: ink.v as string, paper: paper.v as string },
+      colors: { primary: primary.v as string, accent: accent.v as string, ink: ink.v as string },
+      paper: { tint: tint.v as string, texture: texture.v as string },
       margins: { measure: measure.v as number, sectionGap: gap.v as number },
     },
     provenance: {
       fonts: { pairing: fp.rung },
-      colors: { primary: primary.rung, accent: accent.rung, ink: ink.rung, paper: paper.rung },
+      colors: { primary: primary.rung, accent: accent.rung, ink: ink.rung },
+      paper: { tint: tint.rung, texture: texture.rung },
       margins: { measure: measure.rung, sectionGap: gap.rung },
     },
   };
@@ -134,13 +144,13 @@ export const BUILT_IN_THEMES: { key: string; label: string; blurb: string; delta
   { key: "classic", label: "Classic", blurb: "The house dress — navy, gold, Playfair.", delta: {} },
   { key: "luxury", label: "Luxury", blurb: "Deep charcoal, champagne gold, elegant serifs.",
     delta: { fonts: { pairing: "cormorant-source" },
-      colors: { primary: "#1C1917", accent: "#B08D2F", paper: "#FDFBF7" } } },
+      colors: { primary: "#1C1917", accent: "#B08D2F" }, paper: { tint: "#FDFBF7" } } },
   { key: "modern", label: "Modern", blurb: "Clean geometry, ink on white.",
     delta: { fonts: { pairing: "montserrat-inter" },
-      colors: { primary: "#0F172A", accent: "#2563EB", paper: "#FFFFFF" } } },
+      colors: { primary: "#0F172A", accent: "#2563EB" }, paper: { tint: "#FFFFFF" } } },
   { key: "minimal", label: "Minimal", blurb: "One family, generous air.",
     delta: { fonts: { pairing: "work-sans" },
-      colors: { primary: "#111827", accent: "#6B7280", paper: "#FFFFFF" },
+      colors: { primary: "#111827", accent: "#6B7280" }, paper: { tint: "#FFFFFF" },
       margins: { sectionGap: 56 } } },
 ];
 
@@ -156,18 +166,23 @@ export const PALETTES: { key: string; label: string; colors: NonNullable<ThemeDe
   { key: "ink-azure", label: "Ink & Azure", colors: { primary: "#0F172A", accent: "#2563EB" } },
 ];
 
-/** Paper tints for the Paper control. */
-export const PAPERS: { key: string; label: string; paper: string }[] = [
-  { key: "white", label: "White", paper: "#FFFFFF" },
-  { key: "ivory", label: "Ivory", paper: "#FDFBF7" },
-  { key: "linen", label: "Linen", paper: "#FAF7F0" },
-  { key: "mist", label: "Mist", paper: "#F8FAFC" },
+/** Paper tints for the Paper control — patches the theme's own `paper`
+ *  group (the registry serves the stored shape; it is not a side channel). */
+export const PAPERS: { key: string; label: string; tint: string }[] = [
+  { key: "white", label: "White", tint: "#FFFFFF" },
+  { key: "ivory", label: "Ivory", tint: "#FDFBF7" },
+  { key: "linen", label: "Linen", tint: "#FAF7F0" },
+  { key: "mist", label: "Mist", tint: "#F8FAFC" },
 ];
 
-/** §3, the pure half: every transition INTO "sent" stamps. Editing alone
- *  never stamps; approval never re-stamps (it locks the last stamp). */
-export const shouldStampPresentation = (prev: string, next: string): boolean =>
-  next === "sent" && prev !== "sent";
+/** §3, the pure half — v225b: the stamp is caused by the SEND CEREMONY,
+ *  not by the status value changing. An explicit send ALWAYS stamps — sent →
+ *  Send → sent takes a fresh snapshot (re-send re-stamps, per adoption
+ *  ruling a). A passive status change stamps only on transitions into
+ *  "sent" (the safety net for programmatic writes). Editing alone never
+ *  stamps; approval never re-stamps — it locks the last stamp. */
+export const shouldStampPresentation = (prev: string, next: string, explicitSend = false): boolean =>
+  explicitSend ? next === "sent" : (next === "sent" && prev !== "sent");
 
 /** Sparse deep-merge for accumulating override edits (render state → the
  *  Version Override on explicit save). */
@@ -175,6 +190,7 @@ export function mergeDelta(base: ThemeDelta | null, patch: ThemeDelta): ThemeDel
   const out: ThemeDelta = { ...(base ?? {}) };
   if (patch.fonts) out.fonts = { ...(out.fonts ?? {}), ...patch.fonts };
   if (patch.colors) out.colors = { ...(out.colors ?? {}), ...patch.colors };
+  if (patch.paper) out.paper = { ...(out.paper ?? {}), ...patch.paper };
   if (patch.margins) out.margins = { ...(out.margins ?? {}), ...patch.margins };
   return out;
 }

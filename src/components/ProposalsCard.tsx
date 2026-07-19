@@ -21,7 +21,7 @@ import { Blueprint, listBlueprints } from "@/lib/blueprints";
 import {
   Proposal, ProposalVersion, VersionStatus,
   VERSION_FLOW, PROPOSAL_STATUS_LABEL,
-  createProposal, createVersion, createBlankVersion, setVersionStatus, setProposalStatus,
+  createProposal, createVersion, createBlankVersion, setVersionStatus, sendVersion, setProposalStatus,
   archiveVersion, restoreVersion, deleteVersionPermanently, deleteBlockers,
 } from "@/lib/proposals";
 import { loadSession, Session } from "@/lib/permissions";
@@ -264,7 +264,9 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                     onNewVersion={() => latest && setGenesisFor({ p, latest })}
                     onStatus={(v, next) => {
                       if (next === "approved" && !confirm(`Approve v${v.version}? This locks it permanently and marks the proposal Won.`)) return;
-                      run(() => setVersionStatus(b, p, v, next));
+                      // v225b: sending is a CEREMONY — one door, always stamps
+                      // (including re-send). Other statuses move normally.
+                      run(() => next === "sent" ? sendVersion(b, p, v) : setVersionStatus(b, p, v, next));
                     }}
                     onArchiveVersion={(v) => doArchive(p, v)}
                     onRestoreVersion={(v) => run(() => restoreVersion(b, v))}

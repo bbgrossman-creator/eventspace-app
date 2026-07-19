@@ -67,9 +67,9 @@ export default function PresentationControls(props: {
           ))}
           {p.id === "paper" && PAPERS.map((pp) => (
             <button key={pp.key} data-pub-paper={pp.key}
-              onClick={() => { setMenu(null); patch({ colors: { paper: pp.paper } }); }}
+              onClick={() => { setMenu(null); patch({ paper: { tint: pp.tint } }); }}
               className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-[12px] text-slate-600 hover:bg-[#F4F9FF]">
-              <span className="w-3 h-3 rounded-sm ring-1 ring-slate-200" style={{ background: pp.paper }} />
+              <span className="w-3 h-3 rounded-sm ring-1 ring-slate-200" style={{ background: pp.tint }} />
               {pp.label}
             </button>
           ))}
