@@ -439,7 +439,7 @@ export default function StudioPage() {
   const [landing, setLanding] = useState<{ bp: Blueprint; preview: BlueprintPreview } | null>(null);
   // v220 — VERSION GENESIS: "＋ New Version" is a decision, not a default.
   // No version exists before a route is chosen.
-  const [genesis, setGenesis] = useState<{ blueprints: { id: string; name: string }[] } | null>(null);
+  const [genesis, setGenesis] = useState<{ blueprints: { id: string; name: string }[]; counts: Record<string, number> } | null>(null);
   const [genesisBusy, setGenesisBusy] = useState(false);
   async function commitGenesis(run: () => Promise<{ ok: boolean; detail?: string; id?: string }>) {
     setGenesisBusy(true);
@@ -1024,8 +1024,15 @@ export default function StudioPage() {
             } },
           ...(!locked && versions.length > 0 ? [{ key: "newversion", label: "＋ New Version", disabled: busy,
             onPick: async () => {
-              const bps = await listBlueprints();
-              setGenesis({ blueprints: bps.map((x) => ({ id: x.id, name: x.name })) });
+              const [bps, compRows] = await Promise.all([
+                listBlueprints(),
+                supabase.from("event_components").select("proposal_version_id").eq("booking_id", b.id),
+              ]);
+              const counts: Record<string, number> = {};
+              for (const r of (compRows.data ?? []) as { proposal_version_id: string | null }[]) {
+                if (r.proposal_version_id) counts[r.proposal_version_id] = (counts[r.proposal_version_id] ?? 0) + 1;
+              }
+              setGenesis({ blueprints: bps.map((x) => ({ id: x.id, name: x.name })), counts });
             } }] : []),
           { key: "notes", label: "🗒 Notes", onPick: () => setTab("notes") },
           { key: "files", label: "📎 Files", onPick: () => setTab("files") },
@@ -1086,10 +1093,23 @@ export default function StudioPage() {
 
       {genesis && (
         <VersionGenesis
-          currentLabel={`v${version.version}`}
+          reviseTarget={{
+            label: `Revise v${version.version} — the version you're viewing`,
+            blurb: `Copies everything on v${version.version} into a new draft.`,
+          }}
+          otherVersions={versions.filter((v) => v.id !== version.id).slice().reverse().map((v) => ({
+            id: v.id, label: `v${v.version}`,
+            statusLabel: VERSION_FLOW.find((f) => f.value === v.status)?.label ?? v.status,
+            date: new Date(v.created_at).toLocaleDateString(),
+            count: genesis.counts[v.id] ?? 0,
+          }))}
           blueprints={genesis.blueprints}
           busy={genesisBusy}
           onRevise={() => void commitGenesis(() => createVersion(b, proposal, version))}
+          onCopyVersion={(vid) => {
+            const src = versions.filter((v) => v.id === vid)[0];
+            if (src) void commitGenesis(() => createVersion(b, proposal, src));
+          }}
           onBlank={() => void commitGenesis(() => createBlankVersion(b, proposal))}
           onBlueprint={(bpId) => void commitGenesis(async () => {
             const made = await createBlankVersion(b, proposal);

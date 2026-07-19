@@ -10,6 +10,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import ArchetypePick from "@/components/ArchetypePick";
+import VersionThread from "@/components/VersionThread";
+import VersionGenesis from "@/components/studio/VersionGenesis";
+import { getBlueprint, applyBlueprint } from "@/lib/blueprints";
 import { archetype } from "@/lib/archetypes";
 import { Booking } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
@@ -18,7 +21,7 @@ import { Blueprint, listBlueprints } from "@/lib/blueprints";
 import {
   Proposal, ProposalVersion, VersionStatus,
   VERSION_FLOW, PROPOSAL_STATUS_LABEL,
-  createProposal, createVersion, setVersionStatus, setProposalStatus,
+  createProposal, createVersion, createBlankVersion, setVersionStatus, setProposalStatus,
   archiveVersion, restoreVersion, deleteVersionPermanently, deleteBlockers,
 } from "@/lib/proposals";
 import { loadSession, Session } from "@/lib/permissions";
@@ -41,6 +44,20 @@ export default function ProposalsCard({ b }: { b: Booking }) {
   const [session, setSession] = useState<Session | null>(null);
   const [showArchived, setShowArchived] = useState<Record<string, boolean>>({});
   const [showAllVersions, setShowAllVersions] = useState<Record<string, boolean>>({});
+  // v222 — ONE door: the Booking page's New Version goes through the same
+  // Genesis ceremony as the Studio's. Nothing mutates before a route is
+  // chosen. Here no version is "being viewed", so the primary route revises
+  // the LATEST, and "Copy another version…" offers the rest explicitly.
+  const [genesisFor, setGenesisFor] = useState<{ p: Proposal; latest: ProposalVersion } | null>(null);
+  const [genesisBusy, setGenesisBusy] = useState(false);
+  async function commitGenesis(run2: () => Promise<{ ok: boolean; detail?: string; id?: string }>) {
+    setGenesisBusy(true);
+    const r = await run2();
+    setGenesisBusy(false);
+    if (!r.ok || !r.id) { setErr(r.detail ?? "Could not create the version."); return; }
+    setGenesisFor(null);
+    window.location.href = `/bookings/${b.id}/studio/${r.id}`;
+  }
 
   useEffect(() => {
     loadCapabilities().then((c) => setCaps(c.caps));
@@ -110,6 +127,7 @@ export default function ProposalsCard({ b }: { b: Booking }) {
       <div className="flex items-center justify-between gap-3 mb-1">
         <h2 className="font-display font-semibold text-[15px]">🎨 Proposals</h2>
         <button className="text-xs font-medium text-accent-ink hover:text-[#102F56] transition-colors"
+          title="A SEPARATE proposal option for this booking — its own thread of versions. For revising an existing proposal, use Create New Version on that proposal instead."
           onClick={() => setAdding((v) => !v)}>＋ New Proposal</button>
       </div>
       <p className="text-xs text-slate-400 mb-3">
@@ -119,6 +137,10 @@ export default function ProposalsCard({ b }: { b: Booking }) {
 
       {adding && (
         <div className="rounded-lg bg-[#F6F8FB] ring-1 ring-[#E7EDF5] p-2.5 mb-3 space-y-2 reveal">
+          <p className="text-[10.5px] text-slate-400">
+            This creates a <b>separate proposal</b> — another commercial option for this booking, with its own version
+            history. To revise an existing proposal, use <b>＋ Create New Version</b> on it instead.
+          </p>
           <input className="field !py-1.5 !text-xs !bg-white w-full" autoFocus
             placeholder='Proposal title — e.g. "Summer Wedding — Option A"'
             value={nTitle} onChange={(e) => setNTitle(e.target.value)} />
@@ -158,6 +180,41 @@ export default function ProposalsCard({ b }: { b: Booking }) {
         <p className="text-[13px] text-slate-400">No proposals yet. Each proposal is its own thread — a customer can have several in play, and losing one doesn&apos;t lose the opportunity.</p>
       )}
 
+      {genesisFor && (() => {
+        const vs = activeVs(genesisFor.p);
+        const others = vs.filter((v) => v.id !== genesisFor.latest.id).slice().reverse();
+        const flowLabel = (st: string) => VERSION_FLOW.find((f) => f.value === st)?.label ?? st;
+        return (
+          <VersionGenesis
+            reviseTarget={{
+              label: `Revise latest version — v${genesisFor.latest.version}`,
+              blurb: `Copies everything on v${genesisFor.latest.version} (${compCounts[genesisFor.latest.id] ?? 0} components) into a new draft.`,
+            }}
+            otherVersions={others.map((v) => ({
+              id: v.id, label: `v${v.version}`, statusLabel: flowLabel(v.status),
+              date: new Date(v.created_at).toLocaleDateString(), count: compCounts[v.id] ?? 0,
+            }))}
+            blueprints={bps.map((x) => ({ id: x.id, name: x.name }))}
+            busy={genesisBusy}
+            onRevise={() => void commitGenesis(() => createVersion(b, genesisFor.p, genesisFor.latest))}
+            onCopyVersion={(vid) => {
+              const src = vs.filter((v) => v.id === vid)[0];
+              if (src) void commitGenesis(() => createVersion(b, genesisFor.p, src));
+            }}
+            onBlank={() => void commitGenesis(() => createBlankVersion(b, genesisFor.p))}
+            onBlueprint={(bpId) => void commitGenesis(async () => {
+              const made = await createBlankVersion(b, genesisFor.p);
+              if (!made.ok || !made.id) return made;
+              const bp = await getBlueprint(bpId);
+              if (!bp) return { ok: false, detail: "That blueprint's row is gone." };
+              const applied = await applyBlueprint(b, made.id, bp);
+              return applied.ok ? { ok: true, id: made.id } : { ok: false, detail: applied.detail };
+            })}
+            onCancel={() => setGenesisFor(null)}
+          />
+        );
+      })()}
+
       <div className="space-y-3">
         {proposals.map((p) => {
           const vs = activeVs(p);
@@ -178,15 +235,13 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                   {latest && <span className="text-[11px] text-slate-400">v{latest.version} · {VERSION_FLOW.find((f) => f.value === latest.status)?.label}</span>}
                 </button>
                 <div className="flex items-center gap-2">
-                  {p.status === "open" && latest && (
-                    <button className="text-[11px] text-accent-ink hover:underline" disabled={busy}
-                      onClick={() => run(() => createVersion(b, p, latest))}>＋ new version</button>
-                  )}
                   {p.status === "open" && (
                     <>
                       <button className="text-[11px] text-slate-400 hover:text-red-500 underline" disabled={busy}
+                        title="Mark this PROPOSAL lost — the whole option, all its versions. The booking and other proposals are untouched."
                         onClick={() => run(() => setProposalStatus(b, p, "lost"))}>lost</button>
                       <button className="text-[11px] text-slate-400 underline" disabled={busy}
+                        title="Archive this PROPOSAL — off the working list, kept forever."
                         onClick={() => run(() => setProposalStatus(b, p, "archived"))}>archive</button>
                     </>
                   )}
@@ -199,53 +254,24 @@ export default function ProposalsCard({ b }: { b: Booking }) {
 
               {open && (
                 <div className="mt-2 space-y-1.5">
-                  {collapsed && (
-                    <button className="text-[11px] text-slate-400 hover:text-accent-ink underline"
-                      onClick={() => setShowAllVersions((x) => ({ ...x, [p.id]: true }))}>
-                      ▼ Show version history ({vs.length})
-                    </button>
-                  )}
-                  {shownVs.map((v) => {
-                    const flow = VERSION_FLOW.find((f) => f.value === v.status)!;
-                    const isWinner = p.won_version_id === v.id;
-                    const nextSteps: VersionStatus[] =
-                      v.status === "draft" ? ["internal_review", "sent"]
-                      : v.status === "internal_review" ? ["draft", "sent"]
-                      : v.status === "sent" ? ["revision_requested", "approved"]
-                      : v.status === "revision_requested" ? []   // changes = new version
-                      : [];
-                    return (
-                      <div key={v.id} className="flex items-center gap-2 flex-wrap rounded px-2 py-1.5 bg-[#F6F8FB] ring-1 ring-[#E7EDF5]">
-                        <span className="text-[12px] font-semibold w-8">v{v.version}</span>
-                        <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ backgroundColor: flow.color }}>{flow.label}</span>
-                        {isWinner && <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 bg-[#DCFCE7] text-[#166534]">🏆 approved version</span>}
-                        <span className="text-[11px] text-slate-400">{compCounts[v.id] ?? 0} component{(compCounts[v.id] ?? 0) === 1 ? "" : "s"}</span>
-                        {v.approved_at && <span className="text-[11px] text-slate-400">approved {new Date(v.approved_at).toLocaleDateString()}{v.approved_by ? ` · ${v.approved_by}` : ""}</span>}
-                        <span className="ml-auto flex gap-2">
-                          {p.status === "open" && nextSteps.map((s) => (
-                            <button key={s} className="text-[11px] text-accent-ink hover:underline" disabled={busy}
-                              onClick={() => {
-                                if (s === "approved" && !confirm(`Approve v${v.version}? This locks it permanently and marks the proposal Won.`)) return;
-                                run(() => setVersionStatus(b, p, v, s));
-                              }}>
-                              → {VERSION_FLOW.find((f) => f.value === s)?.label}
-                            </button>
-                          ))}
-                          {v.status === "revision_requested" && p.status === "open" && (
-                            <span className="text-[11px] text-slate-400 italic">changes go in a new version →</span>
-                          )}
-                        </span>
-                        <a href={`/bookings/${b.id}/studio/${v.id}`}
-                          className="text-[11px] font-semibold text-accent-ink hover:underline">🎨 Studio ↗</a>
-                        <button className="text-[11px] text-slate-400 underline"
-                          onClick={() => setPricingOpen((x) => ({ ...x, [v.id]: !x[v.id] }))}>
-                          {pricingOpen[v.id] ? "hide pricing" : "pricing"}
-                        </button>
-                        <button className="text-[11px] text-slate-300 hover:text-amber-600" title="Archive this version"
-                          disabled={busy} onClick={() => doArchive(p, v)}>🗄</button>
-                      </div>
-                    );
-                  })}
+                  <VersionThread
+                    versions={vs}
+                    archived={archived}
+                    compCounts={compCounts}
+                    wonVersionId={p.won_version_id ?? null}
+                    proposalOpen={p.status === "open"}
+                    busy={busy}
+                    studioHref={(vid) => `/bookings/${b.id}/studio/${vid}`}
+                    onNewVersion={() => latest && setGenesisFor({ p, latest })}
+                    onStatus={(v, next) => {
+                      if (next === "approved" && !confirm(`Approve v${v.version}? This locks it permanently and marks the proposal Won.`)) return;
+                      run(() => setVersionStatus(b, p, v, next));
+                    }}
+                    onArchiveVersion={(v) => doArchive(p, v)}
+                    onTogglePricing={(vid) => setPricingOpen((x) => ({ ...x, [vid]: !x[vid] }))}
+                    pricingOpen={pricingOpen}
+                  />
+
                   {vs.filter((v) => pricingOpen[v.id]).map((v) => (
                     <VersionPricing key={`pp-${v.id}`} b={b} v={v} />
                   ))}

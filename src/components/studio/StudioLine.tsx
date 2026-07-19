@@ -63,6 +63,26 @@ export default function StudioLine(p: {
   const [dialOpen, setDialOpen] = useState(false);
   const [deskOpen, setDeskOpen] = useState(false);
   const askRef = useRef<HTMLInputElement>(null);
+  const dialRef = useRef<HTMLSpanElement>(null);
+  const deskRef = useRef<HTMLSpanElement>(null);
+
+  // v222 — real popover physics: outside click, Esc, and picking an action
+  // all dismiss; opening one menu closes the other. A menu that only its own
+  // button can close is a trap, not a menu.
+  useEffect(() => {
+    if (!dialOpen && !deskOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (dialRef.current?.contains(t) || deskRef.current?.contains(t)) return;
+      setDialOpen(false); setDeskOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setDialOpen(false); setDeskOpen(false); }
+    };
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onEsc);
+    return () => { document.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onEsc); };
+  }, [dialOpen, deskOpen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -92,8 +112,10 @@ export default function StudioLine(p: {
           {p.versions.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
         {p.flow && (
-          <span className="text-[10px] font-semibold rounded-full px-1.5 py-0.5"
-            style={{ backgroundColor: p.flow.color }}>{p.flow.label}</span>
+          <span data-flow-status role="status" aria-label={`Version status: ${p.flow.label}`}
+            title={`Version status — this version is ${p.flow.label}. Status moves (Draft → Review → Sent → Approved) on the booking page; it isn't a button.`}
+            className="text-[10px] font-semibold rounded-full px-1.5 py-0.5 cursor-help select-none"
+            style={{ backgroundColor: p.flow.color }}>● {p.flow.label}</span>
         )}
         {p.locked && <span className="text-[10px] font-semibold text-[#166534]">🔒</span>}
       </span>
@@ -112,8 +134,8 @@ export default function StudioLine(p: {
       </span>
 
       {/* ── the Dial ── */}
-      <span className="relative shrink-0">
-        <button data-dial aria-expanded={dialOpen} onClick={() => setDialOpen((o) => !o)}
+      <span className="relative shrink-0" ref={dialRef}>
+        <button data-dial aria-expanded={dialOpen} onClick={() => { setDeskOpen(false); setDialOpen((o) => !o); }}
           className="flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md ring-1 ring-[#E7EDF5] bg-white hover:bg-[#FAFBFD]"
           title={activeDef?.blurb}>
           <span className="text-[10px] uppercase tracking-wider text-slate-400">View as</span>
@@ -168,8 +190,8 @@ export default function StudioLine(p: {
         style={p.split ? { background: T.navy, borderColor: T.navy } : undefined}>⧉</button>
 
       {/* ── the Desk ── */}
-      <span className="relative shrink-0">
-        <button data-desk aria-expanded={deskOpen} onClick={() => setDeskOpen((o) => !o)}
+      <span className="relative shrink-0" ref={deskRef}>
+        <button data-desk aria-expanded={deskOpen} onClick={() => { setDialOpen(false); setDeskOpen((o) => !o); }}
           className="text-[13px] px-2 py-1 rounded-md border border-slate-200 text-slate-500 hover:border-slate-300">⋯</button>
         {deskOpen && (
           <span data-desk-menu className="absolute right-0 top-full mt-1 z-40 w-48 bg-white rounded-lg shadow-xl ring-1 ring-[#E7EDF5] py-1 block">
