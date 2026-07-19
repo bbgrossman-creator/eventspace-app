@@ -15,6 +15,7 @@ import { ResolvedTheme, RegionTexts } from "../publication";
 import { ResolvedFact, factsIn, derivedFooterLine } from "../identity";
 import { PhotoPins, pinnedFor } from "../photos";
 import { Box, box } from "./box";
+import { PageMaster, MasterSet, makeMasterSet } from "./masters";
 
 /** What the renderer consumes — the snapshot's material, whole (§0). */
 export interface RenderPublication {
@@ -140,4 +141,44 @@ export function composePublication(pub: RenderPublication): Box {
   }
 
   return box("group", "document", { children });
+}
+
+// ═══ PR-3 — THE MASTER COMPOSER: geometry + furniture derived at the
+// wall's gate. FIRST suppresses the running header (the content company
+// header already opens the paper — a declared master decision, §4).
+// Running furniture DERIVES from company facts but is a SEPARATE object
+// from the content regions: toggling the content footer never moves the
+// running footer, and vice versa — the §4 independence, unit-proven. ═══
+const LETTER = { width: 612, height: 792 };
+const MARGINS = { top: 54, right: 54, bottom: 60, left: 54 };
+
+export function composeMasters(pub: RenderPublication): MasterSet {
+  const trade = pub.company.filter((f) => f.key === "identity.trade_name")[0]?.value ?? null;
+  const supervision = pub.company.filter((f) => f.key === "legal.supervision")[0]?.value ?? null;
+  const watermark = pub.theme.treatments.document.watermark !== "none"
+    ? (pub.theme.treatments.document.watermark === "draft" ? "DRAFT" : "CONFIDENTIAL") : null;
+
+  const runningHeader: Box | null = trade
+    ? box("text", "furniture:running-header", {
+        text: trade.toUpperCase(),
+        style: { font: "sans", size: 7.5, weight: 700, letterSpacing: 0.14, color: "#94A3B8" } })
+    : null;
+  const footerLine = [trade, supervision].filter(Boolean).join("  \u00b7  ");
+  const runningFooter: Box | null = footerLine
+    ? box("text", "furniture:running-footer", {
+        text: footerLine,
+        style: { font: "sans", size: 7.5, color: "#94A3B8", align: "center" } })
+    : null;
+
+  const master = (key: PageMaster["key"], over: Partial<PageMaster>): PageMaster => ({
+    key, size: LETTER, margins: MARGINS,
+    runningHeader, runningFooter,
+    decorations: { pageNumbers: "footer-center", watermark }, ...over });
+
+  return makeMasterSet(
+    master("first", { runningHeader: null,                       // §4: declared suppression
+      decorations: { pageNumbers: "none", watermark } }),        // page one carries no number
+    master("interior", {}),
+    master("last", {}),
+  );
 }
