@@ -24,11 +24,11 @@ export default function PresentationControls(props: {
   if (!props.canEdit) return null;
   return (
     <span data-pub-controls className="flex items-center gap-1">
-      <button data-pub-entry aria-expanded={open}
+      <button data-pub-entry aria-expanded={open} title="Open the Presentation rooms — appearance, typography, palette, paper, regions, photography"
         onClick={() => (open ? props.onClose() : props.onOpenRoom("appearance"))}
         className={`flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md ring-1 transition-colors ${
           open ? "ring-[#102F56] bg-[#102F56] text-white" : "ring-[#E7EDF5] bg-white hover:bg-[#FAFBFD] text-slate-600"}`}>
-        Presentation <span className={open ? "text-white/70" : "text-slate-400"}>▾</span>
+        Style <span className={open ? "text-white/70" : "text-slate-400"}>▾</span>
       </button>
       {props.dirty && (
         <>

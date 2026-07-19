@@ -27,22 +27,32 @@ export function Meter(p: {
   debt: number;
   onDebt?: () => void;                 // travel to the first unresolved thing
 }) {
+  // v236 — PROTECTED GEOMETRY (§6.10): the Meter no longer floats. It is a
+  // workspace FOOTER, in flow after the stage body — by construction it
+  // cannot intersect the paper's rendered bounds, in any view, at any
+  // width. Under pressure it simplifies (per-person yields first, via the
+  // same responsive rhythm the Line uses) rather than intruding.
   return (
     <aside data-meter aria-label="Running total"
-      className="fixed z-30 right-[max(14px,calc((100vw-1280px)/2))] bottom-[26vh] text-right font-sans tabular-nums pointer-events-none">
-      {p.perPerson && (<>
-        <div className="text-[10.5px] text-slate-400">per person</div>
-        <div className="text-[15px] font-medium" style={{ color: T.ink }}>{p.perPerson}</div>
-      </>)}
-      <div className="text-[10.5px] text-slate-400 mt-1.5">{p.totalLabel}</div>
-      <div data-meter-total className="text-[15px] font-medium" style={{ color: T.ink }}>{p.total}</div>
+      className="flex items-baseline justify-end gap-5 px-6 py-2.5 border-t bg-white font-sans tabular-nums"
+      style={{ borderColor: "#E7EDF5" }}>
       {p.debt > 0 && (
         <button data-meter-debt onClick={p.onDebt}
           title={`${p.debt} price${p.debt === 1 ? "" : "s"} unconfirmed or missing — click to go there`}
-          className="pointer-events-auto mt-1.5 text-[11px] font-semibold" style={{ color: T.gold }}>
+          className="mr-auto text-[11px] font-semibold" style={{ color: T.gold }}>
           {p.debt} to confirm
         </button>
       )}
+      {p.perPerson && (
+        <span className="hidden md:inline-flex items-baseline gap-1.5">
+          <span className="text-[10.5px] text-slate-400">per person</span>
+          <span className="text-[14px] font-medium" style={{ color: T.ink }}>{p.perPerson}</span>
+        </span>
+      )}
+      <span className="inline-flex items-baseline gap-1.5 min-w-0">
+        <span className="text-[10.5px] text-slate-400 truncate max-w-[180px]">{p.totalLabel}</span>
+        <span data-meter-total className="text-[14px] font-medium" style={{ color: T.ink }}>{p.total}</span>
+      </span>
     </aside>
   );
 }

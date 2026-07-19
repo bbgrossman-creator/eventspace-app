@@ -103,6 +103,22 @@ export default function StudioLine(p: {
   }, []);
 
   const mayAuthor = !!p.session?.perms.includes("bookings.edit");
+  // v236 — THE PRESSURE LAW: primary controls retain usable geometry;
+  // secondary controls surrender first. The Line measures itself:
+  //   tier 1 (<1200px): the ⌘K hint yields
+  //   tier 2 (<1060px): X-ray and the split sheet collapse into the desk ⋯
+  // Search's floor is 240px by GRID construction — it can't be starved.
+  const lineRef = React.useRef<HTMLDivElement>(null);
+  const [lineW, setLineW] = React.useState(9999);
+  React.useEffect(() => {
+    const el = lineRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((es) => setLineW(es[0].contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const yieldHint = lineW < 1200;
+  const collapse = lineW < 1060;
   const activeDef = p.lenses.filter((l) => l.key === p.active)[0] ?? null;
 
   return (
@@ -112,8 +128,8 @@ export default function StudioLine(p: {
     // A grid, not a wrapping flex row — the Line never stacks. It still
     // sits above the click-away plane (v226): its controls are always live;
     // paper clicks land on the catcher; the Esc law is untouched.
-    <div data-line className="shrink-0 bg-white border-b px-3 py-1.5 grid items-center gap-3 relative z-40"
-         style={{ borderColor: T.rule, gridTemplateColumns: "minmax(0,auto) minmax(160px,1fr) auto" }}>
+    <div data-line ref={lineRef} className="shrink-0 bg-white border-b px-3 py-1.5 grid items-center gap-3 relative z-40"
+         style={{ borderColor: T.rule, gridTemplateColumns: "minmax(0,auto) minmax(240px,1fr) auto" }}>
       {/* ── ZONE 1 · identity ── */}
       <span data-line-identity className="flex items-center gap-1.5 min-w-0">
       <a href={p.backHref} className="text-slate-400 hover:text-slate-600 text-sm shrink-0">‹</a>
@@ -142,10 +158,12 @@ export default function StudioLine(p: {
           onChange={(e) => p.onAsk(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Escape") { p.onAsk(""); askRef.current?.blur(); } }}
           placeholder="Ask for anything — a station, a past event, a blueprint"
-          className="flex-1 bg-transparent outline-none text-[12.5px] placeholder:text-slate-300"
+          className="flex-1 min-w-0 bg-transparent outline-none text-[12.5px] placeholder:text-slate-300 truncate placeholder:truncate"
           style={{ color: T.ink }} />
-        <button data-open-shade onClick={p.onOpenShade} title="Open the Library"
-          className="text-[10px] font-sans px-1.5 py-0.5 rounded border border-slate-200 text-slate-400 hover:text-slate-600">⌘K</button>
+        {!yieldHint && (
+          <button data-open-shade onClick={p.onOpenShade} title="Open the Library"
+            className="text-[10px] font-sans px-1.5 py-0.5 rounded border border-slate-200 text-slate-400 hover:text-slate-600 shrink-0">⌘K</button>
+        )}
       </span>
 
       {/* ── ZONE 3 · lens tools ── */}
@@ -191,7 +209,7 @@ export default function StudioLine(p: {
       {/* ── the modifier — only where it CHANGES something (registry-driven:
            supports.xray "modifier"). On an inherent lens the edition is
            simply what the dial says, and no dead control renders. ── */}
-      {mayAuthor && activeDef?.supports?.xray === "modifier" && (
+      {!collapse && mayAuthor && activeDef?.supports?.xray === "modifier" && (
         <button data-xray onClick={() => p.onXray(!p.xray)} aria-pressed={p.xray}
           title="Show the truth the customer never sees: hidden items, unconfirmed prices, drop zones"
           className={`text-[11px] px-2 py-1 rounded-md border transition-colors shrink-0 ${
@@ -202,11 +220,11 @@ export default function StudioLine(p: {
       )}
 
       {/* ── the Second Sheet ── */}
-      <button data-split onClick={() => p.onSplit(!p.split)} aria-pressed={p.split}
+      {!collapse && <button data-split onClick={() => p.onSplit(!p.split)} aria-pressed={p.split}
         title="Second sheet — two complete papers, side by side"
         className={`text-[13px] px-2 py-1 rounded-md border transition-colors shrink-0 ${
           p.split ? "font-semibold text-white" : "text-slate-500 border-slate-200 hover:border-slate-300"}`}
-        style={p.split ? { background: T.navy, borderColor: T.navy } : undefined}>⧉</button>
+        style={p.split ? { background: T.navy, borderColor: T.navy } : undefined}>⧉</button>}
 
       {/* ── the Desk ── */}
       <span className="relative shrink-0" ref={deskRef}>
@@ -214,6 +232,20 @@ export default function StudioLine(p: {
           className="text-[13px] px-2 py-1 rounded-md border border-slate-200 text-slate-500 hover:border-slate-300">⋯</button>
         {deskOpen && (
           <span data-desk-menu className="absolute right-0 top-full mt-1 z-40 w-48 bg-white rounded-lg shadow-xl ring-1 ring-[#E7EDF5] py-1 block">
+            {collapse && mayAuthor && activeDef?.supports?.xray === "modifier" && (
+              <button data-desk-xray aria-pressed={p.xray}
+                onClick={() => { p.onXray(!p.xray); setDeskOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-[12.5px] hover:bg-[#F4F9FF] text-slate-600">
+                X-ray {p.xray ? "▣" : "▢"}
+              </button>
+            )}
+            {collapse && (
+              <button data-desk-split aria-pressed={p.split}
+                onClick={() => { p.onSplit(!p.split); setDeskOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-[12.5px] hover:bg-[#F4F9FF] text-slate-600">
+                Second sheet ⧉
+              </button>
+            )}
             {p.desk.map((a) => (
               <button key={a.key} data-desk-action={a.key} disabled={a.disabled}
                 onClick={() => { setDeskOpen(false); a.onPick(); }}
