@@ -25,6 +25,8 @@ export default function PresentationRooms(props: {
   override: ThemeDelta | null;
   resolved: ResolvedTheme;
   onThemeKey: (key: string) => void;
+  /** v241 — capture the open version's PORTABLE stratum as a named template. */
+  onSaveTemplate?: () => void;
   onPatch: (d: ThemeDelta) => void;
 }) {
   const r = props.room;
@@ -59,6 +61,14 @@ export default function PresentationRooms(props: {
                 ))}
               </div>
             </>
+          )}
+          {props.onSaveTemplate && (
+            <button data-room-save-template onClick={props.onSaveTemplate}
+              className="w-full text-left px-3 py-2 rounded-lg border border-dashed text-[11.5px] text-slate-500 hover:border-slate-400 hover:text-slate-700"
+              style={{ borderColor: T.rule }}>
+              Save presentation as template…
+              <span className="block text-[10px] text-slate-400">Captures this version&apos;s document, region, and section dress. Component and item styling stays with this version.</span>
+            </button>
           )}
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-2">Document defaults</p>
           <p className="text-[10.5px] text-slate-400 -mt-2">Every section starts from these; style any section directly on the paper.</p>

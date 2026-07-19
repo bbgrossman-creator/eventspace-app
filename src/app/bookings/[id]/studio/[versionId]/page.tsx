@@ -46,6 +46,8 @@ import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta } 
 import { getPublicationSettings, listPublicationThemes, PublicationTheme } from "@/lib/publicationData";
 import { RegionTexts } from "@/lib/publication";
 import { ResolvedFact, projectIdentity } from "@/lib/identity";
+import { portablePresentation } from "@/lib/portable";
+import { createPublicationTemplate } from "@/lib/publicationData";
 import { getCompanyIdentity } from "@/lib/identityData";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
@@ -1405,6 +1407,14 @@ export default function StudioPage() {
                   resolved={resolvedPub}
                   onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
                   onPatch={patchPub}
+                  onSaveTemplate={() => void (async () => {
+                    const name = window.prompt("Template name — a named portable presentation:");
+                    if (!name?.trim()) return;
+                    const made = await createPublicationTemplate(name,
+                      portablePresentation({ themeKey: pubThemeKey, override: pubOverride, pins: pubPins }));
+                    if (!made) { alert("Could not save the template — run v241_templates.sql?"); return; }
+                    setToast(`✓ "${made.name}" saved as a template.`);
+                  })()}
                 />
                 )}
               </PresentationRoomRegion>

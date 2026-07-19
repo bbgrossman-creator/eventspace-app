@@ -9,6 +9,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase } from "./supabase";
 import { ThemeDelta, RegionTexts } from "./publication";
+import { PortablePresentation, AssetKind } from "./portable";
 
 export interface PublicationSettings {
   brand: ThemeDelta | null;
@@ -19,6 +20,10 @@ export interface PublicationSettings {
 
 export interface PublicationTheme {
   id: string; name: string; delta: ThemeDelta; active: boolean; position: number;
+  /** v241 — themes and templates share the table; the KIND never blurs. */
+  asset_kind?: AssetKind;
+  description?: string | null;
+  portable?: PortablePresentation | null;
 }
 
 export async function getPublicationSettings(): Promise<PublicationSettings> {
@@ -60,10 +65,33 @@ export async function saveDefaultTheme(key: string | null): Promise<boolean> {
 
 export async function listPublicationThemes(): Promise<PublicationTheme[]> {
   try {
+    // v241 — one table, two kinds; this shelf is THEMES only. The kind
+    // filter is client-side so a pre-migration database (no asset_kind
+    // column) still lists everything as themes.
     const { data } = await supabase.from("publication_themes")
-      .select("id,name,delta,active,position").eq("active", true).order("position");
-    return ((data ?? []) as PublicationTheme[]);
+      .select("*").eq("active", true).order("position");
+    return ((data ?? []) as PublicationTheme[]).filter((t) => (t.asset_kind ?? "theme") === "theme");
   } catch { return []; }
+}
+
+/** v241 — the template shelf: named portable presentations. */
+export async function listPublicationTemplates(): Promise<PublicationTheme[]> {
+  try {
+    const { data } = await supabase.from("publication_themes")
+      .select("*").eq("active", true).eq("asset_kind", "template").order("position");
+    return ((data ?? []) as PublicationTheme[]);
+  } catch { return []; }   // pre-migration: no templates exist yet
+}
+
+/** v241 — "Save current presentation as template…": capture the portable
+ *  stratum of the open version, name it. */
+export async function createPublicationTemplate(
+  name: string, portable: PortablePresentation, description?: string,
+): Promise<PublicationTheme | null> {
+  const { data, error } = await supabase.from("publication_themes")
+    .insert({ name: name.trim(), delta: {}, asset_kind: "template", portable, description: description ?? null })
+    .select("*").single();
+  return error ? null : (data as PublicationTheme);
 }
 
 export async function createPublicationTheme(name: string, delta: ThemeDelta): Promise<PublicationTheme | null> {
