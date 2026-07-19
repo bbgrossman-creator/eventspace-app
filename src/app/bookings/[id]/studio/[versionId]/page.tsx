@@ -1064,6 +1064,18 @@ export default function StudioPage() {
             busy={pubBusy}
             canEdit={!locked && !!session?.perms.includes("bookings.edit")}
             onOpenRoom={(r) => { setPubSection(null); setPubRoom(r); }}
+            onClose={() => setPubRoom(null)}
+            roomContent={pubRoom ? (
+              <PresentationRooms
+                room={pubRoom}
+                tenantThemes={pubTenantThemes.map((t) => ({ id: t.id, name: t.name }))}
+                themeKey={pubThemeKey}
+                override={pubOverride}
+                resolved={resolvedPub}
+                onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
+                onPatch={patchPub}
+              />
+            ) : null}
             onSave={() => void savePublication()}
             onDiscard={() => {
               setPubThemeKey((version?.theme_key as string | null) ?? null);
@@ -1442,26 +1454,9 @@ export default function StudioPage() {
         </div>
       )}
 
-      {/* ── THE INSPECTOR DRAWER — selection is interrogation (§6). The
-           drawer and the selection live and die together. ── */}
-      {/* v226 THE ROOMS — one summoned surface, one identity (§6.1); the
-           Drawer's capture-phase Esc law is inherited whole. */}
-      <Drawer open={lensEdits(activeLensDef, "presentation") && !!pubRoom}
-        title={pubRoom === "appearance" ? "Appearance" : pubRoom === "typography" ? "Typography" : pubRoom === "palette" ? "Palette" : "Paper"}
-        onClose={() => setPubRoom(null)}>
-        {pubRoom && (
-          <PresentationRooms
-            room={pubRoom}
-            tenantThemes={pubTenantThemes.map((t) => ({ id: t.id, name: t.name }))}
-            themeKey={pubThemeKey}
-            override={pubOverride}
-            resolved={resolvedPub}
-            onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
-            onPatch={patchPub}
-          />
-        )}
-      </Drawer>
-
+      {/* ── THE INSPECTOR DRAWER — selection is interrogation; content
+           lenses only (v226): the Presentation lens answers selection with
+           the contextual toolbar instead. ── */}
       <Drawer open={tab === "build" && !!inspected && lensEdits(activeLensDef, "content")}
         title="Inspector" onClose={() => setSelectedId(null)}>
         {inspected && (

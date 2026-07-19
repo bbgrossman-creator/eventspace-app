@@ -84,7 +84,6 @@ export default function PresentationRooms(props: {
 
       {r === "typography" && (
         <>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pairings</p>
           <div className="space-y-1.5">
             {FONT_PAIRINGS.map((f) => (
               <button key={f.key} data-room-pairing={f.key}
@@ -102,7 +101,6 @@ export default function PresentationRooms(props: {
 
       {r === "palette" && (
         <>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Palettes</p>
           <div className="space-y-1.5">
             {PALETTES.map((c) => (
               <button key={c.key} data-room-palette={c.key}
@@ -120,7 +118,6 @@ export default function PresentationRooms(props: {
 
       {r === "paper" && (
         <>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Paper</p>
           <div className="grid grid-cols-2 gap-1.5">
             {PAPERS.map((pp) => (
               <button key={pp.key} data-room-paper={pp.key}

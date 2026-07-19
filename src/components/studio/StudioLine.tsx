@@ -106,17 +106,17 @@ export default function StudioLine(p: {
   const activeDef = p.lenses.filter((l) => l.key === p.active)[0] ?? null;
 
   return (
-    // v226 — the Line sits ABOVE the drawer's click-away plane (z-30): its
-    // controls are always live. The room bar is navigation BETWEEN rooms —
-    // walking into another room is one click, never "close, then open"; and
-    // Save look is reachable while a room is open. Clicks on the paper still
-    // land on the catcher (returning to the paper IS the dismissal), and the
-    // Esc law is untouched.
-    <div data-line className="shrink-0 bg-white border-b px-3 py-2 flex items-center gap-2 flex-wrap relative z-40"
-         style={{ borderColor: T.rule }}>
-      {/* ── identity ── */}
-      <a href={p.backHref} className="text-slate-400 hover:text-slate-600 text-sm shrink-0">‹</a>
+    // v228 — THE LINE'S GRAMMAR: three zones, each OWNING its space, never
+    // fighting for width. Identity (what document) · Workspace (the global
+    // Ask) · Lens Tools (View as, the lens's ONE entry, modifiers, desk).
+    // A grid, not a wrapping flex row — the Line never stacks. It still
+    // sits above the click-away plane (v226): its controls are always live;
+    // paper clicks land on the catcher; the Esc law is untouched.
+    <div data-line className="shrink-0 bg-white border-b px-3 py-1.5 grid items-center gap-3 relative z-40"
+         style={{ borderColor: T.rule, gridTemplateColumns: "minmax(0,auto) minmax(160px,1fr) auto" }}>
+      {/* ── ZONE 1 · identity ── */}
       <span data-line-identity className="flex items-center gap-1.5 min-w-0">
+      <a href={p.backHref} className="text-slate-400 hover:text-slate-600 text-sm shrink-0">‹</a>
         <b className="font-display text-[14px] truncate" style={{ color: T.ink }}>{p.title}</b>
         <span className="text-[11px] text-slate-400 truncate hidden sm:inline">· {p.contactLine}</span>
         <select className="field !py-0 !px-1 !text-[11px]" value={p.versionId}
@@ -135,8 +135,8 @@ export default function StudioLine(p: {
         {p.locked && <span className="text-[10px] font-semibold text-[#166534]">🔒</span>}
       </span>
 
-      {/* ── the Ask line ── */}
-      <span className="flex-1 min-w-[160px] flex items-center gap-1.5 px-2 py-1 rounded-lg ring-1 ring-[#E7EDF5] bg-[#FAFBFD]">
+      {/* ── ZONE 2 · workspace — the global Ask, alone in its column ── */}
+      <span data-line-workspace className="flex items-center gap-1.5 px-2 py-1 rounded-lg ring-1 ring-[#E7EDF5] bg-[#FAFBFD] max-w-[520px] justify-self-center w-full">
         <span aria-hidden className="text-[12px]" style={{ color: T.gold }}>🔍</span>
         <input ref={askRef} data-ask value={p.ask}
           onChange={(e) => p.onAsk(e.target.value)}
@@ -148,7 +148,8 @@ export default function StudioLine(p: {
           className="text-[10px] font-sans px-1.5 py-0.5 rounded border border-slate-200 text-slate-400 hover:text-slate-600">⌘K</button>
       </span>
 
-      {/* ── the Dial ── */}
+      {/* ── ZONE 3 · lens tools ── */}
+      <span data-line-tools className="flex items-center gap-1.5 shrink-0">
       <span className="relative shrink-0" ref={dialRef}>
         <button data-dial aria-expanded={dialOpen} onClick={() => { setDeskOpen(false); setDialOpen((o) => !o); }}
           className="flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md ring-1 ring-[#E7EDF5] bg-white hover:bg-[#FAFBFD]"
@@ -222,6 +223,7 @@ export default function StudioLine(p: {
             ))}
           </span>
         )}
+      </span>
       </span>
     </div>
   );
