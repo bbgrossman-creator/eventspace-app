@@ -13,6 +13,7 @@
 // very bottom, where the host puts it — clearly separated from editing.
 // ═══════════════════════════════════════════════════════════════════════════
 import React, { useEffect } from "react";
+import { SELECTION } from "@/lib/selection";
 
 export default function InspectorRegion(props: {
   subjectLabel: string;
@@ -32,9 +33,9 @@ export default function InspectorRegion(props: {
       className="my-10 bg-white rounded-[4px] ring-1 ring-black/5 self-start sticky top-[64px] flex flex-col overflow-hidden"
       style={{ maxHeight: "calc(100vh - 96px)",
         boxShadow: "0 1px 2px rgba(16,47,86,.08)",
-        borderLeft: "3px solid #C9A34E" /* the seam — the hinge to the paper */ }}>
+        borderLeft: `3px solid ${SELECTION.accent}` /* the seam — the SELECTION accent: the wing and its object are one thought */ }}>
       <div data-inspector-subject className="shrink-0 flex items-baseline gap-1.5 px-3 pt-2.5 pb-1.5">
-        <span aria-hidden className="text-[10px]" style={{ color: "#C9A34E" }}>◀</span>
+        <span aria-hidden data-inspector-tick className="text-[10px]" style={{ color: SELECTION.accent }}>◀</span>
         <span className="text-[12px] font-semibold text-[#1F2A37] truncate">{props.subjectLabel}</span>
         <button data-inspector-close onClick={props.onClose}
           className="ml-auto text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-400 hover:text-slate-600">Esc</button>

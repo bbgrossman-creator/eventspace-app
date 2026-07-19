@@ -83,6 +83,9 @@ export interface LensDef {
    *  from this + the treatment registries — never from scattered
    *  type checks. Component/item join here when their treatments ship. */
   selects?: { document?: true; section?: true; component?: true; item?: true };
+  /** v238 — the Inspector's facet ORDER for this lens. The Inspector
+   *  renders exactly this sequence; it never consults lens names. */
+  inspects?: string[];
   /** Tenant capability required. The ONLY gate this file applies (condition 3).
    *  null = always available wherever the Studio itself is. */
   cap: keyof Capabilities | null;
@@ -122,6 +125,7 @@ const SEED_LENSES: LensDef[] = [
     key: "design", label: "Design",
     blurb: "The maker's view — every truth, nothing hidden.",
     edits: { content: true, structure: true, pricing: true },
+    inspects: ["configure", "commercial", "media", "usedin"],   // v238
     supports: { xray: "inherent" },
     cap: null, perm: "bookings.edit", module: "events", editable: true,
     concern: "authoring the design", capability: null, verbs: [], anatomy: "editing",

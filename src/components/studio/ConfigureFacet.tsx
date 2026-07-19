@@ -121,13 +121,13 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
       )}
       {p.state.evidence && (
         <div className="mx-3 mb-1 rounded border px-2 py-1 text-[10px] text-slate-500"
-             style={{ borderColor: T.rule }} data-evidence-note>
-          Historical event — configuration is evidence and reads as it was.
+             style={{ border: "none", padding: 0 }} data-evidence-note>
+          <span className="text-[10px] italic text-slate-400">Historical event — configuration reads as it was.</span>
         </div>
       )}
       {p.state.offerInitialize && !p.state.evidence && canEdit && (
-        <div className="mx-3 mb-1 rounded border px-2 py-1 text-[10.5px]" style={{ borderColor: T.rule }} data-offer-initialize>
-          This component predates configuration. Its definition offers one —
+        <div className="mx-3 mb-1 text-[10.5px] text-slate-400" data-offer-initialize>
+          Predates configuration —
           <button data-initialize-baseline className="ml-1 underline text-slate-600"
             onClick={async () => {
               // Deliberate, dated, and it never pretends the seed existed at

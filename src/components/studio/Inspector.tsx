@@ -32,7 +32,7 @@
 //
 // CONTRACT: no queries. The page hands it a selection; it renders.
 // ═══════════════════════════════════════════════════════════════════════════
-import { useState } from "react";
+import React, { useState } from "react";
 import { LensKey } from "@/lib/lenses";
 
 const T = { ink: "#1F2A37", navy: "#102F56", gold: "#C9A34E", rule: "#EEF2F7" } as const;
@@ -57,7 +57,10 @@ export interface InspectorSelection {
 
 export interface InspectorProps {
   selection: InspectorSelection | null;
-  lens: LensKey | null;
+  /** Legacy — the Inspector no longer consults the lens itself (v238). */
+  lens?: LensKey | null;
+  /** v238 — facet order, passed by the host FROM the lens declaration. */
+  facetOrder?: string[];
   /** From session.perms — NEVER session.role (condition 1). */
   canEdit: boolean;
   canSeeCost: boolean;
@@ -84,7 +87,7 @@ function Section({ title, count, children, defaultOpen = false }: {
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-t" style={{ borderColor: T.rule }}>
+    <div className="border-t" data-inspector-section={title} style={{ borderColor: T.rule }}>
       <button onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12px] font-semibold hover:bg-slate-50">
         <span className="text-[9px] text-slate-400">{open ? "▾" : "▸"}</span>
@@ -96,6 +99,111 @@ function Section({ title, count, children, defaultOpen = false }: {
     </div>
   );
 }
+
+/** v238 — the facet keys a lens may order. The Inspector renders facets
+ *  in the order DECLARED by the active lens (LensDef.inspects) — it never
+ *  consults lens names itself. Unknown keys are ignored; undeclared
+ *  facets simply don't render, which is itself information. */
+export const INSPECTOR_FACETS = ["configure", "commercial", "media", "usedin"] as const;
+export type InspectorFacet = (typeof INSPECTOR_FACETS)[number];
+
+
+// ─── v238 THE FACETS — each a pure renderer; ORDER is the lens's, never ours ───
+const Line = ({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) => (
+  <div className="mb-2">
+    <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
+    <div className={`text-[12.5px] ${strong ? "font-semibold" : ""}`} style={{ color: T.ink }}>{value}</div>
+  </div>
+);
+
+const FACETS: Record<InspectorFacet, (p: InspectorProps, s: NonNullable<InspectorProps["selection"]>, carried: boolean) => React.ReactNode> = {
+  configure: (p, s) => (s.kind === "component" ? p.configureFacet : null),
+
+  // COMMERCIAL — price, its evidence, its ceremony, cost, requirements:
+  // one intentional group, so price stops reading as a second application.
+  commercial: (p, s, carried) => {
+    const price = s.price;
+    if (!price && s.cost == null && !s.counts) return null;
+    return (
+      <Section title="Commercial" defaultOpen>
+        {price && (
+          <div data-facet="commercial" className="mb-1">
+            {price.state === "included" || price.state === "free" ? (
+              <Line label="Price" value={<span className="italic text-slate-400">{price.state === "included" ? "Included" : "Complimentary"}</span>} />
+            ) : (
+              <Line label={carried ? "Price · carried ⚠" : "Price"} strong
+                value={<span className="tabular-nums text-[15px]" style={{ color: carried ? "#B45309" : T.navy }}>
+                  {price.amount == null ? "Not priced yet" : p.money(price.amount)}
+                  {price.basis === "per_person" && <span className="text-[11px] font-normal text-slate-400"> / person</span>}
+                </span>} />
+            )}
+            {price.amount != null && price.state === "quoted" && (
+              <Section title="Price history" count={s.memory?.sales.length}>
+                {s.memory === undefined && (
+                  <button onClick={() => p.onLoadMemory?.(s.id)}
+                    className="text-[11px] text-slate-500 hover:text-slate-800 underline">Load history</button>
+                )}
+                {s.memory === null && <p className="text-[11px] text-slate-400">No prior sales of this item.</p>}
+                {s.memory && (
+                  <>
+                    {s.memory.sales.length === 0 && <p className="text-[11px] text-slate-400">First time quoted.</p>}
+                    {s.memory.sales.map((m, i) => (
+                      <div key={i} className="flex justify-between text-[11.5px] text-slate-600">
+                        <span className="tabular-nums">{p.money(m.amount)}</span>
+                        <span className="text-slate-400">{m.when}</span>
+                      </div>
+                    ))}
+                    {s.memory.srp != null && (
+                      <div className="flex justify-between text-[11.5px] mt-1 pt-1 border-t" style={{ borderColor: T.rule }}>
+                        <span className="text-slate-500">Catalog (SRP)</span>
+                        <span className="tabular-nums text-slate-600">{p.money(s.memory.srp)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </Section>
+            )}
+            {carried && p.canEdit && price.amount != null && (
+              <button onClick={() => p.onConfirmPrice?.(s.id, price.amount as number)}
+                className="mt-2 w-full py-2 rounded-lg text-[12.5px] font-semibold text-white"
+                style={{ background: T.navy }}>
+                Confirm {p.money(price.amount)}
+              </button>
+            )}
+          </div>
+        )}
+        {p.canSeeCost && s.cost != null && (
+          <div className="mt-1">
+            <Line label="Unit cost" value={<span className="tabular-nums">{p.money(s.cost)}</span>} />
+            {price?.amount != null && price.amount > 0 && (
+              <Line label="Margin" value={<span className="tabular-nums">{Math.round(((price.amount - s.cost) / price.amount) * 100)}%</span>} />
+            )}
+          </div>
+        )}
+        {s.counts && (
+          <Line label={`Requirements${s.counts.requirements ? ` · ${s.counts.requirements}` : ""}`}
+            value={<span className="text-slate-400">{s.counts.requirements === 0 ? "None recorded." : "Opens with the Production lens."}</span>} />
+        )}
+      </Section>
+    );
+  },
+
+  media: (p, s) => (s.counts ? (
+    <Section title="Media" count={s.counts.media}>
+      <p className="text-[11.5px] text-slate-400">
+        {s.counts.media === 0 ? "No photos yet." : "Gallery opens from the Library."}
+      </p>
+    </Section>
+  ) : null),
+
+  usedin: (p, s) => (s.counts?.usedIn != null ? (
+    <Section title="Used in" count={s.counts.usedIn}>
+      <p className="text-[11.5px] text-slate-400">
+        Appeared in {s.counts.usedIn} event{s.counts.usedIn === 1 ? "" : "s"}.
+      </p>
+    </Section>
+  ) : null),
+};
 
 export default function Inspector(p: InspectorProps) {
   const s = p.selection;
@@ -132,117 +240,11 @@ export default function Inspector(p: InspectorProps) {
         )}
       </div>
 
-      {s.kind === "component" && p.configureFacet}
+      {(p.facetOrder ?? ["configure", "commercial", "media", "usedin"]).map((key) => {
+        const facet = FACETS[key as InspectorFacet];
+        return facet ? <React.Fragment key={key}>{facet(p, s, carried)}</React.Fragment> : null;
+      })}
 
-      {/* ── Price + its evidence. The whole reason this panel exists. ── */}
-      {price && (
-        <div className="px-3 py-3">
-          <div className="flex items-baseline justify-between mb-1">
-            <span className="text-[11px] font-semibold text-slate-500">Price</span>
-            {carried && <span className="text-[10px] font-semibold text-amber-600">⚠ Carried</span>}
-          </div>
-
-          {price.state === "included" || price.state === "free" ? (
-            <p className="text-[15px] font-semibold text-slate-400 italic">
-              {price.state === "included" ? "Included" : "Complimentary"}
-            </p>
-          ) : (
-            <p className="text-[20px] font-bold tabular-nums" style={{ color: carried ? "#B45309" : T.navy }}>
-              {price.amount == null ? "—" : p.money(price.amount)}
-              {price.basis === "per_person" && <span className="text-[12px] font-normal text-slate-400"> / person</span>}
-            </p>
-          )}
-
-          {/* MEMORY — the evidence. This is the answer to "is $52 right?", and
-              the reason that question cannot be answered on the Stage. */}
-          {price.amount != null && price.state === "quoted" && (
-            <div className="mt-2 rounded-lg p-2" style={{ background: "#FBFAF6", boxShadow: "inset 0 0 0 1px #EAD9B0" }}>
-              <div className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: "#8A6D1D" }}>
-                Price history
-              </div>
-              {s.memory === undefined && (
-                <button onClick={() => p.onLoadMemory?.(s.id)}
-                  className="text-[11px] text-slate-500 hover:text-slate-800 underline">Load history</button>
-              )}
-              {s.memory === null && <p className="text-[11px] text-slate-400">No prior sales of this item.</p>}
-              {s.memory && (
-                <>
-                  {s.memory.sales.length === 0 && <p className="text-[11px] text-slate-400">First time quoted.</p>}
-                  {s.memory.sales.map((m, i) => (
-                    <div key={i} className="flex justify-between text-[11.5px] text-slate-600">
-                      <span className="tabular-nums">{p.money(m.amount)}</span>
-                      <span className="text-slate-400">{m.when}</span>
-                    </div>
-                  ))}
-                  {s.memory.srp != null && (
-                    <div className="flex justify-between text-[11.5px] mt-1 pt-1 border-t" style={{ borderColor: "#EAD9B0" }}>
-                      <span className="text-slate-500">Catalog (SRP)</span>
-                      <span className="tabular-nums text-slate-600">{p.money(s.memory.srp)}</span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {/* The CEREMONY. A confirmation is a decision made with evidence in
-              front of you — which is why it is here and not a Stage keystroke. */}
-          {carried && p.canEdit && price.amount != null && (
-            <button
-              onClick={() => p.onConfirmPrice?.(s.id, price.amount as number)}
-              className="mt-2 w-full py-2 rounded-lg text-[12.5px] font-semibold text-white"
-              style={{ background: T.navy }}
-            >
-              Confirm {p.money(price.amount)}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Cost: role-gated. Never on the Stage — a salesperson screen-shares
-             the Stage. `canSeeCost` comes from perms, never from role. ── */}
-      {p.canSeeCost && s.cost != null && (
-        <Section title="Cost" defaultOpen={false}>
-          <div className="flex justify-between text-[12px]">
-            <span className="text-slate-500">Unit cost</span>
-            <span className="tabular-nums" style={{ color: T.ink }}>{p.money(s.cost)}</span>
-          </div>
-          {price?.amount != null && price.amount > 0 && (
-            <div className="flex justify-between text-[12px] mt-1">
-              <span className="text-slate-500">Margin</span>
-              <span className="tabular-nums" style={{ color: T.ink }}>
-                {Math.round(((price.amount - s.cost) / price.amount) * 100)}%
-              </span>
-            </div>
-          )}
-        </Section>
-      )}
-
-      {/* ── Projections: collapsed and lazy. Nothing is fetched until opened —
-             they are recomputed, not stored, so eager loading buys nothing. ── */}
-      {s.counts && (
-        <>
-          <Section title="Requirements" count={s.counts.requirements}>
-            <p className="text-[11.5px] text-slate-400">
-              {s.counts.requirements === 0 ? "None recorded." : "Opens with the Production lens (v197)."}
-            </p>
-          </Section>
-          <Section title="Media" count={s.counts.media}>
-            <p className="text-[11.5px] text-slate-400">
-              {s.counts.media === 0 ? "No photos yet." : "Gallery opens from the Library."}
-            </p>
-          </Section>
-          {s.counts.usedIn != null && (
-            <Section title="Used in" count={s.counts.usedIn}>
-              <p className="text-[11.5px] text-slate-400">
-                {/* Past tense, a count, no adjective — frequency is a fact,
-                    never a recommendation. */}
-                Appeared in {s.counts.usedIn} event{s.counts.usedIn === 1 ? "" : "s"}.
-              </p>
-            </Section>
-          )}
-        </>
-      )}
       {p.onRemove && p.canEdit && (
         <div className="px-3 py-3 mt-2 border-t" style={{ borderColor: T.rule }}>
           <button data-inspector-remove onClick={p.onRemove}

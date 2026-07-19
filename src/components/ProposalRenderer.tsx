@@ -141,6 +141,7 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
 // — nothing here lets it decide what exists.
 import { ResolvedTheme, effectiveSectionTreatment, effectiveComponentTreatment, effectiveItemTreatment, COMPONENT_TREATMENT_DEFAULTS, ITEM_TREATMENT_DEFAULTS, ComponentTreatment, ItemTreatment, BULLET_CHARS, SectionTreatment, DocumentTreatment, RegionTexts } from "@/lib/publication";
 import { PhotoPins, pinnedFor } from "@/lib/photos";
+import { selectedStyle } from "@/lib/selection";
 
 export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions, photos, onComponentSelect, selectedComponentId, onItemsSelect, selectedItemsId }: {
   model: PresentationModel; draftRibbon?: boolean;
@@ -222,8 +223,8 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
         className={`rounded-sm ${docTr.cover === "banner" ? "-mx-8 sm:-mx-12 -mt-10 sm:-mt-14 px-8 sm:px-12 pt-12 pb-10 mb-10" : docTr.cover === "classic" ? "py-14 mb-10" : "mb-10"} ${
           docTr.title === "understated" && docTr.cover === "none" ? "text-left" : "text-center"}${
           onDocumentSelect ? " cursor-pointer hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-4" : ""}${
-          documentSelected ? " ring-2 ring-[#4A9EFF]/60 ring-offset-4" : ""}`}
-        style={docTr.cover === "banner" ? { background: `${A}14` } : undefined}>
+          documentSelected ? " pl-2 -ml-2" : ""}`}
+        style={{ ...(docTr.cover === "banner" ? { background: `${A}14` } : {}), ...selectedStyle(!!documentSelected) }}>
         {docTr.cover !== "none" && (
           <p className="text-[11px] font-bold uppercase tracking-[0.3em] mb-3" style={{ color: A }}>Proposal</p>
         )}
@@ -282,8 +283,8 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
             <div
               data-pub-headstyle={tr.heading}
               onClick={selectable ? () => onSectionSelect(section.id) : undefined}
-              className={`${tr.heading === "centered" ? "text-center " : "flex items-baseline justify-between "}pb-1.5 mb-4 border-b${selectable ? " cursor-pointer rounded-sm hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-2" : ""}${selected ? " ring-2 ring-[#4A9EFF]/60 ring-offset-2" : ""}`}
-              style={{ borderColor: T.goldSoft }}
+              className={`${tr.heading === "centered" ? "text-center " : "flex items-baseline justify-between "}pb-1.5 mb-4 border-b${selectable ? " cursor-pointer rounded-sm hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-2" : ""}${selected ? " pl-2 -ml-2" : ""}`}
+              style={{ borderColor: T.goldSoft, ...selectedStyle(selected) }}
               title={selectable ? "Style this section" : undefined}>
               {tr.heading === "eyebrow" && (
                 <span className="block w-full text-[10px] font-bold uppercase tracking-[0.25em]" style={{ color: "var(--pub-accent, #C9A34E)" }}>{section.name}</span>
@@ -320,7 +321,8 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
                       return (
                       <div key={ci} data-pub-comp={comp.id} data-pub-comptitle={ct.title}
                         className={`${cSel ? "cursor-pointer rounded-sm hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-2" : ""}${
-                          selectedComponentId === comp.id ? " ring-2 ring-[#4A9EFF]/60 ring-offset-2" : ""}`}
+                          selectedComponentId === comp.id ? " pl-2 -ml-2" : ""}`}
+                        style={selectedStyle(selectedComponentId === comp.id)}
                         onClick={cSel ? (e) => { e.stopPropagation(); onComponentSelect(comp.id); } : undefined}
                         title={cSel ? "Style this component" : undefined}>
                         {cPin && ct.photo === "band" && (
@@ -358,7 +360,8 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
                               onClick={iSel ? (e) => { e.stopPropagation(); onItemsSelect(comp.id); } : undefined}
                               title={iSel ? "Style these items" : undefined}
                               className={`${iSel ? "cursor-pointer rounded-sm hover:ring-1 hover:ring-[#4A9EFF]/40 hover:ring-offset-2" : ""}${
-                                selectedItemsId === comp.id ? " ring-2 ring-[#4A9EFF]/60 ring-offset-2" : ""}`}>
+                                selectedItemsId === comp.id ? " pl-2 -ml-2" : ""}`}
+                              style={selectedStyle(selectedItemsId === comp.id)}>
                               {comp.blocks.map((block, bk) => {
                                 const lay = itr.layout === "inherit" ? block.layout : itr.layout;
                                 return (

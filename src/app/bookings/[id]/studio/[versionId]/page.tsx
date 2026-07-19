@@ -1544,7 +1544,7 @@ export default function StudioPage() {
                 onClose={() => setSelectedId(null)}>
           <Inspector
             selection={inspected}
-            lens={lens}
+            facetOrder={activeLensDef?.inspects}
             canEdit={!locked && !!session?.perms.includes("bookings.edit") && lensEdits(activeLensDef, "content")}
             canSeeCost={!!session?.perms.includes("bookings.edit")}
             money={money}
