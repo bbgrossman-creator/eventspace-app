@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./fonts.css";   // v232 — deterministic typography (see src/lib/fonts.ts)
 import Sidebar from "@/components/Sidebar";
 import AuthGate from "@/components/AuthGate";
 import { BRAND } from "@/lib/brand";

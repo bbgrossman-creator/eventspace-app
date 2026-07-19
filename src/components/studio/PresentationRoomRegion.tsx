@@ -22,6 +22,7 @@ const ROOMS: { key: PubRoom; label: string }[] = [
   { key: "palette", label: "Palette" },
   { key: "paper", label: "Paper" },
   { key: "regions", label: "Regions" },
+  { key: "photography", label: "Photography" },
 ];
 const T = { navy: "#102F56", rule: "#E7EDF5" } as const;
 

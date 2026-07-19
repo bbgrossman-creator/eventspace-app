@@ -133,8 +133,9 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
 // to the constants that were always here. The theme decides how things look
 // — nothing here lets it decide what exists.
 import { ResolvedTheme, effectiveSectionTreatment, SectionTreatment, DocumentTreatment, RegionTexts } from "@/lib/publication";
+import { PhotoPins, pinnedFor } from "@/lib/photos";
 
-export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions }: {
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions, photos }: {
   model: PresentationModel; draftRibbon?: boolean;
   /** v226 THE CANVAS — Studio-only interactivity: the paper is the primary
    *  interaction surface; clicking a section head selects its PRESENTATION
@@ -147,6 +148,9 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   documentSelected?: boolean;
   /** v231 — the region WORDS (footer/signature/terms), brand-owned. */
   regions?: RegionTexts;
+  /** v233 — the version's PINNED imagery: the pin decides existence, the
+   *  treatment decides dress. */
+  photos?: PhotoPins | null;
   /** v196: chrome only. The MODEL already decided what exists — an internal
    *  item is absent from a non-xray model, so this flag cannot leak one. It
    *  only labels the page as an authoring surface. */
@@ -159,7 +163,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   const docTr: Required<DocumentTreatment> = theme
     ? theme.treatments.document
     : { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard",
-        cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none" };
+        cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none", photo: "band" };
   const isDraft = model.status !== "approved" && model.status !== "sent";
   return (
     // v229 — the ROOT is themed (repairing a silent v225 miss: the wrap
@@ -216,6 +220,17 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
         {docTr.title !== "understated" && (
           <div className={`${docTr.title === "standard" || docTr.title === "centered" ? "mx-auto" : ""} mt-4 h-[3px] w-12 rounded-full`} style={{ background: A }} />
         )}
+        {(() => {
+          const pin = pinnedFor(photos, "__document__");
+          if (!pin || docTr.photo === "none") return null;
+          return (
+            <img data-pub-photo="__document__" data-pub-photostyle={docTr.photo}
+              src={pin.url} alt={pin.label}
+              className={docTr.photo === "full"
+                ? "-mx-8 sm:-mx-12 mt-8 -mb-10 block w-[calc(100%+4rem)] sm:w-[calc(100%+6rem)] max-w-none h-64 object-cover"
+                : "mt-8 block w-full h-44 object-cover rounded-md"} />
+          );
+        })()}
       </header>
 
       {model.intro && <p className="text-[15px] leading-relaxed text-slate-600 mb-10 whitespace-pre-wrap">{model.intro}</p>}
@@ -228,7 +243,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
           // entry). Unthemed callers keep the historical section rendering.
           const tr: Required<SectionTreatment> = theme
             ? effectiveSectionTreatment(theme, section.id)
-            : { divider: "rule", heading: "standard", spacing: "standard", background: "none" };
+            : { divider: "rule", heading: "standard", spacing: "standard", background: "none", photo: "band" };
           const gap = theme ? theme.margins.sectionGap : 40;
           const mb = tr.spacing === "compact" ? Math.round(gap * 0.6) : tr.spacing === "airy" ? Math.round(gap * 1.5) : gap;
           const selectable = !!onSectionSelect;
@@ -266,6 +281,17 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
               {section.subtotalLabel && tr.heading !== "centered" && <span className="text-sm font-semibold text-slate-500">{section.subtotalLabel}</span>}
             </div>
 
+            {(() => {
+              const pin = pinnedFor(photos, section.id);
+              if (!pin || tr.photo === "none" || tr.photo === "full") return null;
+              return tr.photo === "side" ? (
+                <img data-pub-photo={section.id} data-pub-photostyle="side" src={pin.url} alt={pin.label}
+                  className="float-right ml-4 mb-2 w-36 h-28 object-cover rounded-md" />
+              ) : (
+                <img data-pub-photo={section.id} data-pub-photostyle="band" src={pin.url} alt={pin.label}
+                  className="mb-4 block w-full h-40 object-cover rounded-md" />
+              );
+            })()}
             <div className="space-y-6">
               {section.bands.map((band, bi) => (
                 <div key={bi}>

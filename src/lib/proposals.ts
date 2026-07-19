@@ -39,6 +39,7 @@ export interface ProposalVersion {
   theme_key?: string | null;
   theme_override?: unknown;
   presentation_snapshot?: unknown;
+  photo_pins?: unknown;   // v233 — the version's pinned imagery
   presentation_stamped_at?: string | null;
 }
 
@@ -143,6 +144,7 @@ export async function createVersion(
       // SNAPSHOT never does — a new draft has no send history.
       theme_key: fromVersion.theme_key ?? null,
       theme_override: fromVersion.theme_override ?? null,
+      photo_pins: fromVersion.photo_pins ?? null,   // v233 — pins ride the copy
     }).select("id").single();
   if (vErr || !v) return { ok: false, detail: vErr?.message ?? "version insert failed" };
   const copied = await copyComponentsBetween(booking.id, fromVersion.id, v.id);
@@ -288,7 +290,8 @@ export async function sendVersion(
   const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
   const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
   // v231 — the WORDS freeze with the dress: a sent document is whole.
-  const snapshot = { ...resolved.theme, regionTexts: settings.regionTexts };
+  const snapshot = { ...resolved.theme, regionTexts: settings.regionTexts,
+    photoPins: (v.photo_pins as unknown) ?? null };
   const patch: Record<string, unknown> = {
     status: "sent",
     presentation_snapshot: snapshot,
@@ -322,7 +325,8 @@ export async function setVersionStatus(
     const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
     const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
     const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
-    patch.presentation_snapshot = { ...resolved.theme, regionTexts: settings.regionTexts };
+    patch.presentation_snapshot = { ...resolved.theme, regionTexts: settings.regionTexts,
+      photoPins: (v.photo_pins as unknown) ?? null };
     patch.presentation_stamped_at = new Date().toISOString();
   }
   if (status === "approved") { patch.approved_at = new Date().toISOString(); patch.approved_by = approvedBy ?? null; }

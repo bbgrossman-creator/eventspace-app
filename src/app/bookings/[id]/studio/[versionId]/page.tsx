@@ -36,6 +36,9 @@ import VersionGenesis from "@/components/studio/VersionGenesis";
 import SectionPicker from "@/components/studio/SectionPicker";
 import PresentationControls, { PubRoom } from "@/components/studio/PresentationControls";
 import PresentationRoomRegion from "@/components/studio/PresentationRoomRegion";
+import PhotographyRoom from "@/components/studio/PhotographyRoom";
+import { PhotoRecord, PhotoPins, pinPhoto, unpinPhoto } from "@/lib/photos";
+import { listPhotos } from "@/lib/photoData";
 import PresentationRooms from "@/components/studio/PresentationRooms";
 import TreatmentToolbar from "@/components/studio/TreatmentToolbar";
 import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta } from "@/lib/publication";
@@ -302,7 +305,13 @@ export default function StudioPage() {
   }, []);
   const [pubRoom, setPubRoom] = useState<PubRoom | null>(null);
   const [pubSection, setPubSection] = useState<string | null>(null);
-  useEffect(() => { setPubRoom(null); setPubSection(null); }, [lens]);
+  // v233 — the version's pinned imagery: render state, Save look commits.
+  const [pubPins, setPubPins] = useState<PhotoPins | null>(null);
+  const [pubLibrary, setPubLibrary] = useState<PhotoRecord[]>([]);
+  const [pubFocusSlot, setPubFocusSlot] = useState<string | null>(null);
+  useEffect(() => { listPhotos().then(setPubLibrary).catch(() => {}); }, []);
+  useEffect(() => { setPubPins((version?.photo_pins as PhotoPins | null) ?? null); }, [version?.id]);
+  useEffect(() => { setPubRoom(null); setPubSection(null); setPubFocusSlot(null); }, [lens]);
   const patchPub = (d: ThemeDelta) => { setPubOverride((prev) => mergeDelta(prev, d)); setPubDirty(true); };
   useEffect(() => {
     setPubThemeKey((version?.theme_key as string | null) ?? null);
@@ -316,7 +325,7 @@ export default function StudioPage() {
     if (!version) return;
     setPubBusy(true);
     const { error } = await supabase.from("proposal_versions")
-      .update({ theme_key: pubThemeKey, theme_override: pubOverride }).eq("id", version.id);
+      .update({ theme_key: pubThemeKey, theme_override: pubOverride, photo_pins: pubPins }).eq("id", version.id);
     setPubBusy(false);
     if (error) { setErr(error.message); return; }
     setPubDirty(false);
@@ -1072,6 +1081,7 @@ export default function StudioPage() {
             onDiscard={() => {
               setPubThemeKey((version?.theme_key as string | null) ?? null);
               setPubOverride((version?.theme_override as ThemeDelta | null) ?? null);
+              setPubPins((version?.photo_pins as PhotoPins | null) ?? null);
               setPubDirty(false);
             }}
           />
@@ -1164,6 +1174,10 @@ export default function StudioPage() {
                 name: (stage.sections.filter((x) => x.id === pubSection)[0]?.name) ?? "Section" }}
           resolved={resolvedPub}
           onPatch={patchPub}
+          onChoosePhoto={() => {
+            const slot = pubSection === "__document__" ? "__document__" : pubSection;
+            setPubFocusSlot(slot); setPubSection(null); setPubRoom("photography");
+          }}
           onClose={() => setPubSection(null)}
         />
       )}
@@ -1323,6 +1337,17 @@ export default function StudioPage() {
               <PresentationRoomRegion openRoom={pubRoom}
                 onOpenRoom={(r) => { setPubSection(null); setPubRoom(r); }}
                 onClose={() => setPubRoom(null)}>
+                {pubRoom === "photography" ? (
+                  <PhotographyRoom
+                    slots={[{ id: "__document__", name: (stage?.title ?? "Document") }]
+                      .concat((stage?.sections ?? []).map((x) => ({ id: x.id, name: x.name })))}
+                    library={pubLibrary}
+                    pins={pubPins}
+                    focusSlot={pubFocusSlot}
+                    onPin={(slot, ph) => { setPubPins((prev) => pinPhoto(prev, slot, ph)); setPubDirty(true); }}
+                    onUnpin={(slot) => { setPubPins((prev) => unpinPhoto(prev, slot)); setPubDirty(true); }}
+                  />
+                ) : (
                 <PresentationRooms
                   room={pubRoom}
                   tenantThemes={pubTenantThemes.map((t) => ({ id: t.id, name: t.name }))}
@@ -1332,6 +1357,7 @@ export default function StudioPage() {
                   onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
                   onPatch={patchPub}
                 />
+                )}
               </PresentationRoomRegion>
             )}
             {/* ── THE PAPER — first (and usually only) sheet ── */}
@@ -1402,7 +1428,7 @@ export default function StudioPage() {
               )}
               {lens === "customer" && (
                 stage
-                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub} regions={pubWords}
+                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub} regions={pubWords} photos={pubPins}
                       onSectionSelect={!locked && session?.perms.includes("bookings.edit") && lensSelects(activeLensDef, "section")
                         ? (sid) => { setPubRoom(null); setPubSection(sid === pubSection ? null : sid); }
                         : undefined}

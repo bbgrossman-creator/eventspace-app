@@ -81,6 +81,10 @@ export interface SectionTreatment {
   spacing?: "compact" | "standard" | "airy";
   /** v229 — a section's wash: none, a soft accent tint, or a ringed panel. */
   background?: "none" | "tint" | "panel";
+  /** v233 — HOW pinned imagery wears (§7): the pin decides existence, this
+   *  decides dress. "side" is section-only; "full" is document-only —
+   *  the registries constrain what each toolbar offers. */
+  photo?: "none" | "band" | "side" | "full";
 }
 
 /** v229 — the DOCUMENT identity's own dress: everything a section has
@@ -145,7 +149,7 @@ export const SYSTEM_DEFAULT_THEME: Required<ThemeDelta> = {
   colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37" },
   paper: { tint: "#FFFFFF", texture: "none" },
   margins: { measure: 760, sectionGap: 40 },
-  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none" }, sections: {} },
+  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none", photo: "band" }, sections: {} },
 };
 
 /** THE LADDER, resolved. One pure walk; per-leaf most-specific-wins; the
@@ -316,6 +320,14 @@ export const TREATMENT_OPTIONS: {
   { key: "background", label: "Background", options: [
     { value: "none", label: "None" }, { value: "tint", label: "Tint" },
     { value: "panel", label: "Panel" } ] },
+  { key: "photo", label: "Photo", options: [
+    { value: "band", label: "Band" }, { value: "side", label: "Side" },
+    { value: "none", label: "None" } ] },
+];
+
+/** v233 — the DOCUMENT's photo placements (cover imagery). */
+export const DOCUMENT_PHOTO_OPTIONS: { value: "band" | "full" | "none"; label: string }[] = [
+  { value: "band", label: "Band" }, { value: "full", label: "Full" }, { value: "none", label: "None" },
 ];
 
 /** v229 — DOCUMENT-only semantic groups for the document toolbar. */

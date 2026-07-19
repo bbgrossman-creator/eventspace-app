@@ -1,0 +1,46 @@
+/* v232 — FONT DELIVERY. Generated from src/lib/fonts.ts (the manifest);
+   the v232 unit suite fails if these ever drift apart. Self-hosted woff2
+   via Fontsource — one deterministic set of faces for Studio, customer
+   page, and print. */
+
+/* Playfair Display */
+@import "@fontsource/playfair-display/700.css";
+/* Cormorant Garamond */
+@import "@fontsource/cormorant-garamond/700.css";
+/* Montserrat */
+@import "@fontsource/montserrat/700.css";
+/* Libre Baskerville */
+@import "@fontsource/libre-baskerville/700.css";
+/* DM Serif Display */
+@import "@fontsource/dm-serif-display/400.css";
+/* Lora */
+@import "@fontsource/lora/700.css";
+/* Merriweather */
+@import "@fontsource/merriweather/700.css";
+/* Spectral */
+@import "@fontsource/spectral/700.css";
+/* Fraunces */
+@import "@fontsource/fraunces/700.css";
+/* EB Garamond */
+@import "@fontsource/eb-garamond/700.css";
+/* Bodoni Moda */
+@import "@fontsource/bodoni-moda/700.css";
+/* Inter */
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/600.css";
+/* Source Sans 3 */
+@import "@fontsource/source-sans-3/400.css";
+@import "@fontsource/source-sans-3/600.css";
+/* Lato */
+@import "@fontsource/lato/400.css";
+@import "@fontsource/lato/700.css";
+/* Karla */
+@import "@fontsource/karla/400.css";
+@import "@fontsource/karla/600.css";
+/* Open Sans */
+@import "@fontsource/open-sans/400.css";
+@import "@fontsource/open-sans/600.css";
+/* Work Sans */
+@import "@fontsource/work-sans/400.css";
+@import "@fontsource/work-sans/600.css";
+@import "@fontsource/work-sans/700.css";

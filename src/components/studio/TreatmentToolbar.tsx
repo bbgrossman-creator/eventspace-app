@@ -11,13 +11,18 @@
 import React from "react";
 import {
   ResolvedTheme, ThemeDelta, SectionTreatment, DocumentTreatment,
-  TREATMENT_OPTIONS, DOCUMENT_TITLE_OPTIONS, MEASURE_OPTIONS, effectiveSectionTreatment,
+  TREATMENT_OPTIONS, DOCUMENT_TITLE_OPTIONS, MEASURE_OPTIONS, DOCUMENT_PHOTO_OPTIONS,
+  effectiveSectionTreatment,
 } from "@/lib/publication";
 
 export default function TreatmentToolbar(props: {
   selection: { kind: "document" } | { kind: "section"; id: string; name: string };
   resolved: ResolvedTheme;
   onPatch: (patch: ThemeDelta) => void;
+  /** v233 — the identity's photo shelf: opens the Photography room ON this
+   *  slot. The toolbar stays structural-action-free; choosing imagery is a
+   *  presentation act. */
+  onChoosePhoto?: () => void;
   onClose: () => void;
 }) {
   const sel = props.selection;
@@ -58,6 +63,17 @@ export default function TreatmentToolbar(props: {
                 onClick={() => props.onPatch({ treatments: { document: { title: o.value } as DocumentTreatment } })} />
             ))}
           </Group>
+          <Group label="Photo">
+            {DOCUMENT_PHOTO_OPTIONS.map((o) => (
+              <Opt key={o.value} id={`photo:${o.value}`} label={o.label}
+                active={doc.photo === o.value}
+                onClick={() => props.onPatch({ treatments: { document: { photo: o.value } as DocumentTreatment } })} />
+            ))}
+            {props.onChoosePhoto && (
+              <button data-treat-photo onClick={props.onChoosePhoto}
+                className="text-[10.5px] px-1.5 py-0.5 rounded ring-1 ring-slate-200 text-slate-500 hover:bg-slate-50">Choose…</button>
+            )}
+          </Group>
           <Group label="Measure">
             {MEASURE_OPTIONS.map((o) => (
               <Opt key={o.value} id={`measure:${o.label.toLowerCase()}`} label={o.label}
@@ -69,7 +85,7 @@ export default function TreatmentToolbar(props: {
       )}
 
       {TREATMENT_OPTIONS
-        .filter((g) => sel.kind === "section" ? g.key !== "spacing" || true : g.key !== "heading" && g.key !== "background")
+        .filter((g) => sel.kind === "section" ? true : g.key !== "heading" && g.key !== "background" && g.key !== "photo")
         .map((g) => (
           <Group key={g.key} label={g.label}>
             {g.options.map((o) => (
@@ -80,6 +96,10 @@ export default function TreatmentToolbar(props: {
           </Group>
         ))}
 
+      {sel.kind === "section" && props.onChoosePhoto && (
+        <button data-treat-photo onClick={props.onChoosePhoto}
+          className="text-[10.5px] px-1.5 py-0.5 rounded ring-1 ring-slate-200 text-slate-500 hover:bg-slate-50">Choose photo…</button>
+      )}
       <button data-treat-close onClick={props.onClose} title="Done — back to the paper"
         className="text-slate-300 hover:text-slate-600 text-[12px] pl-1">✕</button>
     </div>

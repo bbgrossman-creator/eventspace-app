@@ -13,12 +13,14 @@ import ProposalRenderer from "@/components/ProposalRenderer";
 import { supabase } from "@/lib/supabase";
 import { ResolvedTheme, ThemeDelta, RegionTexts, resolveTheme, resolveThemeKey } from "@/lib/publication";
 import { getPublicationSettings, listPublicationThemes } from "@/lib/publicationData";
+import { PhotoPins } from "@/lib/photos";
 
 export default function ProposalPreviewPage() {
   const params = useParams<{ id: string; versionId: string }>();
   const [model, setModel] = useState<PresentationModel | null>(null);
   const [pubTheme, setPubTheme] = useState<ResolvedTheme | null>(null);
   const [pubWords, setPubWords] = useState<RegionTexts>({ footer: null, signature: null, terms: null });
+  const [pubPins, setPubPins] = useState<PhotoPins | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,18 +31,20 @@ export default function ProposalPreviewPage() {
     // rule), which is print/parity by construction too.
     const loadTheme = async () => {
       const { data } = await supabase.from("proposal_versions")
-        .select("status,theme_key,theme_override,presentation_snapshot")
+        .select("status,theme_key,theme_override,presentation_snapshot,photo_pins")
         .eq("id", params.versionId).maybeSingle();
-      const v = data as { status: string; theme_key: string | null; theme_override: unknown; presentation_snapshot: unknown } | null;
+      const v = data as { status: string; theme_key: string | null; theme_override: unknown; presentation_snapshot: unknown; photo_pins: unknown } | null;
       if (!v) return;
       if ((v.status === "sent" || v.status === "approved") && v.presentation_snapshot) {
         // v231 — a stamped document is WHOLE: its words froze with its dress.
-        const snap = v.presentation_snapshot as ResolvedTheme & { regionTexts?: RegionTexts };
+        const snap = v.presentation_snapshot as ResolvedTheme & { regionTexts?: RegionTexts; photoPins?: PhotoPins | null };
         setPubTheme(snap);
         if (snap.regionTexts) setPubWords(snap.regionTexts);
+        setPubPins(snap.photoPins ?? null);
       } else {
         const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
         setPubWords(settings.regionTexts);
+        setPubPins((v.photo_pins as PhotoPins | null) ?? null);
         setPubTheme(resolveTheme(settings.brand, resolveThemeKey(v.theme_key, tenantThemes),
           (v.theme_override as ThemeDelta | null) ?? null).theme);
       }
@@ -67,7 +71,7 @@ export default function ProposalPreviewPage() {
             </div>
           )}
           <div className="shadow-xl rounded-lg overflow-hidden mx-4 sm:mx-auto max-w-3xl">
-            <ProposalRenderer model={model} theme={pubTheme ?? undefined} regions={pubWords} />
+            <ProposalRenderer model={model} theme={pubTheme ?? undefined} regions={pubWords} photos={pubPins} />
           </div>
         </>
       )}
