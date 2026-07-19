@@ -48,7 +48,7 @@ function OptionalBadge() {
 
 // ── v195 P1.6: `uppercase` removed — authored casing is data, not decoration ─
 function Heading({ children }: { children: React.ReactNode }) {
-  return <div className="text-[11px] font-semibold tracking-wide mb-1" style={{ color: T.gold }}>{children}</div>;
+  return <div className="text-[11px] font-semibold tracking-wide mb-1" style={{ color: "var(--pub-accent, #C9A34E)" }}>{children}</div>;
 }
 
 // ── v195 P1.7/P1.9: ONE implementation of the three layouts, shared by
@@ -100,7 +100,7 @@ function ItemRun({ items, layout, bullet = "\u00b7" }: {
     <p className="text-[13.5px] leading-relaxed text-slate-600">
       {items.map((it, i) => (
         <span key={i}>
-          {i > 0 && (layout === "dot" ? <span style={{ color: T.gold }}> &middot; </span> : <span>, </span>)}
+          {i > 0 && (layout === "dot" ? <span style={{ color: "var(--pub-accent, #C9A34E)" }}> &middot; </span> : <span>, </span>)}
           {it.name}
           {it.optional && <OptionalBadge />}
           {it.note && <span className="text-[12px] italic text-slate-400"> {it.note}</span>}
@@ -120,20 +120,31 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
       <div className="flex items-baseline gap-2 mb-2">
         {/* v195 P1.3: an empty label means the component title already said it. */}
         {cg.label && <h4 className="font-semibold text-[15px]" style={{ color: T.ink }}>{cg.label}</h4>}
-        <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: T.gold }}>Choose {cg.chooseCount}</span>
+        <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--pub-accent, #C9A34E)" }}>Choose {cg.chooseCount}</span>
       </div>
       <ItemRun items={asItems} layout={cg.layout} bullet={"○"} />
     </div>
   );
 }
 
-export default function ProposalRenderer({ model, draftRibbon = true, xray = false }: {
+// v225 PUBLICATION — the renderer is PARAMETERIZED by a resolved theme
+// (Proposal data → Lens projection → PublicationTheme → Renderer). Unthemed
+// callers render exactly the historical dress: every themed value falls back
+// to the constants that were always here. The theme decides how things look
+// — nothing here lets it decide what exists.
+import { ResolvedTheme } from "@/lib/publication";
+
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme }: {
   model: PresentationModel; draftRibbon?: boolean;
   /** v196: chrome only. The MODEL already decided what exists — an internal
    *  item is absent from a non-xray model, so this flag cannot leak one. It
    *  only labels the page as an authoring surface. */
   xray?: boolean;
+  theme?: ResolvedTheme;
 }) {
+  // Themed dress, historical fallbacks.
+  const H = { color: theme?.colors.primary ?? T.navy, fontFamily: theme?.fonts.headingStack } as const;
+  const A = theme?.colors.accent ?? T.gold;
   const isDraft = model.status !== "approved" && model.status !== "sent";
   return (
     <div className="mx-auto max-w-3xl bg-white px-8 py-10 sm:px-12 sm:py-14 relative" style={{ color: T.ink }}>
@@ -150,9 +161,9 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
       )}
 
       <header className="text-center mb-10">
-        <h1 className="font-display font-extrabold tracking-tight text-3xl sm:text-4xl" style={{ color: T.navy }}>{model.title}</h1>
+        <h1 data-pub-title className="font-display font-extrabold tracking-tight text-3xl sm:text-4xl" style={H}>{model.title}</h1>
         {model.eventLine && <p className="mt-2 text-sm tracking-wide text-slate-500 uppercase">{model.eventLine}</p>}
-        <div className="mx-auto mt-4 h-[3px] w-12 rounded-full" style={{ background: T.gold }} />
+        <div className="mx-auto mt-4 h-[3px] w-12 rounded-full" style={{ background: A }} />
       </header>
 
       {model.intro && <p className="text-[15px] leading-relaxed text-slate-600 mb-10 whitespace-pre-wrap">{model.intro}</p>}
@@ -161,7 +172,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
         {model.sections.map((section, si) => (
           <section key={si}>
             <div className="flex items-baseline justify-between pb-1.5 mb-4 border-b" style={{ borderColor: T.goldSoft }}>
-              <h2 className="font-display font-bold text-xl tracking-tight" style={{ color: T.navy }}>{section.name}</h2>
+              <h2 className="font-display font-bold text-xl tracking-tight" style={H}>{section.name}</h2>
               {section.subtotalLabel && <span className="text-sm font-semibold text-slate-500">{section.subtotalLabel}</span>}
             </div>
 
@@ -205,7 +216,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
       {/* ── v195: the ending, made intentional ── */}
       {model.summary ? (
         <div className="mt-12 pt-5 border-t-2" style={{ borderColor: T.navy }}>
-          <h3 className="font-display font-bold text-lg mb-3" style={{ color: T.navy }}>Estimated Investment</h3>
+          <h3 className="font-display font-bold text-lg mb-3" style={H}>Estimated Investment</h3>
           <div className="space-y-1.5 mb-4">
             {model.summary.lines.map((l, i) => (
               <div key={i} className="flex items-baseline justify-between text-[13.5px] text-slate-600">
@@ -215,8 +226,8 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
             ))}
           </div>
           <div className="flex items-baseline justify-between pt-3 border-t" style={{ borderColor: T.goldSoft }}>
-            <span className="font-display font-bold text-lg" style={{ color: T.navy }}>Estimated Total</span>
-            <span className="font-display font-extrabold text-2xl tabular-nums" style={{ color: T.navy }}>{model.summary.totalLabel}</span>
+            <span className="font-display font-bold text-lg" style={H}>Estimated Total</span>
+            <span className="font-display font-extrabold text-2xl tabular-nums" style={H}>{model.summary.totalLabel}</span>
           </div>
           {model.summary.preparedFor && (
             <p className="mt-6 text-[12.5px] text-slate-400">Prepared for {model.summary.preparedFor}</p>

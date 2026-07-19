@@ -34,6 +34,8 @@ import { canvasDragMimes } from "@/lib/libraryRegistry";
 import LandingDecision from "@/components/studio/LandingDecision";
 import VersionGenesis from "@/components/studio/VersionGenesis";
 import SectionPicker from "@/components/studio/SectionPicker";
+import PresentationControls from "@/components/studio/PresentationControls";
+import { ThemeDelta, ResolvedTheme, resolveTheme, builtInTheme } from "@/lib/publication";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -277,6 +279,32 @@ export default function StudioPage() {
   // absent from the table because the Canvas IS the Design; a lens joins the
   // offer by gaining a renderer, never by an edit to a hardcoded list of
   // keys in a component.
+  // v225 PUBLICATION — the Version Override as RENDER STATE until "Save
+  // look" commits it (§6). Draft inherits live; the stamp is
+  // setVersionStatus's business (§3).
+  const [pubThemeKey, setPubThemeKey] = useState<string | null>(null);
+  const [pubOverride, setPubOverride] = useState<ThemeDelta | null>(null);
+  const [pubDirty, setPubDirty] = useState(false);
+  const [pubBusy, setPubBusy] = useState(false);
+  useEffect(() => {
+    setPubThemeKey((version?.theme_key as string | null) ?? null);
+    setPubOverride((version?.theme_override as ThemeDelta | null) ?? null);
+    setPubDirty(false);
+  }, [version?.id, version?.theme_key, version?.theme_override]);
+  const resolvedPub: ResolvedTheme = useMemo(
+    () => resolveTheme(null /* brand: v226 */, builtInTheme(pubThemeKey), pubOverride).theme,
+    [pubThemeKey, pubOverride]);
+  async function savePublication() {
+    if (!version) return;
+    setPubBusy(true);
+    const { error } = await supabase.from("proposal_versions")
+      .update({ theme_key: pubThemeKey, theme_override: pubOverride }).eq("id", version.id);
+    setPubBusy(false);
+    if (error) { setErr(error.message); return; }
+    setPubDirty(false);
+    setToast("🎨 Look saved to this version");
+  }
+
   // v224 — chrome consults DECLARATIONS, never lens names (PUBLICATION §5).
   const activeLensDef = useMemo(() => lenses.filter((l) => l.key === lens)[0] ?? null, [lenses, lens]);
 
@@ -1014,7 +1042,23 @@ export default function StudioPage() {
         obligations={obligations}
         xray={xray}
         onXray={setXray}
-        lensControls={null /* v225: the Presentation toolbar mounts here from edits.presentation */}
+        lensControls={lensEdits(activeLensDef, "presentation") ? (
+          <PresentationControls
+            themeKey={pubThemeKey}
+            override={pubOverride}
+            dirty={pubDirty}
+            busy={pubBusy}
+            canEdit={!locked && !!session?.perms.includes("bookings.edit")}
+            onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
+            onOverride={(next) => { setPubOverride(next); setPubDirty(true); }}
+            onSave={() => void savePublication()}
+            onDiscard={() => {
+              setPubThemeKey((version?.theme_key as string | null) ?? null);
+              setPubOverride((version?.theme_override as ThemeDelta | null) ?? null);
+              setPubDirty(false);
+            }}
+          />
+        ) : null}
         split={split}
         onSplit={setSplit}
         desk={[
@@ -1308,7 +1352,7 @@ export default function StudioPage() {
               )}
               {lens === "customer" && (
                 stage
-                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon />
+                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub} />
                   : <p className="text-center text-[12px] text-slate-400 py-16">Nothing to show on this lens yet.</p>
               )}
               {lens === "production" && (
@@ -1335,7 +1379,7 @@ export default function StudioPage() {
                   options={liveOptions}
                   onSheetLens={setLiveLensKey}
                   projections={{
-                    customer: liveStage ? <ProposalRenderer model={liveStage} xray={false} draftRibbon /> : null,
+                    customer: liveStage ? <ProposalRenderer model={liveStage} xray={false} draftRibbon theme={resolvedPub} /> : null,
                     production: prodModel ? <ProductionSheet model={prodModel} /> : null,
                     [liveLensKey]: liveLensKey.slice(0, 2) === "v:"
                       ? (sheetVersionModel ? <ProposalRenderer model={sheetVersionModel} xray={false} /> : null)

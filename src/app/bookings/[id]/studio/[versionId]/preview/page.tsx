@@ -10,14 +10,35 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { buildPresentationModel, PresentationModel } from "@/lib/presentation";
 import ProposalRenderer from "@/components/ProposalRenderer";
+import { supabase } from "@/lib/supabase";
+import { ResolvedTheme, ThemeDelta, resolveTheme, builtInTheme } from "@/lib/publication";
 
 export default function ProposalPreviewPage() {
   const params = useParams<{ id: string; versionId: string }>();
   const [model, setModel] = useState<PresentationModel | null>(null);
+  const [pubTheme, setPubTheme] = useState<ResolvedTheme | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    buildPresentationModel(params.versionId).then(setModel).finally(() => setLoading(false));
+    // v225 THE SNAPSHOT RULE (PUBLICATION §3): for a SENT or APPROVED
+    // version this route serves the STAMPED presentation — the artifact the
+    // customer actually received — and the live resolve only for drafts.
+    // The share page inherits this by construction (same renderer, same
+    // rule), which is print/parity by construction too.
+    const loadTheme = async () => {
+      const { data } = await supabase.from("proposal_versions")
+        .select("status,theme_key,theme_override,presentation_snapshot")
+        .eq("id", params.versionId).maybeSingle();
+      const v = data as { status: string; theme_key: string | null; theme_override: unknown; presentation_snapshot: unknown } | null;
+      if (!v) return;
+      if ((v.status === "sent" || v.status === "approved") && v.presentation_snapshot) {
+        setPubTheme(v.presentation_snapshot as ResolvedTheme);
+      } else {
+        setPubTheme(resolveTheme(null, builtInTheme(v.theme_key), (v.theme_override as ThemeDelta | null) ?? null).theme);
+      }
+    };
+    Promise.all([buildPresentationModel(params.versionId).then(setModel), loadTheme()])
+      .finally(() => setLoading(false));
   }, [params.versionId]);
 
   return (
@@ -38,7 +59,7 @@ export default function ProposalPreviewPage() {
             </div>
           )}
           <div className="shadow-xl rounded-lg overflow-hidden mx-4 sm:mx-auto max-w-3xl">
-            <ProposalRenderer model={model} />
+            <ProposalRenderer model={model} theme={pubTheme ?? undefined} />
           </div>
         </>
       )}

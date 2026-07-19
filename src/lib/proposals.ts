@@ -18,6 +18,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase, logActivity } from "./supabase";
 import { scaffoldFor, seedVersionSections, copyVersionSections } from "./sections";
+import { shouldStampPresentation, resolveTheme, builtInTheme, ThemeDelta } from "./publication";
 
 export type ProposalStatus = "open" | "won" | "lost" | "archived";
 export type VersionStatus = "draft" | "internal_review" | "sent" | "revision_requested" | "approved";
@@ -33,6 +34,11 @@ export interface ProposalVersion {
   sent_at: string | null; approved_at: string | null; approved_by: string | null;
   created_at: string;
   archived_at?: string | null; archived_reason?: string | null;
+  // v225 PUBLICATION — the Version Override + the stamped artifact (§2/§3).
+  theme_key?: string | null;
+  theme_override?: unknown;
+  presentation_snapshot?: unknown;
+  presentation_stamped_at?: string | null;
 }
 
 export const VERSION_FLOW: { value: VersionStatus; label: string; color: string }[] = [
@@ -121,7 +127,12 @@ export async function createVersion(
     .order("version", { ascending: false }).limit(1).maybeSingle();
   const nextN = ((maxRow as { version: number } | null)?.version ?? 0) + 1;
   const { data: v, error: vErr } = await supabase.from("proposal_versions")
-    .insert({ proposal_id: proposal.id, version: nextN }).select("id").single();
+    .insert({ proposal_id: proposal.id, version: nextN,
+      // v225: the Version Override TRAVELS with version copies (§2); the
+      // SNAPSHOT never does — a new draft has no send history.
+      theme_key: fromVersion.theme_key ?? null,
+      theme_override: fromVersion.theme_override ?? null,
+    }).select("id").single();
   if (vErr || !v) return { ok: false, detail: vErr?.message ?? "version insert failed" };
   const copied = await copyComponentsBetween(booking.id, fromVersion.id, v.id);
   if (!copied.ok) return copied;
@@ -256,9 +267,22 @@ export async function setVersionStatus(
   if (v.status === "approved") return { ok: false, detail: "Approved versions are immutable — create a new version instead." };
   const patch: Record<string, unknown> = { status };
   if (status === "sent" && !v.sent_at) patch.sent_at = new Date().toISOString();
+  // v225 THE SNAPSHOT RULE (PUBLICATION §3): every transition INTO "sent"
+  // stamps the resolved presentation actually sent. Re-send re-stamps;
+  // editing alone never touches a prior stamp; approval locks the last one.
+  if (shouldStampPresentation(v.status, status)) {
+    const named = builtInTheme((v.theme_key as string | null) ?? null);
+    const resolved = resolveTheme(null /* brand: v226 */, named, (v.theme_override as ThemeDelta | null) ?? null);
+    patch.presentation_snapshot = resolved.theme;
+    patch.presentation_stamped_at = new Date().toISOString();
+  }
   if (status === "approved") { patch.approved_at = new Date().toISOString(); patch.approved_by = approvedBy ?? null; }
   const { error } = await supabase.from("proposal_versions").update(patch).eq("id", v.id);
   if (error) return { ok: false, detail: error.message };
+  if (patch.presentation_snapshot) {
+    await logActivity(booking.id, booking.invoice_num, "Presentation Stamped",
+      `🎨 v${v.version} presentation stamped as sent`);
+  }
   if (status === "approved") {
     await supabase.from("proposals").update({
       status: "won", won_version_id: v.id, updated_at: new Date().toISOString(),
