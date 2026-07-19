@@ -122,6 +122,10 @@ export interface DocumentTreatment extends SectionTreatment {
    *  — a page number in continuous scroll is a lie. */
   cover?: "none" | "classic" | "banner";
   watermark?: "none" | "draft" | "confidential";
+  /** v239 — the COMPANY HEADER: identity block above the document. */
+  header?: "none" | "block";
+  /** v239 — the CONTACT region: how to reach the company. */
+  contact?: "none" | "block";
   footer?: "none" | "line";
   signature?: "none" | "line";
   terms?: "none" | "standard";
@@ -173,7 +177,7 @@ export const SYSTEM_DEFAULT_THEME: Required<ThemeDelta> = {
   colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37" },
   paper: { tint: "#FFFFFF", texture: "none" },
   margins: { measure: 760, sectionGap: 40 },
-  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none", photo: "band" }, sections: {}, components: {}, items: {} },
+  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard", cover: "none", watermark: "none", header: "block", contact: "block", footer: "line", signature: "none", terms: "standard", photo: "band" }, sections: {}, components: {}, items: {} },
 };
 
 /** THE LADDER, resolved. One pure walk; per-leaf most-specific-wins; the
@@ -435,10 +439,14 @@ export const DOCUMENT_TITLE_OPTIONS: { value: NonNullable<DocumentTreatment["tit
 
 /** v231 — the REGIONS registry: semantic slots, semantic options. */
 export const REGION_OPTIONS: {
-  key: "cover" | "watermark" | "footer" | "signature" | "terms";
+  key: "cover" | "watermark" | "header" | "contact" | "footer" | "signature" | "terms";
   label: string; blurb: string;
   options: { value: string; label: string }[];
 }[] = [
+  { key: "header", label: "Company header", blurb: "Who this is from. Facts live in Brand Studio.", options: [
+    { value: "none", label: "None" }, { value: "block", label: "Block" } ] },
+  { key: "contact", label: "Contact", blurb: "How to reach the company. Facts live in Brand Studio.", options: [
+    { value: "none", label: "None" }, { value: "block", label: "Block" } ] },
   { key: "cover", label: "Cover", blurb: "How the document opens.", options: [
     { value: "none", label: "None" }, { value: "classic", label: "Classic" }, { value: "banner", label: "Banner" } ] },
   { key: "watermark", label: "Watermark", blurb: "A ghost across the paper.", options: [

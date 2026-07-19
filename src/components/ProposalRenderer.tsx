@@ -142,8 +142,9 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
 import { ResolvedTheme, effectiveSectionTreatment, effectiveComponentTreatment, effectiveItemTreatment, COMPONENT_TREATMENT_DEFAULTS, ITEM_TREATMENT_DEFAULTS, ComponentTreatment, ItemTreatment, BULLET_CHARS, SectionTreatment, DocumentTreatment, RegionTexts } from "@/lib/publication";
 import { PhotoPins, pinnedFor } from "@/lib/photos";
 import { selectedStyle } from "@/lib/selection";
+import { ResolvedFact, factsIn, derivedFooterLine } from "@/lib/identity";
 
-export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions, photos, onComponentSelect, selectedComponentId, onItemsSelect, selectedItemsId }: {
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, onDocumentSelect, selectedSectionId, documentSelected, regions, company, photos, onComponentSelect, selectedComponentId, onItemsSelect, selectedItemsId }: {
   model: PresentationModel; draftRibbon?: boolean;
   /** v226 THE CANVAS — Studio-only interactivity: the paper is the primary
    *  interaction surface; clicking a section head selects its PRESENTATION
@@ -162,6 +163,10 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   documentSelected?: boolean;
   /** v231 — the region WORDS (footer/signature/terms), brand-owned. */
   regions?: RegionTexts;
+  /** v239 — the company facts RESOLVED into this publication (projection
+   *  for drafts; the frozen snapshot for sent). Facts only — the renderer
+   *  never sees the identity record or the policy. */
+  company?: ResolvedFact[];
   /** v233 — the version's PINNED imagery: the pin decides existence, the
    *  treatment decides dress. */
   photos?: PhotoPins | null;
@@ -177,7 +182,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
   const docTr: Required<DocumentTreatment> = theme
     ? theme.treatments.document
     : { divider: "rule", heading: "standard", spacing: "standard", background: "none", title: "standard",
-        cover: "none", watermark: "none", footer: "none", signature: "none", terms: "none", photo: "band" };
+        cover: "none", watermark: "none", header: "block", contact: "block", footer: "line", signature: "none", terms: "standard", photo: "band" };
   const isDraft = model.status !== "approved" && model.status !== "sent";
   return (
     // v229 — the ROOT is themed (repairing a silent v225 miss: the wrap
@@ -217,6 +222,23 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
         </div>
       )}
 
+      {/* ── v239 — THE COMPANY HEADER. Who this is from — the identity's
+           first region. Facts only; no facts, nothing (empty-is-
+           information — never a placeholder for the customer). ── */}
+      {docTr.header === "block" && (() => {
+        const trade = company?.find((f) => f.key === "identity.trade_name");
+        if (!trade) return draftRibbon
+          ? <p data-pub-header-hint className="mb-8 text-[11px] text-slate-300 italic">Company header is on — add your trade name in Brand Studio.</p>
+          : null;
+        return (
+          <div data-pub-header className="mb-10 pb-4 border-b flex items-baseline justify-between" style={{ borderColor: T.goldFaint }}>
+            <p className="text-[13px] font-bold tracking-[0.12em] uppercase" style={{ color: A }}>{trade.value}</p>
+            <div className="text-right text-[10px] leading-relaxed text-slate-400">
+              {factsIn(company ?? [], "contact").slice(0, 2).map((f) => <span key={f.key} className="block">{f.value}</span>)}
+            </div>
+          </div>
+        );
+      })()}
       <header data-pub-doc data-pub-titlestyle={docTr.title} data-pub-cover={docTr.cover}
         onClick={onDocumentSelect ? () => onDocumentSelect() : undefined}
         title={onDocumentSelect ? "Style this document" : undefined}
@@ -421,6 +443,37 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
            are brand facts. A toggled region with no words renders nothing
            for the customer — and a quiet coaching line in the Studio
            (draftRibbon is the Studio/preview tell). ── */}
+      {/* ── v239 — CONTACT: how to reach the company. ── */}
+      {docTr.contact === "block" && (() => {
+        const cs = factsIn(company ?? [], "contact");
+        return cs.length ? (
+          <div data-pub-contact className="mt-12 pt-4 border-t" style={{ borderColor: T.goldFaint }}>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Contact</p>
+            <div className="text-[11.5px] leading-relaxed text-slate-500">
+              {cs.map((f) => <p key={f.key} className="whitespace-pre-wrap">{f.value}</p>)}
+            </div>
+          </div>
+        ) : draftRibbon ? (
+          <p data-pub-contact-hint className="mt-12 text-[11px] text-slate-300 italic">Contact is on — add your details in Brand Studio.</p>
+        ) : null;
+      })()}
+      {/* ── v239 — PAYMENT: policy-gated facts (terms customer-facing;
+           ACH sensitive & hidden by default; tax id restricted). The
+           renderer never decides — projection already did. ── */}
+      {(() => {
+        const ps = factsIn(company ?? [], "payment");
+        return ps.length ? (
+          <div data-pub-payment className="mt-10 pt-4 border-t" style={{ borderColor: T.goldFaint }}>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Payment</p>
+            {ps.map((f) => (
+              <div key={f.key} className="mb-1.5">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400 block">{f.label}</span>
+                <span className="text-[11.5px] text-slate-500 whitespace-pre-wrap">{f.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : null;
+      })()}
       {docTr.signature === "line" && (
         regions?.signature ? (
           <div data-pub-signature className="mt-14">
@@ -432,24 +485,26 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
           <p data-pub-signature-hint className="mt-14 text-[11px] text-slate-300 italic">Signature is on — add the name in Brand Studio.</p>
         ) : null
       )}
-      {docTr.terms === "standard" && (
-        regions?.terms ? (
+      {docTr.terms === "standard" && (() => {
+        const words = regions?.terms ?? factsIn(company ?? [], "terms").map((f) => f.value).join("\n\n") ?? null;
+        return words ? (
           <div data-pub-terms className="mt-10 pt-4 border-t" style={{ borderColor: T.goldFaint }}>
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Terms</p>
-            <p className="text-[11px] leading-relaxed text-slate-400 whitespace-pre-wrap">{regions.terms}</p>
+            <p className="text-[11px] leading-relaxed text-slate-400 whitespace-pre-wrap">{words}</p>
           </div>
         ) : draftRibbon ? (
           <p data-pub-terms-hint className="mt-10 text-[11px] text-slate-300 italic">Terms are on — add the words in Brand Studio.</p>
-        ) : null
-      )}
-      {docTr.footer === "line" && (
-        regions?.footer ? (
+        ) : null;
+      })()}
+      {docTr.footer === "line" && (() => {
+        const line = regions?.footer ?? derivedFooterLine(company ?? []);
+        return line ? (
           <p data-pub-footer className="mt-12 pt-3 border-t text-center text-[11px] tracking-wide text-slate-400"
-            style={{ borderColor: T.goldFaint }}>{regions.footer}</p>
+            style={{ borderColor: T.goldFaint }}>{line}</p>
         ) : draftRibbon ? (
           <p data-pub-footer-hint className="mt-12 text-center text-[11px] text-slate-300 italic">Footer is on — add the line in Brand Studio.</p>
-        ) : null
-      )}
+        ) : null;
+      })()}
     </div>
   );
 }

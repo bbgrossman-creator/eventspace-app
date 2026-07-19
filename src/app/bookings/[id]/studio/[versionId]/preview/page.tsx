@@ -13,6 +13,8 @@ import ProposalRenderer from "@/components/ProposalRenderer";
 import { supabase } from "@/lib/supabase";
 import { ResolvedTheme, ThemeDelta, RegionTexts, resolveTheme, resolveThemeKey } from "@/lib/publication";
 import { getPublicationSettings, listPublicationThemes } from "@/lib/publicationData";
+import { ResolvedFact, projectIdentity } from "@/lib/identity";
+import { getCompanyIdentity } from "@/lib/identityData";
 import { PhotoPins } from "@/lib/photos";
 
 export default function ProposalPreviewPage() {
@@ -20,6 +22,7 @@ export default function ProposalPreviewPage() {
   const [model, setModel] = useState<PresentationModel | null>(null);
   const [pubTheme, setPubTheme] = useState<ResolvedTheme | null>(null);
   const [pubWords, setPubWords] = useState<RegionTexts>({ footer: null, signature: null, terms: null });
+  const [pubCompany, setPubCompany] = useState<ResolvedFact[]>([]);
   const [pubPins, setPubPins] = useState<PhotoPins | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -37,13 +40,15 @@ export default function ProposalPreviewPage() {
       if (!v) return;
       if ((v.status === "sent" || v.status === "approved") && v.presentation_snapshot) {
         // v231 — a stamped document is WHOLE: its words froze with its dress.
-        const snap = v.presentation_snapshot as ResolvedTheme & { regionTexts?: RegionTexts; photoPins?: PhotoPins | null };
+        const snap = v.presentation_snapshot as ResolvedTheme & { regionTexts?: RegionTexts; companyFacts?: ResolvedFact[]; photoPins?: PhotoPins | null };
         setPubTheme(snap);
         if (snap.regionTexts) setPubWords(snap.regionTexts);
+        setPubCompany(snap.companyFacts ?? []);   // frozen — never re-resolved
         setPubPins(snap.photoPins ?? null);
       } else {
         const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
         setPubWords(settings.regionTexts);
+        getCompanyIdentity().then((co) => setPubCompany(projectIdentity(co.identity, co.policy))).catch(() => {});
         setPubPins((v.photo_pins as PhotoPins | null) ?? null);
         setPubTheme(resolveTheme(settings.brand, resolveThemeKey(v.theme_key, tenantThemes),
           (v.theme_override as ThemeDelta | null) ?? null).theme);
@@ -71,7 +76,7 @@ export default function ProposalPreviewPage() {
             </div>
           )}
           <div className="shadow-xl rounded-lg overflow-hidden mx-4 sm:mx-auto max-w-3xl">
-            <ProposalRenderer model={model} theme={pubTheme ?? undefined} regions={pubWords} photos={pubPins} />
+            <ProposalRenderer model={model} theme={pubTheme ?? undefined} regions={pubWords} company={pubCompany} photos={pubPins} />
           </div>
         </>
       )}

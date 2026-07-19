@@ -20,6 +20,8 @@ import { supabase, logActivity } from "./supabase";
 import { scaffoldFor, seedVersionSections, copyVersionSections } from "./sections";
 import { shouldStampPresentation, resolveTheme, resolveThemeKey, ThemeDelta } from "./publication";
 import { getPublicationSettings, listPublicationThemes } from "./publicationData";
+import { getCompanyIdentity } from "./identityData";
+import { projectIdentity } from "./identity";
 
 export type ProposalStatus = "open" | "won" | "lost" | "archived";
 export type VersionStatus = "draft" | "internal_review" | "sent" | "revision_requested" | "approved";
@@ -290,7 +292,11 @@ export async function sendVersion(
   const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
   const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
   // v231 — the WORDS freeze with the dress: a sent document is whole.
+  // v239 — and only the RESOLVED company facts freeze with them: the
+  // snapshot never carries the identity record or the policy.
+  const co = await getCompanyIdentity();
   const snapshot = { ...resolved.theme, regionTexts: settings.regionTexts,
+    companyFacts: projectIdentity(co.identity, co.policy),
     photoPins: (v.photo_pins as unknown) ?? null };
   const patch: Record<string, unknown> = {
     status: "sent",
@@ -322,10 +328,11 @@ export async function setVersionStatus(
   // status writes that bypass the ceremony — it fires only on transitions
   // INTO "sent"; editing alone never stamps; approval locks the last stamp.
   if (shouldStampPresentation(v.status, status)) {
-    const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
+    const [settings, tenantThemes, co] = await Promise.all([getPublicationSettings(), listPublicationThemes(), getCompanyIdentity()]);
     const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
     const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
     patch.presentation_snapshot = { ...resolved.theme, regionTexts: settings.regionTexts,
+      companyFacts: projectIdentity(co.identity, co.policy),
       photoPins: (v.photo_pins as unknown) ?? null };
     patch.presentation_stamped_at = new Date().toISOString();
   }

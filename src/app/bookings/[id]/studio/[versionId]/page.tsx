@@ -45,6 +45,8 @@ import TreatmentToolbar from "@/components/studio/TreatmentToolbar";
 import { ThemeDelta, ResolvedTheme, resolveTheme, resolveThemeKey, mergeDelta } from "@/lib/publication";
 import { getPublicationSettings, listPublicationThemes, PublicationTheme } from "@/lib/publicationData";
 import { RegionTexts } from "@/lib/publication";
+import { ResolvedFact, projectIdentity } from "@/lib/identity";
+import { getCompanyIdentity } from "@/lib/identityData";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -299,9 +301,11 @@ export default function StudioPage() {
   // presentation identity, never both (§6.1/§6.3); both die on lens change.
   const [pubBrand, setPubBrand] = useState<ThemeDelta | null>(null);
   const [pubWords, setPubWords] = useState<RegionTexts>({ footer: null, signature: null, terms: null });
+  const [pubCompany, setPubCompany] = useState<ResolvedFact[]>([]);
   const [pubTenantThemes, setPubTenantThemes] = useState<PublicationTheme[]>([]);
   useEffect(() => {
     getPublicationSettings().then((st) => { setPubBrand(st.brand); setPubWords(st.regionTexts); }).catch(() => {});
+    getCompanyIdentity().then((co) => setPubCompany(projectIdentity(co.identity, co.policy))).catch(() => {});
     listPublicationThemes().then(setPubTenantThemes).catch(() => {});
   }, []);
   const [pubRoom, setPubRoom] = useState<PubRoom | null>(null);
@@ -1473,7 +1477,7 @@ export default function StudioPage() {
               )}
               {lens === "customer" && (
                 stage
-                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub} regions={pubWords} photos={pubPins}
+                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub} regions={pubWords} company={pubCompany} photos={pubPins}
                       onSectionSelect={!locked && session?.perms.includes("bookings.edit") && lensSelects(activeLensDef, "section")
                         ? (sid) => { setPubRoom(null); setPubSection(sid === pubSection ? null : sid); }
                         : undefined}

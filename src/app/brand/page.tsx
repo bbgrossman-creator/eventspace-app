@@ -11,6 +11,9 @@ import BrandKit from "@/components/BrandKit";
 import ProposalRenderer from "@/components/ProposalRenderer";
 import { PresentationModel } from "@/lib/presentation";
 import { ThemeDelta, RegionTexts, resolveTheme, mergeDelta, BUILT_IN_THEMES } from "@/lib/publication";
+import CompanyIdentityPanel from "@/components/studio/CompanyIdentityPanel";
+import { CompanyIdentity, PublicationPolicy, projectIdentity } from "@/lib/identity";
+import { getCompanyIdentity, saveCompanyIdentity, saveCompanyPolicy } from "@/lib/identityData";
 import {
   getPublicationSettings, saveBrand, saveDefaultTheme, saveRegionTexts,
   listPublicationThemes, createPublicationTheme, PublicationTheme,
@@ -42,6 +45,8 @@ function BrandStudio() {
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [themes, setThemes] = useState<PublicationTheme[]>([]);
+  const [identity, setIdentity] = useState<CompanyIdentity>({});
+  const [policy, setPolicy] = useState<PublicationPolicy>({});
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -50,6 +55,7 @@ function BrandStudio() {
       setDraft(st.brand); setDefKey(st.defaultThemeKey); setWords(st.regionTexts);
     });
     listPublicationThemes().then(setThemes);
+    getCompanyIdentity().then((co) => { setIdentity(co.identity); setPolicy(co.policy); });
   }, []);
 
   const resolved = useMemo(() => resolveTheme(draft, null, null).theme, [draft]);
@@ -83,7 +89,8 @@ function BrandStudio() {
           onDefaultTheme={(k) => { setDefKey(k === "__brand__" ? null : k); setDirty(true); }}
           onSave={() => void (async () => {
             setBusy(true);
-            const ok = (await saveBrand(draft)) && (await saveDefaultTheme(defKey)) && (await saveRegionTexts(words));
+            const ok = (await saveBrand(draft)) && (await saveDefaultTheme(defKey)) && (await saveRegionTexts(words))
+              && (await saveCompanyIdentity(identity)) && (await saveCompanyPolicy(policy));
             setBusy(false);
             if (!ok) { setNote(""); alert("Could not save — run v227_brand.sql?"); return; }
             setSaved({ brand: draft, def: defKey, words }); setDirty(false);
@@ -99,10 +106,13 @@ function BrandStudio() {
             setNote(`✓ "${made.name}" saved as a theme — it's on every Studio's Appearance shelf now.`);
           })()}
         />
+        <CompanyIdentityPanel identity={identity} policy={policy}
+          onFact={(k, v) => { setIdentity((prev) => ({ ...prev, [k]: v })); setDirty(true); }}
+          onPolicy={(k, v) => { setPolicy((prev) => { const n = { ...prev }; if (v) n[k] = v; else delete n[k]; return n; }); setDirty(true); }} />
         <div className="flex-1 min-w-[380px]">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Specimen — live</p>
           <div className="rounded-lg shadow-xl overflow-hidden ring-1 ring-[#E7EDF5]">
-            <ProposalRenderer model={SPECIMEN} draftRibbon={false} theme={resolved} regions={words} />
+            <ProposalRenderer model={SPECIMEN} draftRibbon={false} theme={resolved} regions={words} company={projectIdentity(identity, policy)} />
           </div>
         </div>
       </div>
