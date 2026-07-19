@@ -11,7 +11,7 @@
 import React from "react";
 import {
   ThemeDelta, ResolvedTheme, BUILT_IN_THEMES, FONT_PAIRINGS, PALETTES, PAPERS,
-  TREATMENT_OPTIONS, SectionTreatment, DocumentTreatment, REGION_OPTIONS,
+  TREATMENT_OPTIONS, SectionTreatment, DocumentTreatment, REGION_OPTIONS, PAGE_ANATOMY,
 } from "@/lib/publication";
 import { PubRoom } from "./PresentationControls";
 
@@ -133,23 +133,42 @@ export default function PresentationRooms(props: {
       )}
       {r === "regions" && (
         <>
-          <p className="text-[10.5px] text-slate-400 -mt-1">The paper's optional slots. Style lives here and saves with the look; the words live in Brand Studio. Page numbers arrive with print.</p>
-          {REGION_OPTIONS.map((g) => (
-            <div key={g.key}>
-              <p className="text-[11px] font-semibold text-slate-500">{g.label}</p>
-              <p className="text-[10px] text-slate-400 mb-1">{g.blurb}</p>
-              <div className="flex gap-1 flex-wrap">
-                {g.options.map((o) => {
-                  const cur = props.resolved.treatments.document[g.key];
-                  return (
-                    <button key={o.value} data-room-region={`${g.key}:${o.value}`}
-                      onClick={() => props.onPatch({ treatments: { document: { [g.key]: o.value } as DocumentTreatment } })}
-                      className={`text-[11px] px-2 py-1 rounded-md border ${cur === o.value ? "bg-[#102F56] text-white border-[#102F56]" : "text-slate-500 border-slate-200 hover:border-slate-300"}`}>
-                      {o.label}
-                    </button>
-                  );
-                })}
-              </div>
+          {/* v240 — the room reads as the PAGE'S ANATOMY, not a flat list.
+              Continuous regions flow once; page-master furniture repeats
+              per page and is reserved for print — named here so the
+              reservation is legible. */}
+          <p className="text-[10.5px] text-slate-400 -mt-1">The page's anatomy. Style lives here and saves with the look; the words and facts live in Brand Studio. These regions flow once — repeating per-page furniture arrives with print.</p>
+          {PAGE_ANATOMY.map((zone) => (
+            <div key={zone.key} data-room-zone={zone.key} className="pt-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{zone.label}</p>
+              <p className="text-[10px] text-slate-400 mb-1.5">{zone.blurb}</p>
+              {zone.regions.map((rk) => {
+                const g = REGION_OPTIONS.find((x) => x.key === rk)!;
+                return (
+                  <div key={g.key} className="mb-2">
+                    <p className="text-[11px] font-semibold text-slate-500">{g.label}</p>
+                    <p className="text-[10px] text-slate-400 mb-1">{g.blurb}</p>
+                    <div className="flex gap-1 flex-wrap">
+                      {g.options.map((o) => {
+                        const cur = props.resolved.treatments.document[g.key];
+                        return (
+                          <button key={o.value} data-room-region={`${g.key}:${o.value}`}
+                            onClick={() => props.onPatch({ treatments: { document: { [g.key]: o.value } as DocumentTreatment } })}
+                            className={`text-[11px] px-2 py-1 rounded-md border ${cur === o.value ? "bg-[#102F56] text-white border-[#102F56]" : "text-slate-500 border-slate-200 hover:border-slate-300"}`}>
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {zone.pageMaster?.map((f) => (
+                <p key={f} data-room-pagemaster className="text-[10px] text-slate-300 italic">{f} — page-master, arrives with print.</p>
+              ))}
+              {zone.kind === "reserved" && (
+                <p data-room-reserved className="text-[10px] text-slate-300 italic">Reserved.</p>
+              )}
             </div>
           ))}
         </>

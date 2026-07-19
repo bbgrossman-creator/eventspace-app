@@ -459,6 +459,51 @@ export const REGION_OPTIONS: {
     { value: "none", label: "None" }, { value: "standard", label: "Standard" } ] },
 ];
 
+
+/** ═══════════════════════════════════════════════════════════════════════
+ *  v240 — PAGE ANATOMY (PA-2 · PUBLISHING_ASSETS §2). Regions graduate
+ *  from "slots" to the page's NAMED anatomy. This is DECLARATION, not new
+ *  physics: visibility · treatment · inheritance · override all still
+ *  ride the existing ladder. Every togglable region is claimed by exactly
+ *  one zone (unit-enforced).
+ *
+ *  CONTINUOUS vs PAGE-MASTER: a web header/footer flows once in
+ *  continuous scroll. Repeating per-page furniture (running headers,
+ *  running footers, page numbers) is PAGE-MASTER — a different kind of
+ *  thing, reserved for the PDF slice, and NAMED here so the reservation
+ *  is legible instead of implicit. A page number in continuous scroll is
+ *  a lie (§6.7); the anatomy says so out loud.
+ *  ═══════════════════════════════════════════════════════════════════ */
+export type PageZoneKind = "continuous" | "reserved";
+export type RegionKey = (typeof REGION_OPTIONS)[number]["key"];
+export interface PageZone {
+  key: "header" | "body" | "footer" | "decorations" | "sidebar";
+  label: string;
+  blurb: string;
+  kind: PageZoneKind;
+  /** The togglable regions this zone claims (REGION_OPTIONS keys). */
+  regions: RegionKey[];
+  /** PAGE-MASTER furniture reserved for print — named, never buildable
+   *  here. The strings are the reservation. */
+  pageMaster?: string[];
+}
+export const PAGE_ANATOMY: PageZone[] = [
+  { key: "header", label: "Header", kind: "continuous", regions: ["header"],
+    blurb: "Who this is from — the paper's opening band.",
+    pageMaster: ["Repeating page header"] },
+  { key: "body", label: "Body", kind: "continuous", regions: ["cover"],
+    blurb: "The document itself — everything the design says." },
+  { key: "footer", label: "Footer", kind: "continuous",
+    regions: ["contact", "signature", "terms", "footer"],
+    blurb: "The paper's tail — how it closes.",
+    pageMaster: ["Repeating page footer"] },
+  { key: "decorations", label: "Page decorations", kind: "continuous", regions: ["watermark"],
+    blurb: "Marks laid across the paper, not in its flow.",
+    pageMaster: ["Page numbers"] },
+  { key: "sidebar", label: "Sidebar", kind: "reserved", regions: [],
+    blurb: "Reserved — named so nothing built now contradicts it." },
+];
+
 /** Semantic measure — labels for humans, numbers for margins.measure. */
 export const MEASURE_OPTIONS: { value: number; label: string }[] = [
   { value: 640, label: "Narrow" }, { value: 760, label: "Standard" }, { value: 880, label: "Wide" },

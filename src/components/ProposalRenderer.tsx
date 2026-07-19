@@ -213,7 +213,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
       {/* v231 — THE WATERMARK REGION: a ghost across the paper, never over
            the reader's patience. Behind everything, pointer-transparent. */}
       {docTr.watermark !== "none" && (
-        <div data-pub-watermark aria-hidden
+        <div data-pub-watermark data-page-zone="decorations" aria-hidden
           className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden">
           <span className="font-display font-extrabold uppercase tracking-[0.3em] opacity-[0.05] rotate-[-28deg] whitespace-nowrap"
             style={{ fontSize: 110, color: theme?.colors.primary ?? T.navy }}>
@@ -231,7 +231,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
           ? <p data-pub-header-hint className="mb-8 text-[11px] text-slate-300 italic">Company header is on — add your trade name in Brand Studio.</p>
           : null;
         return (
-          <div data-pub-header className="mb-10 pb-4 border-b flex items-baseline justify-between" style={{ borderColor: T.goldFaint }}>
+          <div data-pub-header data-page-zone="header" className="mb-10 pb-4 border-b flex items-baseline justify-between" style={{ borderColor: T.goldFaint }}>
             <p className="text-[13px] font-bold tracking-[0.12em] uppercase" style={{ color: A }}>{trade.value}</p>
             <div className="text-right text-[10px] leading-relaxed text-slate-400">
               {factsIn(company ?? [], "contact").slice(0, 2).map((f) => <span key={f.key} className="block">{f.value}</span>)}
@@ -239,6 +239,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
           </div>
         );
       })()}
+      <div data-page-zone="body">
       <header data-pub-doc data-pub-titlestyle={docTr.title} data-pub-cover={docTr.cover}
         onClick={onDocumentSelect ? () => onDocumentSelect() : undefined}
         title={onDocumentSelect ? "Style this document" : undefined}
@@ -443,6 +444,11 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
            are brand facts. A toggled region with no words renders nothing
            for the customer — and a quiet coaching line in the Studio
            (draftRibbon is the Studio/preview tell). ── */}
+      </div>
+
+      {/* ── v240 — THE FOOTER ZONE: the paper's tail. One anatomy, one
+           wrapper; every region inside still rides its own toggle. ── */}
+      <div data-page-zone="footer">
       {/* ── v239 — CONTACT: how to reach the company. ── */}
       {docTr.contact === "block" && (() => {
         const cs = factsIn(company ?? [], "contact");
@@ -505,6 +511,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
           <p data-pub-footer-hint className="mt-12 text-center text-[11px] text-slate-300 italic">Footer is on — add the line in Brand Studio.</p>
         ) : null;
       })()}
+      </div>
     </div>
   );
 }
