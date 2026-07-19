@@ -32,6 +32,7 @@ import { bootMoves } from "@/lib/moves/boot";
 import { bootLibraryKinds } from "@/lib/libraryKinds";
 import { canvasDragMimes } from "@/lib/libraryRegistry";
 import LandingDecision from "@/components/studio/LandingDecision";
+import VersionGenesis from "@/components/studio/VersionGenesis";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -56,7 +57,7 @@ import { ProductionModel } from "@/lib/productionLens";
 import { deriveObligations, ObligationModule, ModuleObligations } from "@/lib/obligations";
 import { loadSession, Session } from "@/lib/permissions";
 import { PRICING } from "@/lib/pricing";
-import { Proposal, ProposalVersion, VERSION_FLOW, createVersion } from "@/lib/proposals";
+import { Proposal, ProposalVersion, VERSION_FLOW, createVersion, createBlankVersion } from "@/lib/proposals";
 import {
   GuestCategory, Adjustment, PricedItem, MemoryPoint, PackageLine, isActive,
   loadGuestCategories, loadPriceMemory, computeVersionTotals, promoteToCatalog,
@@ -65,7 +66,7 @@ import {
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
 import { SectionType, loadSectionTypes, createSectionType } from "@/lib/sections";
 import { availableMomentTypes } from "@/lib/moments";
-import { promoteToBlueprint, getBlueprint, previewBlueprint, applyBlueprint, replaceWithBlueprint, applyBlueprintSubset, Blueprint, BlueprintPreview } from "@/lib/blueprints";
+import { promoteToBlueprint, getBlueprint, previewBlueprint, applyBlueprint, replaceWithBlueprint, applyBlueprintSubset, listBlueprints, Blueprint, BlueprintPreview } from "@/lib/blueprints";
 import { landingRoute } from "@/lib/landing";
 import { formatVersionDiff } from "@/lib/sheetChoice";
 
@@ -436,6 +437,18 @@ export default function StudioPage() {
   // ceremony without a decision); populated ⇒ the decision, and nothing
   // commits until chosen.
   const [landing, setLanding] = useState<{ bp: Blueprint; preview: BlueprintPreview } | null>(null);
+  // v220 — VERSION GENESIS: "＋ New Version" is a decision, not a default.
+  // No version exists before a route is chosen.
+  const [genesis, setGenesis] = useState<{ blueprints: { id: string; name: string }[] } | null>(null);
+  const [genesisBusy, setGenesisBusy] = useState(false);
+  async function commitGenesis(run: () => Promise<{ ok: boolean; detail?: string; id?: string }>) {
+    setGenesisBusy(true);
+    const r = await run();
+    setGenesisBusy(false);
+    if (!r.ok || !r.id) { setErr(r.detail ?? "Could not create the version."); return; }
+    setGenesis(null);
+    window.location.href = `/bookings/${b!.id}/studio/${r.id}`;
+  }
   const [landingBusy, setLandingBusy] = useState(false);
   async function openLanding(blueprintId: string, name: string) {
     // This function is defined above the page's !booking early-return, so
@@ -1011,11 +1024,8 @@ export default function StudioPage() {
             } },
           ...(!locked && versions.length > 0 ? [{ key: "newversion", label: "＋ New Version", disabled: busy,
             onPick: async () => {
-              const latest = versions[versions.length - 1];
-              setBusy(true);
-              const r = await createVersion(b, proposal, latest);
-              setBusy(false);
-              if (r.ok && r.id) window.location.href = `/bookings/${b.id}/studio/${r.id}`;
+              const bps = await listBlueprints();
+              setGenesis({ blueprints: bps.map((x) => ({ id: x.id, name: x.name })) });
             } }] : []),
           { key: "notes", label: "🗒 Notes", onPick: () => setTab("notes") },
           { key: "files", label: "📎 Files", onPick: () => setTab("files") },
@@ -1056,7 +1066,7 @@ export default function StudioPage() {
         />
       )}
 
-      {/* ── v219 THE MOMENT PICKER — the Proposal's "+ moment" ceremony.
+      {/* ── v219 THE SECTION PICKER (user-facing vocabulary: "section"; docs retain "moment") — the Proposal's "+ moment" ceremony.
            Offers active types not already on this version (a present type
            would be a duplicate-in-waiting), plus the coining of a new one.
            Commits nothing until chosen; Esc/away cancels. ── */}
@@ -1065,8 +1075,8 @@ export default function StudioPage() {
              onClick={() => setSectionPicker(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-[380px] max-h-[70vh] overflow-y-auto p-4"
                onClick={(e) => e.stopPropagation()}>
-            <p className="text-[13.5px] font-semibold mb-0.5" style={{ color: "#1F2A37" }}>Add a moment</p>
-            <p className="text-[11px] text-slate-400 mb-3">Cocktail Hour, Dinner, Dessert — the evening's chapters.</p>
+            <p className="text-[13.5px] font-semibold mb-0.5" style={{ color: "#1F2A37" }}>Add a section</p>
+            <p className="text-[11px] text-slate-400 mb-3">Cocktail Hour, Dinner, Dessert — the proposal's chapters.</p>
             <div className="space-y-1 mb-3">
               {availableMomentTypes(sectionTypes, vSections).map((t) => (
                 <button key={t.id} data-moment-option={t.id}
@@ -1075,7 +1085,7 @@ export default function StudioPage() {
                   style={{ borderColor: "#E7EDF5", color: "#1F2A37" }}>{t.name}</button>
               ))}
               {availableMomentTypes(sectionTypes, vSections).length === 0 && (
-                <p className="text-[11px] text-slate-400 px-1">Every existing moment type is already on this version.</p>
+                <p className="text-[11px] text-slate-400 px-1">Every existing section type is already on this version.</p>
               )}
             </div>
             <form className="flex gap-2" onSubmit={(e) => {
@@ -1086,7 +1096,7 @@ export default function StudioPage() {
               void (async () => {
                 const maxPos = sectionTypes.reduce((m, t) => Math.max(m, t.position), 0);
                 const created = await createSectionType(name, maxPos);
-                if (!created) { setErr("Could not create that moment type."); return; }
+                if (!created) { setErr("Could not create that section type."); return; }
                 setSectionTypes((prev) => prev.concat([created]));
                 await addSectionType(created.id);
               })();
@@ -1101,6 +1111,25 @@ export default function StudioPage() {
               className="mt-3 text-[11px] text-slate-400 hover:text-slate-700">Cancel</button>
           </div>
         </div>
+      )}
+
+      {genesis && (
+        <VersionGenesis
+          currentLabel={`v${version.version}`}
+          blueprints={genesis.blueprints}
+          busy={genesisBusy}
+          onRevise={() => void commitGenesis(() => createVersion(b, proposal, version))}
+          onBlank={() => void commitGenesis(() => createBlankVersion(b, proposal))}
+          onBlueprint={(bpId) => void commitGenesis(async () => {
+            const made = await createBlankVersion(b, proposal);
+            if (!made.ok || !made.id) return made;
+            const bp = await getBlueprint(bpId);
+            if (!bp) return { ok: false, detail: "That blueprint's row is gone." };
+            const applied = await applyBlueprint(b, made.id, bp);
+            return applied.ok ? { ok: true, id: made.id } : { ok: false, detail: applied.detail };
+          })}
+          onCancel={() => setGenesis(null)}
+        />
       )}
 
       {landing && (
@@ -1262,6 +1291,13 @@ export default function StudioPage() {
                   onPatchItem={(id, patch) => patchItem(id, patch as Partial<PricedItem>)}
                   onAddComponent={(chapterId) => addComponentIn(chapterId === "__none__" ? null : chapterId)}
                   onAddChapter={() => setSectionPicker(true)}
+                  onComponentAction={(compId) => {
+                    const c = comps.filter((x) => x.id === compId)[0];
+                    if (c) void deleteComp(c).then(() => { if (selectedId === compId) setSelectedId(null); });
+                  }}
+                  onItemAction={(itemId) => {
+                    void deleteItem(itemId).then(() => { if (selectedId === itemId) setSelectedId(null); });
+                  }}
                   onChapterAction={(chId, action) => {
                     const g = { sectionTypeId: chId,
                       name: (sectionTypes.filter((t) => t.id === chId)[0]?.name) ?? "this moment",

@@ -78,11 +78,16 @@ export function buildDesignStage(
   const chapters: StageChapter[] = [];
   for (const s of sections) {
     const mine = comps.filter((c) => c.section_type_id === s.id).sort((a, b) => a.position - b.position);
-    if (!mine.length) continue;
+    // v220 — EMPTY-IS-INFORMATION (binding rule): an empty section RENDERS.
+    // The `if (!mine.length) continue;` that stood here made "＋ section"
+    // appear to lie — the version_sections row was created and the maker's
+    // lens silently refused to show it. Availability never depends on
+    // content; an empty chapter is a true statement ("Dinner exists and has
+    // nothing yet") and carries the section's own + component affordance.
     const built = mine.map(toComp);
     chapters.push({
       id: s.id, name: s.name, components: built,
-      subtotal: built.reduce((n, c) => n + (c.subtotal ?? 0), 0) || null,
+      subtotal: built.length ? (built.reduce((n, c) => n + (c.subtotal ?? 0), 0) || null) : null,
     });
   }
   const orphans = comps.filter((c) => !c.section_type_id || !sections.some((s) => s.id === c.section_type_id));

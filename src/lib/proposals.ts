@@ -129,6 +129,25 @@ export async function createVersion(
   return { ok: true, id: v.id };
 }
 
+/** v220 — a genuinely EMPTY version: the row and nothing else. No sections,
+ *  no components, no items, no carried guests or adjustments. Provenance is
+ *  explicit in the activity log: "(started blank)". */
+export async function createBlankVersion(
+  booking: { id: string; invoice_num: string },
+  proposal: Proposal,
+): Promise<Outcome> {
+  const { data: maxRow } = await supabase.from("proposal_versions")
+    .select("version").eq("proposal_id", proposal.id)
+    .order("version", { ascending: false }).limit(1).maybeSingle();
+  const nextN = ((maxRow as { version: number } | null)?.version ?? 0) + 1;
+  const { data: v, error } = await supabase.from("proposal_versions")
+    .insert({ proposal_id: proposal.id, version: nextN }).select("id").single();
+  if (error || !v) return { ok: false, detail: error?.message ?? "version insert failed" };
+  await logActivity(booking.id, booking.invoice_num, "Proposal Version Created",
+    `🎨 ${proposal.title} v${nextN} (started blank)`);
+  return { ok: true, id: v.id };
+}
+
 /** Copy all components (+items +requirements) within one booking, from one
  *  version (or the operational set when fromVersionId is null) to another.
  *  copied_from PASSES THROUGH — see header. */

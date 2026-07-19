@@ -85,6 +85,11 @@ export interface DesignStageProps {
    *  from a quiet menu on its head. The HOST owns the ceremony (populated
    *  moments confirm); this component only advertises and reports. */
   onChapterAction?: (chapterId: string, action: "remove" | "up" | "down") => void;
+  /** v220 — removal advertised ON the object (the Inspector zone remains the
+   *  contextual second door). The Stage advertises and reports; the host
+   *  owns the ceremony. */
+  onComponentAction?: (componentId: string, action: "remove") => void;
+  onItemAction?: (itemId: string, action: "remove") => void;
   /** Item creation, per category. Absent = affordance hidden (read-only). */
   onAddItem?: (componentId: string, categoryKey: string | null) => void;
   money: (n: number) => string;
@@ -326,6 +331,12 @@ function ItemRow({ it, comp, p, drag }: {
         onClick={(e) => { e.stopPropagation(); p.onPatchItem(it.id, { show_on_proposal: !it.visible }); }}
         onMouseDown={(e) => e.stopPropagation()}
         className={`text-[11px] w-4 shrink-0 transition-opacity ${it.visible ? "opacity-25 group-hover:opacity-100 focus:opacity-100" : ""}`}>{it.visible ? "👁" : "🚫"}</button>
+      {p.onItemAction && p.mayEdit && (
+        <button data-item-remove={it.id} title="Remove item…"
+          onClick={(e) => { e.stopPropagation(); p.onItemAction?.(it.id, "remove"); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="text-[11px] w-4 shrink-0 text-slate-300 hover:text-[#B91C1C] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity">×</button>
+      )}
     </div>
   );
 }
@@ -454,6 +465,7 @@ function ComponentBlock({ c, p, chapterId, drag }: {
 
   const me: NodePayload = { kind: "component", id: c.id, parentId: chapterId, label: c.title };
   const dim = p.focusedId && p.focusedId !== c.id;
+  const [menu, setMenu] = useState(false);
 
   // While a COMPONENT is in flight the Canvas is a destination map — item
   // lists vanish because they are not part of the decision.
@@ -503,6 +515,21 @@ function ComponentBlock({ c, p, chapterId, drag }: {
           className="text-[10px] bg-transparent outline-none text-slate-400 w-[64px] opacity-25 group-hover:opacity-100 focus:opacity-100 transition-opacity" title="What the customer sees">
           <option value="items">items</option><option value="description">description</option><option value="title_only">title only</option>
         </select>
+        {p.onComponentAction && p.mayEdit && !drag.live && (
+          <span className="relative" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+            <button data-component-menu-btn={c.id} aria-expanded={menu}
+              onClick={() => setMenu((m) => !m)}
+              className="text-[12px] text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity px-1"
+              title="This component — remove">⋯</button>
+            {menu && (
+              <span data-component-menu className="absolute right-0 top-full mt-1 z-30 w-48 bg-white rounded-lg shadow-xl ring-1 ring-[#E7EDF5] py-1 block">
+                <button data-component-act="remove"
+                  onClick={() => { setMenu(false); p.onComponentAction?.(c.id, "remove"); }}
+                  className="w-full text-left px-3 py-1.5 text-[12px] text-[#B91C1C] hover:bg-[#FEF2F2]">Remove component…</button>
+              </span>
+            )}
+          </span>
+        )}
       </div>
 
       {!bodyHidden && c.note && (
@@ -624,7 +651,7 @@ export default function DesignStage(p: DesignStageProps) {
         {p.onAddChapter && p.mayEdit && (
           <button data-add-moment onClick={() => p.onAddChapter?.()}
             className="mt-4 text-[12px] font-semibold text-slate-400 hover:text-[#102F56]">
-            ＋ or begin with a moment — Cocktail Hour, Dinner…
+            ＋ or begin with a section — Cocktail Hour, Dinner…
           </button>
         )}
       </div>
@@ -672,7 +699,7 @@ export default function DesignStage(p: DesignStageProps) {
                   <button data-chapter-menu-btn={ch.id} aria-expanded={chMenu === ch.id}
                     onClick={() => setChMenu(chMenu === ch.id ? null : ch.id)}
                     className="text-[12px] text-slate-300 hover:text-slate-600 opacity-0 group-hover/chhdr:opacity-100 focus:opacity-100 aria-expanded:opacity-100 transition-opacity px-1"
-                    title="This moment — reorder or remove">⋯</button>
+                    title="This section — reorder or remove">⋯</button>
                   {chMenu === ch.id && (
                     <span data-chapter-menu className="absolute right-0 top-full mt-1 z-30 w-44 bg-white rounded-lg shadow-xl ring-1 ring-[#E7EDF5] py-1 block">
                       <button data-chapter-act="up" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "up"); }}
@@ -680,7 +707,7 @@ export default function DesignStage(p: DesignStageProps) {
                       <button data-chapter-act="down" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "down"); }}
                         className="w-full text-left px-3 py-1.5 text-[12px] text-slate-600 hover:bg-[#F4F9FF]">↓ Move later</button>
                       <button data-chapter-act="remove" onClick={() => { setChMenu(null); p.onChapterAction?.(ch.id, "remove"); }}
-                        className="w-full text-left px-3 py-1.5 text-[12px] text-[#B91C1C] hover:bg-[#FEF2F2]">Remove moment…</button>
+                        className="w-full text-left px-3 py-1.5 text-[12px] text-[#B91C1C] hover:bg-[#FEF2F2]">Remove section…</button>
                     </span>
                   )}
                 </span>
@@ -709,7 +736,7 @@ export default function DesignStage(p: DesignStageProps) {
         <div className="text-center pt-2 pb-6">
           <button data-add-moment onClick={() => p.onAddChapter?.()}
             className="text-[11.5px] font-semibold text-slate-300 hover:text-[#102F56] transition-colors">
-            ＋ moment
+            ＋ section
           </button>
         </div>
       )}
