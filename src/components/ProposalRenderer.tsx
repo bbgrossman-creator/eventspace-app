@@ -132,10 +132,15 @@ function ChoiceCard({ cg }: { cg: PresentationChoiceGroup }) {
 // callers render exactly the historical dress: every themed value falls back
 // to the constants that were always here. The theme decides how things look
 // — nothing here lets it decide what exists.
-import { ResolvedTheme } from "@/lib/publication";
+import { ResolvedTheme, effectiveSectionTreatment, SectionTreatment } from "@/lib/publication";
 
-export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme }: {
+export default function ProposalRenderer({ model, draftRibbon = true, xray = false, theme, onSectionSelect, selectedSectionId }: {
   model: PresentationModel; draftRibbon?: boolean;
+  /** v226 THE CANVAS — Studio-only interactivity: the paper is the primary
+   *  interaction surface; clicking a section head selects its PRESENTATION
+   *  IDENTITY. Preview/share callers omit these and render inert. */
+  onSectionSelect?: (sectionId: string) => void;
+  selectedSectionId?: string | null;
   /** v196: chrome only. The MODEL already decided what exists — an internal
    *  item is absent from a non-xray model, so this flag cannot leak one. It
    *  only labels the page as an authoring surface. */
@@ -169,11 +174,44 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
       {model.intro && <p className="text-[15px] leading-relaxed text-slate-600 mb-10 whitespace-pre-wrap">{model.intro}</p>}
 
       <div className="space-y-10">
-        {model.sections.map((section, si) => (
-          <section key={si}>
-            <div className="flex items-baseline justify-between pb-1.5 mb-4 border-b" style={{ borderColor: T.goldSoft }}>
-              <h2 className="font-display font-bold text-xl tracking-tight" style={H}>{section.name}</h2>
-              {section.subtotalLabel && <span className="text-sm font-semibold text-slate-500">{section.subtotalLabel}</span>}
+        {model.sections.map((section, si) => {
+          // v226 THE CANVAS — the section's effective dress: semantic
+          // treatments (document defaults overlaid by this identity's own
+          // entry). Unthemed callers keep the historical section rendering.
+          const tr: Required<SectionTreatment> = theme
+            ? effectiveSectionTreatment(theme, section.id)
+            : { divider: "rule", heading: "standard", spacing: "standard" };
+          const gap = theme ? theme.margins.sectionGap : 40;
+          const mb = tr.spacing === "compact" ? Math.round(gap * 0.6) : tr.spacing === "airy" ? Math.round(gap * 1.5) : gap;
+          const selectable = !!onSectionSelect;
+          const selected = selectedSectionId === section.id;
+          return (
+          <section key={si} data-pub-section={section.id} data-pub-spacing={tr.spacing} style={{ marginBottom: mb }}>
+            {si > 0 && tr.divider !== "none" && (
+              <div data-pub-divider={tr.divider} aria-hidden className="mb-6 flex justify-center">
+                {tr.divider === "rule" && <span className="block h-px w-full" style={{ background: T.goldSoft }} />}
+                {tr.divider === "double" && (
+                  <span className="block w-full">
+                    <span className="block h-px w-full mb-[3px]" style={{ background: T.goldSoft }} />
+                    <span className="block h-px w-full" style={{ background: T.goldSoft }} />
+                  </span>
+                )}
+                {tr.divider === "dots" && <span className="tracking-[0.6em] text-[12px]" style={{ color: "var(--pub-accent, #C9A34E)" }}>···</span>}
+              </div>
+            )}
+            <div
+              data-pub-headstyle={tr.heading}
+              onClick={selectable ? () => onSectionSelect(section.id) : undefined}
+              className={`${tr.heading === "centered" ? "text-center " : "flex items-baseline justify-between "}pb-1.5 mb-4 border-b${selectable ? " cursor-pointer rounded-sm" : ""}${selected ? " ring-2 ring-[#4A9EFF]/60 ring-offset-2" : ""}`}
+              style={{ borderColor: T.goldSoft }}
+              title={selectable ? "Style this section" : undefined}>
+              {tr.heading === "eyebrow" && (
+                <span className="block w-full text-[10px] font-bold uppercase tracking-[0.25em]" style={{ color: "var(--pub-accent, #C9A34E)" }}>{section.name}</span>
+              )}
+              {tr.heading !== "eyebrow" && (
+                <h2 className="font-display font-bold text-xl tracking-tight" style={H}>{section.name}</h2>
+              )}
+              {section.subtotalLabel && tr.heading !== "centered" && <span className="text-sm font-semibold text-slate-500">{section.subtotalLabel}</span>}
             </div>
 
             <div className="space-y-6">
@@ -210,7 +248,7 @@ export default function ProposalRenderer({ model, draftRibbon = true, xray = fal
               {section.choiceGroups.map((cg, gi) => <ChoiceCard key={`cg-${gi}`} cg={cg} />)}
             </div>
           </section>
-        ))}
+        ); })}
       </div>
 
       {/* ── v195: the ending, made intentional ── */}

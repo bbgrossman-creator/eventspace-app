@@ -81,6 +81,10 @@ export interface PresentationBand {
   components: PresentationComponent[];
 }
 export interface PresentationSection {
+  /** v226 — the PRESENTATION IDENTITY treatments attach to (§6.2):
+   *  the section-as-published, keyed by its section type within this
+   *  publication ("__none__" for the unassigned tail). */
+  id: string;
   name: string;
   bands: PresentationBand[];
   choiceGroups: PresentationChoiceGroup[];
@@ -621,6 +625,7 @@ export async function buildPresentationModel(
 
     if (bands.length === 0 && groups.length === 0) continue;   // v195 P1.8
     sections.push({
+      id: sid,
       name: sid === "__none__" ? "More" : secName[sid],
       bands, choiceGroups: groups,
       subtotalLabel: visibility === "sections" ? money(secTotal) : null,

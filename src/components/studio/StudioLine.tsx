@@ -106,7 +106,13 @@ export default function StudioLine(p: {
   const activeDef = p.lenses.filter((l) => l.key === p.active)[0] ?? null;
 
   return (
-    <div data-line className="shrink-0 bg-white border-b px-3 py-2 flex items-center gap-2 flex-wrap"
+    // v226 — the Line sits ABOVE the drawer's click-away plane (z-30): its
+    // controls are always live. The room bar is navigation BETWEEN rooms —
+    // walking into another room is one click, never "close, then open"; and
+    // Save look is reachable while a room is open. Clicks on the paper still
+    // land on the catcher (returning to the paper IS the dismissal), and the
+    // Esc law is untouched.
+    <div data-line className="shrink-0 bg-white border-b px-3 py-2 flex items-center gap-2 flex-wrap relative z-40"
          style={{ borderColor: T.rule }}>
       {/* ── identity ── */}
       <a href={p.backHref} className="text-slate-400 hover:text-slate-600 text-sm shrink-0">‹</a>

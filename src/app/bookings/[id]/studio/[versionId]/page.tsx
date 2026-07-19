@@ -34,8 +34,10 @@ import { canvasDragMimes } from "@/lib/libraryRegistry";
 import LandingDecision from "@/components/studio/LandingDecision";
 import VersionGenesis from "@/components/studio/VersionGenesis";
 import SectionPicker from "@/components/studio/SectionPicker";
-import PresentationControls from "@/components/studio/PresentationControls";
-import { ThemeDelta, ResolvedTheme, resolveTheme, builtInTheme } from "@/lib/publication";
+import PresentationControls, { PubRoom } from "@/components/studio/PresentationControls";
+import PresentationRooms from "@/components/studio/PresentationRooms";
+import TreatmentToolbar from "@/components/studio/TreatmentToolbar";
+import { ThemeDelta, ResolvedTheme, resolveTheme, builtInTheme, mergeDelta, effectiveSectionTreatment } from "@/lib/publication";
 import { submitBatch, emptyState, ConfigState } from "@/lib/configure";
 import { loadConfigState, supabasePersistAdapter, instantiateComponent } from "@/lib/configureSupabase";
 import DefinitionView from "@/components/studio/DefinitionView";
@@ -286,6 +288,12 @@ export default function StudioPage() {
   const [pubOverride, setPubOverride] = useState<ThemeDelta | null>(null);
   const [pubDirty, setPubDirty] = useState(false);
   const [pubBusy, setPubBusy] = useState(false);
+  // v226 THE CANVAS — one thing open, always: a ROOM or a selected
+  // presentation identity, never both (§6.1/§6.3); both die on lens change.
+  const [pubRoom, setPubRoom] = useState<PubRoom | null>(null);
+  const [pubSection, setPubSection] = useState<string | null>(null);
+  useEffect(() => { setPubRoom(null); setPubSection(null); }, [lens]);
+  const patchPub = (d: ThemeDelta) => { setPubOverride((prev) => mergeDelta(prev, d)); setPubDirty(true); };
   useEffect(() => {
     setPubThemeKey((version?.theme_key as string | null) ?? null);
     setPubOverride((version?.theme_override as ThemeDelta | null) ?? null);
@@ -1044,13 +1052,11 @@ export default function StudioPage() {
         onXray={setXray}
         lensControls={lensEdits(activeLensDef, "presentation") ? (
           <PresentationControls
-            themeKey={pubThemeKey}
-            override={pubOverride}
+            openRoom={pubRoom}
             dirty={pubDirty}
             busy={pubBusy}
             canEdit={!locked && !!session?.perms.includes("bookings.edit")}
-            onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
-            onOverride={(next) => { setPubOverride(next); setPubDirty(true); }}
+            onOpenRoom={(r) => { setPubSection(null); setPubRoom(r); }}
             onSave={() => void savePublication()}
             onDiscard={() => {
               setPubThemeKey((version?.theme_key as string | null) ?? null);
@@ -1138,6 +1144,15 @@ export default function StudioPage() {
         />
       )}
 
+
+      {lens === "customer" && pubSection && stage && (
+        <TreatmentToolbar
+          sectionName={(stage.sections.filter((x) => x.id === pubSection)[0]?.name) ?? "Section"}
+          effective={effectiveSectionTreatment(resolvedPub, pubSection)}
+          onPick={(patch) => patchPub({ treatments: { sections: { [pubSection]: patch } } })}
+          onClose={() => setPubSection(null)}
+        />
+      )}
 
       {genesis && (
         <VersionGenesis
@@ -1352,7 +1367,11 @@ export default function StudioPage() {
               )}
               {lens === "customer" && (
                 stage
-                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub} />
+                  ? <ProposalRenderer model={stage} xray={xray} draftRibbon theme={resolvedPub}
+                      onSectionSelect={!locked && session?.perms.includes("bookings.edit")
+                        ? (sid) => { setPubRoom(null); setPubSection(sid === pubSection ? null : sid); }
+                        : undefined}
+                      selectedSectionId={pubSection} />
                   : <p className="text-center text-[12px] text-slate-400 py-16">Nothing to show on this lens yet.</p>
               )}
               {lens === "production" && (
@@ -1418,7 +1437,24 @@ export default function StudioPage() {
 
       {/* ── THE INSPECTOR DRAWER — selection is interrogation (§6). The
            drawer and the selection live and die together. ── */}
-      <Drawer open={tab === "build" && !!inspected && !!activeLensDef?.edits}
+      {/* v226 THE ROOMS — one summoned surface, one identity (§6.1); the
+           Drawer's capture-phase Esc law is inherited whole. */}
+      <Drawer open={lensEdits(activeLensDef, "presentation") && !!pubRoom}
+        title={pubRoom === "appearance" ? "Appearance" : pubRoom === "typography" ? "Typography" : pubRoom === "palette" ? "Palette" : "Paper"}
+        onClose={() => setPubRoom(null)}>
+        {pubRoom && (
+          <PresentationRooms
+            room={pubRoom}
+            themeKey={pubThemeKey}
+            override={pubOverride}
+            resolved={resolvedPub}
+            onThemeKey={(k) => { setPubThemeKey(k); setPubDirty(true); }}
+            onPatch={patchPub}
+          />
+        )}
+      </Drawer>
+
+      <Drawer open={tab === "build" && !!inspected && lensEdits(activeLensDef, "content")}
         title="Inspector" onClose={() => setSelectedId(null)}>
         {inspected && (
           <Inspector

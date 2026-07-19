@@ -57,6 +57,17 @@ export const fontPairing = (key: string | null | undefined): FontPairing | null 
  *  cover, dividers, photography, header, footer, watermark, print) are typed
  *  when their slices land; shipping them then is a delta change, never a
  *  resolution change. */
+/** §6.2 — PRESENTATION TREATMENTS: semantic dress for presentation
+ *  identities. Named options only, never free-form styling. Document-level
+ *  sets the publication's defaults; per-section entries override per leaf.
+ *  (Component/item treatments are reserved by scope ruling — adding them is
+ *  a delta change, never a resolution change.) */
+export interface SectionTreatment {
+  divider?: "rule" | "double" | "dots" | "none";
+  heading?: "standard" | "eyebrow" | "centered";
+  spacing?: "compact" | "standard" | "airy";
+}
+
 export interface ThemeDelta {
   fonts?: { pairing?: string };
   colors?: { primary?: string; accent?: string; ink?: string };
@@ -66,6 +77,7 @@ export interface ThemeDelta {
    *  is stored.) */
   paper?: { tint?: string; texture?: string };
   margins?: { measure?: number; sectionGap?: number };
+  treatments?: { document?: SectionTreatment; sections?: Record<string, SectionTreatment> };
 }
 
 /** The complete resolved theme — every implemented leaf present. */
@@ -74,6 +86,7 @@ export interface ResolvedTheme {
   colors: { primary: string; accent: string; ink: string };
   paper: { tint: string; texture: string };
   margins: { measure: number; sectionGap: number };
+  treatments: { document: Required<SectionTreatment>; sections: Record<string, SectionTreatment> };
 }
 
 export type ThemeRung = "system" | "brand" | "theme" | "override";
@@ -93,6 +106,7 @@ export const SYSTEM_DEFAULT_THEME: Required<ThemeDelta> = {
   colors: { primary: "#102F56", accent: "#C9A34E", ink: "#1F2A37" },
   paper: { tint: "#FFFFFF", texture: "none" },
   margins: { measure: 760, sectionGap: 40 },
+  treatments: { document: { divider: "rule", heading: "standard", spacing: "standard" }, sections: {} },
 };
 
 /** THE LADDER, resolved. One pure walk; per-leaf most-specific-wins; the
@@ -123,12 +137,29 @@ export function resolveTheme(
   const tint = leaf("paper", "tint"), texture = leaf("paper", "texture");
   const measure = leaf("margins", "measure"), gap = leaf("margins", "sectionGap");
 
+  // Treatments: document per-leaf through the rungs; section dicts merge
+  // rung over rung, per id, per leaf. (Scalar provenance covers the ladder's
+  // spirit; per-section provenance lands with the x-ray ink slice.)
+  const doc: Required<SectionTreatment> = { ...(SYSTEM_DEFAULT_THEME.treatments!.document as Required<SectionTreatment>) };
+  const secs: Record<string, SectionTreatment> = {};
+  for (const r of rungs) {
+    const t = r.d.treatments;
+    if (!t) continue;
+    if (t.document) for (const k of Object.keys(t.document) as (keyof SectionTreatment)[]) {
+      if (t.document[k] !== undefined) (doc as Record<string, unknown>)[k] = t.document[k];
+    }
+    if (t.sections) for (const id of Object.keys(t.sections)) {
+      secs[id] = { ...(secs[id] ?? {}), ...t.sections[id] };
+    }
+  }
+
   return {
     theme: {
       fonts: { pairing: pairing.key, headingStack: pairing.headingStack, bodyStack: pairing.bodyStack },
       colors: { primary: primary.v as string, accent: accent.v as string, ink: ink.v as string },
       paper: { tint: tint.v as string, texture: texture.v as string },
       margins: { measure: measure.v as number, sectionGap: gap.v as number },
+      treatments: { document: doc, sections: secs },
     },
     provenance: {
       fonts: { pairing: fp.rung },
@@ -192,5 +223,41 @@ export function mergeDelta(base: ThemeDelta | null, patch: ThemeDelta): ThemeDel
   if (patch.colors) out.colors = { ...(out.colors ?? {}), ...patch.colors };
   if (patch.paper) out.paper = { ...(out.paper ?? {}), ...patch.paper };
   if (patch.margins) out.margins = { ...(out.margins ?? {}), ...patch.margins };
+  if (patch.treatments) {
+    const bt = out.treatments ?? {};
+    const nt: NonNullable<ThemeDelta["treatments"]> = { ...bt };
+    if (patch.treatments.document) nt.document = { ...(bt.document ?? {}), ...patch.treatments.document };
+    if (patch.treatments.sections) {
+      nt.sections = { ...(bt.sections ?? {}) };
+      for (const id of Object.keys(patch.treatments.sections)) {
+        nt.sections[id] = { ...(nt.sections[id] ?? {}), ...patch.treatments.sections[id] };
+      }
+    }
+    out.treatments = nt;
+  }
   return out;
 }
+
+/** §6.2 — the effective dress of one section identity: the document's
+ *  defaults, overlaid by that section's own entry, per leaf. */
+export function effectiveSectionTreatment(theme: ResolvedTheme, sectionId: string): Required<SectionTreatment> {
+  return { ...theme.treatments.document, ...(theme.treatments.sections[sectionId] ?? {}) } as Required<SectionTreatment>;
+}
+
+/** §6.2/§6.3 — the SEMANTIC registry the contextual toolbar renders from.
+ *  Treatments are named options, never free-form styling; chrome renders
+ *  THIS, and asks no identity any question directly. */
+export const TREATMENT_OPTIONS: {
+  key: keyof SectionTreatment; label: string;
+  options: { value: string; label: string }[];
+}[] = [
+  { key: "divider", label: "Divider", options: [
+    { value: "rule", label: "Rule" }, { value: "double", label: "Double" },
+    { value: "dots", label: "Dots" }, { value: "none", label: "None" } ] },
+  { key: "heading", label: "Heading", options: [
+    { value: "standard", label: "Standard" }, { value: "eyebrow", label: "Eyebrow" },
+    { value: "centered", label: "Centered" } ] },
+  { key: "spacing", label: "Spacing", options: [
+    { value: "compact", label: "Compact" }, { value: "standard", label: "Standard" },
+    { value: "airy", label: "Airy" } ] },
+];
