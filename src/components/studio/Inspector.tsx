@@ -110,9 +110,9 @@ export type InspectorFacet = (typeof INSPECTOR_FACETS)[number];
 
 // ─── v238 THE FACETS — each a pure renderer; ORDER is the lens's, never ours ───
 const Line = ({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) => (
-  <div className="mb-2">
-    <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
-    <div className={`text-[12.5px] ${strong ? "font-semibold" : ""}`} style={{ color: T.ink }}>{value}</div>
+  <div className="mb-3">
+    <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">{label}</div>
+    <div className={`text-[12.5px] leading-relaxed ${strong ? "font-semibold" : ""}`} style={{ color: T.ink }}>{value}</div>
   </div>
 );
 
@@ -246,7 +246,7 @@ export default function Inspector(p: InspectorProps) {
       })}
 
       {p.onRemove && p.canEdit && (
-        <div className="px-3 py-3 mt-2 border-t" style={{ borderColor: T.rule }}>
+        <div className="px-3 pt-4 pb-5 mt-8 border-t" style={{ borderColor: T.rule }}>
           <button data-inspector-remove onClick={p.onRemove}
             className="text-[11.5px] font-semibold text-[#B91C1C] hover:underline">
             {p.removeLabel ?? "Remove from this design…"}

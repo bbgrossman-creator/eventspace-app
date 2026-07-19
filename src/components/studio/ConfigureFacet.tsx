@@ -41,7 +41,7 @@ export interface ConfigureFacetProps {
 }
 
 export default function ConfigureFacet(p: ConfigureFacetProps) {
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [open, setOpen] = useState<Record<string, boolean>>({ menu: true });   // v244 — Menu promoted
   const [staged, setStaged] = useState<{ schemeId: string; lines: string[] } | null>(null);
   const [resetStage, setResetStage] = useState<string[] | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -83,11 +83,13 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
     id: string; label: string; summary: React.ReactNode; children?: React.ReactNode;
   }) => (
     <div className="border-t" style={{ borderColor: T.rule }} data-facet-row={id}>
-      <button className="w-full flex items-baseline gap-2 px-3 py-2 text-left hover:bg-slate-50"
+      {/* v244 — rhythm: the SUMMARY is the information and wears the ink;
+          the label recedes to an eyebrow. Rows breathe (py-2.5). */}
+      <button className="w-full flex items-baseline gap-2 px-3 py-2.5 text-left hover:bg-slate-50"
               onClick={() => setOpen((o) => ({ ...o, [id]: !o[id] }))} data-facet-toggle={id}>
         <span className="text-[9px] text-slate-400">{open[id] ? "▾" : "▸"}</span>
-        <span className="text-[12px] font-semibold" style={{ color: T.ink }}>{label}</span>
-        <span className="text-[11px] text-slate-500 truncate" data-facet-summary={id}>{summary}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 w-14 shrink-0">{label}</span>
+        <span className="text-[12px] truncate" style={{ color: T.ink }} data-facet-summary={id}>{summary}</span>
       </button>
       {open[id] && children && <div className="px-4 pb-3">{children}</div>}
     </div>
@@ -240,7 +242,9 @@ export default function ConfigureFacet(p: ConfigureFacetProps) {
       </Row>
 
       {/* ── Menu: a doorway, never a second editor ── */}
-      <Row id="menu" label="Menu" summary={<>{p.itemCount} item{p.itemCount === 1 ? "" : "s"} · on the canvas</>}>
+      <Row id="menu" label="Menu" summary={<>
+        <span className="font-semibold">{p.itemCount} item{p.itemCount === 1 ? "" : "s"}</span>
+        <span className="text-slate-400"> · on the canvas</span></>}>
         <button data-menu-doorway className="text-[11px] underline text-slate-500" onClick={p.onOpenCanvas}>
           Selections live on the canvas — edit them there.
         </button>

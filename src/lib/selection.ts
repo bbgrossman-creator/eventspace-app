@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 export const SELECTION = {
   accent: "#4A90E2",          // the shared accent — bar, seam, tick
-  wash: "#F4F8FE",            // the warm wash behind the active thing
+  wash: "#ECF3FD",            // the warm wash behind the active thing (v244: +8% presence)
   transition: "background-color 150ms ease, box-shadow 150ms ease",
 } as const;
 
