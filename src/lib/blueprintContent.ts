@@ -28,10 +28,16 @@
 // divergence · no promotion · no Library registration · no legacy v182
 // table.
 // ═══════════════════════════════════════════════════════════════════════════
+// v257 AMENDMENT (BP-7): the shape's import set grows by exactly one — the
+// condition law. The v252 pin is amended in-suite, dated.
+import { BlueprintCondition, validateCondition, CONDITION_UNITS } from "./blueprintConditions";
 import {
   PortablePresentation, PresentationProvenance,
   portablePresentation, makeProvenance, fingerprintPortable,
 } from "./portable";
+
+export type { BlueprintCondition };
+export { CONDITION_UNITS };
 
 export { portablePresentation, makeProvenance, fingerprintPortable };
 export type { PortablePresentation, PresentationProvenance };
@@ -61,6 +67,9 @@ export interface BlueprintChapter {
   title: string;
   prose: string;
   sections: BlueprintSection[];
+  /** v257 §BP-7 — COPIED authored structure; RESOLVED once at
+   *  instantiation into the branch map. Never survives into the Design. */
+  condition?: BlueprintCondition;
 }
 
 export interface BlueprintSection {
@@ -71,6 +80,8 @@ export interface BlueprintSection {
    *  the v241 match-law key, shared knowledge, never duplicated. */
   role: string | null;
   entries: ComponentEntry[];
+  /** v257 — copied; resolved once at instantiation (branch map). */
+  condition?: BlueprintCondition;
 }
 
 export interface ComponentEntry {
@@ -96,6 +107,8 @@ export interface ComponentEntry {
   pricingIntent: PricingIntent | null;
   /** COPIED — authored notes. */
   notes: string;
+  /** v257 — copied; resolved once at instantiation (branch map). */
+  condition?: BlueprintCondition;
 }
 
 export interface AuthoredConfigDelta {
@@ -108,6 +121,8 @@ export interface ItemSelection {
   name: string;
   include: boolean;
   note: string;
+  /** v257 — copied; resolved once at instantiation (branch map). */
+  condition?: BlueprintCondition;
 }
 
 export interface ChoiceGroupAuthorship {
@@ -246,6 +261,13 @@ export const FIELD_TREATMENTS: Record<string, FieldTreatment> = {
   "parameters[].type": "copied",
   "parameters[].required": "copied",
   "parameters[].options": "copied",
+  // v257 — the four closed attachment points: COPIED authored structure
+  // whose RESOLUTION is the branch map at instantiation. Interior shape is
+  // validated by the condition law itself (OPAQUE_SUBTREES below).
+  "structure[].condition": "copied",
+  "structure[].sections[].condition": "copied",
+  "structure[].sections[].entries[].condition": "copied",
+  "structure[].sections[].entries[].itemSelections[].condition": "copied",
   // ── NAMED ABSENCES — resolved at instantiation or later; NO field
   //    exists for these and the validator refuses their appearance. ──
   "structure[].sections[].entries[].definitionRevision": "resolved",
@@ -253,7 +275,7 @@ export const FIELD_TREATMENTS: Record<string, FieldTreatment> = {
   "structure[].sections[].entries[].price": "resolved",
   "companyFacts": "resolved",
   "identity": "resolved",
-  "conditions": "resolved", // §10 shape reserved; authorable in BP-7, evaluated at instantiation
+  "conditions": "resolved", // root-level: conditions attach at units, never at the root
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,6 +328,10 @@ function walkKeys(v: unknown, path: string, out: (key: string, at: string) => vo
  *  interior keys are data, not shape (the v241 delta and pin dictionaries,
  *  authored config values). The walk does not classify below these. */
 const OPAQUE_SUBTREES = [
+  "structure[].condition",
+  "structure[].sections[].condition",
+  "structure[].sections[].entries[].condition",
+  "structure[].sections[].entries[].itemSelections[].condition",
   "presentation.portable.delta",
   "presentation.portable.sectionDress",
   "presentation.portable.sectionPins",
@@ -314,6 +340,9 @@ const OPAQUE_SUBTREES = [
 ];
 
 const underOpaque = (at: string) => OPAQUE_SUBTREES.some((o) => at.startsWith(o + ".") || at.startsWith(o + "["));
+
+const params0 = (content: unknown): unknown =>
+  isObj(content) ? (content as { parameters?: unknown }).parameters : [];
 
 export function validateBlueprintContent(content: unknown): ValidationResult {
   const refusals: string[] = [];
@@ -327,7 +356,7 @@ export function validateBlueprintContent(content: unknown): ValidationResult {
     if (underOpaque(at)) return;
     const treatment = FIELD_TREATMENTS[at];
     if (treatment === undefined) refusals.push(`UNCLASSIFIED (§6): "${at}" declares no treatment — a field without a declared treatment is a constitutional violation`);
-    else if (treatment === "resolved") refusals.push(`RESOLVED IS ABSENCE (§6): "${at}" resolves at instantiation or later and has no field here${at === "conditions" ? " (conditions arrive in BP-7)" : ""}`);
+    else if (treatment === "resolved") refusals.push(`RESOLVED IS ABSENCE (§6): "${at}" resolves at instantiation or later and has no field here${at === "conditions" ? " (conditions attach at chapters, sections, entries, and item selections — never at the root)" : ""}`);
   });
 
   // 2 · the portable stratum only; bound dress never travels (§5, v241).
@@ -357,6 +386,48 @@ export function validateBlueprintContent(content: unknown): ValidationResult {
           } else if (intent.form === "fixed-package" && !(typeof intent.policy === "string" && intent.policy.trim() !== "")) {
             refusals.push(`PRICING INTENT (§11): fixed-package at ${at} must name its declared policy`);
           }
+        });
+      });
+    });
+  }
+
+  // 3b · v257 §BP-7 — conditions: the closed law over the four units.
+  const paramDecls = (Array.isArray(params0(content)) ? params0(content) : []) as
+    { key: string; type: "count" | "choice" | "flag"; options?: string[] }[];
+  if (Array.isArray(structure)) {
+    structure.forEach((ch, ci) => {
+      const chc = isObj(ch) ? (ch as { condition?: unknown }).condition : undefined;
+      if (chc !== undefined) {
+        for (const p of validateCondition(chc, paramDecls, `structure[${ci}]`)) {
+          refusals.push(`${p.failure} (§BP-7): at ${p.at}${p.detail ? ` — ${p.detail}` : ""}`);
+        }
+      }
+      const sections = isObj(ch) && Array.isArray((ch as { sections?: unknown }).sections)
+        ? (ch as { sections: unknown[] }).sections : [];
+      sections.forEach((se, si) => {
+        const sec = isObj(se) ? (se as { condition?: unknown; entries?: unknown }) : {};
+        if (sec.condition !== undefined) {
+          for (const p of validateCondition(sec.condition, paramDecls, `structure[${ci}].sections[${si}]`)) {
+            refusals.push(`${p.failure} (§BP-7): at ${p.at}${p.detail ? ` — ${p.detail}` : ""}`);
+          }
+        }
+        const entries = Array.isArray(sec.entries) ? sec.entries : [];
+        entries.forEach((en, ei) => {
+          const ent = isObj(en) ? (en as { condition?: unknown; itemSelections?: unknown }) : {};
+          if (ent.condition !== undefined) {
+            for (const p of validateCondition(ent.condition, paramDecls, `structure[${ci}].sections[${si}].entries[${ei}]`)) {
+              refusals.push(`${p.failure} (§BP-7): at ${p.at}${p.detail ? ` — ${p.detail}` : ""}`);
+            }
+          }
+          const its = Array.isArray(ent.itemSelections) ? ent.itemSelections : [];
+          its.forEach((it, ii) => {
+            const itc = isObj(it) ? (it as { condition?: unknown }).condition : undefined;
+            if (itc !== undefined) {
+              for (const p of validateCondition(itc, paramDecls, `structure[${ci}].sections[${si}].entries[${ei}].itemSelections[${ii}]`)) {
+                refusals.push(`${p.failure} (§BP-7): at ${p.at}${p.detail ? ` — ${p.detail}` : ""}`);
+              }
+            }
+          });
         });
       });
     });

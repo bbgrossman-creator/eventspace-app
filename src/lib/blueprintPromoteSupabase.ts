@@ -34,6 +34,9 @@ export async function promoteDesignToDraft(args: {
   identityId?: string | null;
   name?: string | null;
   taxonomy?: string | null;
+  /** Historical provenance detail: selected regions, transformations,
+   *  omissions — recorded on the act, consumed by nothing. */
+  detail?: unknown;
 }): Promise<PromotionOutcome> {
   const { data, error } = await supabase.rpc("promote_design_to_draft", {
     p_version: args.versionId,
@@ -42,6 +45,7 @@ export async function promoteDesignToDraft(args: {
     p_name: args.name ?? null,
     p_taxonomy: args.taxonomy ?? null,
     p_actor: null,
+    p_detail: args.detail ?? {},
   });
   if (error) throw error;
   return data as PromotionOutcome;

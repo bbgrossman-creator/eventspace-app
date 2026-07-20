@@ -19,10 +19,13 @@ export function bootBlueprintShelfKind(): void {
   registerLibraryKind({
     kind: "blueprint", label: "Blueprints", icon: "📘",
     async search({ q, like }) {
+      // name OR authored taxonomy — the lawful facets; alphabetical from
+      // the database: the neutral, deterministic base order (nothing ranks).
       const { data } = await supabase
         .from("blueprint_identities")
         .select("id,name,taxonomy,status,published_revision_id")
-        .ilike("name", like)
+        .or(`name.ilike.${like},taxonomy.ilike.${like}`)
+        .order("name")
         .limit(8);
       const idents = ((data ?? []) as {
         id: string; name: string; taxonomy: string | null;

@@ -8,7 +8,9 @@
 // names). The v182 reconciliation lands: the legacy pointer surface is
 // retired in place, readable, unlinked, superseded by the lawful ceremony.
 import * as fs from "fs";
-import { normalizeDesignToContent } from "../blueprintPromote";
+import {
+  normalizeDesignToContent, PromotionScope, EXTRACTION_MATRIX,
+} from "../blueprintPromote";
 import { validateBlueprintContent, BARRED_KEYS } from "../blueprintContent";
 import { MaterializedDesign } from "../blueprintDivergence";
 
@@ -39,9 +41,11 @@ const design = (): MaterializedDesign => ({
   guests: [{ category_id: "adults", count: 120 }],
 });
 const names = { "role-a": "Cocktail Hour", "role-b": "Dinner" };
+const SC = (over: Partial<PromotionScope> = {}): PromotionScope =>
+  ({ sections: "all", components: "all", carryPricing: true, askGuestCount: false, ...over });
 
 T("NORMALIZATION IS THE BP-3 REVERSAL: schemeId→scheme, choices+scalars→values, items→selections (include, no prices), package money→authored-suggestion intent, portable rebuilt (delta without treatments, sectionDress from treatments.sections, pins split) — and the result passes BP-2's validator", () => {
-  const plan = normalizeDesignToContent(design(), names, { sections: "all", components: "all" }, "Test Chapter");
+  const plan = normalizeDesignToContent(design(), names, SC(), "Test Chapter");
   ok(plan.validation.ok, `refused: ${JSON.stringify(plan.validation.refusals)}`);
   const s0 = plan.content.structure[0].sections[0];
   ok(s0.role === "role-a" && s0.title === "Cocktail Hour", "role + name");
@@ -61,7 +65,7 @@ T("NORMALIZATION IS THE BP-3 REVERSAL: schemeId→scheme, choices+scalars→valu
 });
 
 T("EVERYTHING STRIPPED IS STRIPPED BY NAME: guests, item prices, the confirmed-price conversion, bound dress, and the defless component each appear in the staged report — nothing leaves silently", () => {
-  const plan = normalizeDesignToContent(design(), names, { sections: "all", components: "all" }, "T");
+  const plan = normalizeDesignToContent(design(), names, SC(), "T");
   const reasons = plan.stripped.map((s) => s.reason);
   for (const r of ["STRIPPED_GUESTS", "STRIPPED_ITEM_PRICES", "CONFIRMED_PRICE_TO_SUGGESTION", "STRIPPED_BOUND_DRESS", "SKIPPED_NO_DEFINITION"]) {
     ok(reasons.includes(r as never), `${r} missing from the report: ${JSON.stringify(reasons)}`);
@@ -70,17 +74,17 @@ T("EVERYTHING STRIPPED IS STRIPPED BY NAME: guests, item prices, the confirmed-p
 });
 
 T("PARTIAL PROMOTION IS FIRST-CLASS: scoping to one section carries only it, the rest appear as OUT_OF_SCOPE by name, and the scoped result still validates", () => {
-  const plan = normalizeDesignToContent(design(), names, { sections: ["role-a"], components: "all" }, "T");
+  const plan = normalizeDesignToContent(design(), names, SC({ sections: ["role-a"] }), "T");
   ok(plan.content.structure[0].sections.length === 1 && plan.content.structure[0].sections[0].role === "role-a", "scope not honored");
   ok(plan.stripped.some((s) => s.reason === "OUT_OF_SCOPE" && s.at === "Dinner"), "the left-behind section is named");
   ok(plan.validation.ok, "scoped result must validate");
-  const noC1 = normalizeDesignToContent(design(), names, { sections: "all", components: ["c2"] }, "T");
+  const noC1 = normalizeDesignToContent(design(), names, SC({ components: ["c2"] }), "T");
   ok(noC1.content.structure[0].sections[0].entries.length === 0, "component scope not honored");
   ok(noC1.stripped.some((s) => s.reason === "OUT_OF_SCOPE" && s.at === "Sushi"), "the left-behind component is named");
 });
 
 T("§5 NOTHING BARRED CAN BE EMITTED: the normalized content's keys never intersect BP-2's barred set — the design's guest counts, confirmations, and prices structurally cannot survive normalization", () => {
-  const plan = normalizeDesignToContent(design(), names, { sections: "all", components: "all" }, "T");
+  const plan = normalizeDesignToContent(design(), names, SC(), "T");
   const seen: string[] = [];
   const walk = (v: unknown): void => {
     if (Array.isArray(v)) { v.forEach(walk); return; }
@@ -95,7 +99,7 @@ T("§5 NOTHING BARRED CAN BE EMITTED: the normalized content's keys never inters
 });
 
 T("MONEY BECOMES INTENT, NEVER FIXED-PACKAGE: promotion cannot invent a policy, so a confirmed design price arrives as authored-suggestion with the conversion named — no fixed-package form is ever produced by normalization", () => {
-  const plan = normalizeDesignToContent(design(), names, { sections: "all", components: "all" }, "T");
+  const plan = normalizeDesignToContent(design(), names, SC(), "T");
   const forms = plan.content.structure[0].sections.flatMap((s) => s.entries)
     .map((e) => e.pricingIntent?.form).filter(Boolean);
   ok(!forms.includes("fixed-package"), `normalization produced fixed-package: ${JSON.stringify(forms)}`);
@@ -144,6 +148,64 @@ T("THE v182 RECONCILIATION: the legacy nav entry is gone, the legacy page carrie
   const sql = fs.readFileSync("supabase/v255_promotion.sql", "utf8");
   ok(sql.includes("promoted_from_version_id uuid;") && !/promoted_from_version_id uuid references/.test(sql),
     "provenance must be a plain uuid, never a foreign key");
+});
+
+
+T("THE EXTRACTION MATRIX IS TOTAL over the materialized source shape: every leaf of a fully-populated design resolves to exactly one disposition — copied, identity-reference, resolve-later, or refused — and the disposition set is closed", () => {
+  const dispositions = new Set(Object.values(EXTRACTION_MATRIX));
+  for (const d of dispositions) ok(["copied", "identity-reference", "resolve-later", "refused"].includes(d), `unknown disposition ${d}`);
+  const covered = (path: string) => path in EXTRACTION_MATRIX;
+  const walk = (v: unknown, path: string): void => {
+    if (Array.isArray(v)) { v.forEach((x) => walk(x, `${path}[]`)); return; }
+    if (typeof v === "object" && v !== null) {
+      for (const [k, c] of Object.entries(v)) {
+        const at = path ? `${path}.${k}` : k;
+        // config interiors are covered at their dictionary level
+        if (covered(at) || at.startsWith("components[].config.choices.") || at.startsWith("components[].config.scalars.")
+            || at.startsWith("presentation.theme_override.") || at.startsWith("presentation.photo_pins.")
+            || at.startsWith("components[].section_type_id")) { if (!Array.isArray(c) && typeof c !== "object") return; }
+        if (!covered(at)
+            && !at.startsWith("components[].config.choices") && !at.startsWith("components[].config.scalars")
+            && !at.startsWith("presentation.theme_override") && !at.startsWith("presentation.photo_pins")
+            && at !== "sections" && at !== "components" && at !== "guests" && at !== "presentation"
+            && at !== "components[].config" && at !== "components[].items" && at !== "structure_prose") {
+          throw new Error(`unclassified source field: ${at}`);
+        }
+        walk(c, at);
+      }
+    }
+  };
+  walk(design(), "");
+  ok(EXTRACTION_MATRIX["guests"] === "refused" && EXTRACTION_MATRIX["components[].definition_id"] === "identity-reference"
+     && EXTRACTION_MATRIX["components[].items[].unit_price"] === "resolve-later"
+     && EXTRACTION_MATRIX["components[].package_price_confirmed"] === "refused", "cornerstone dispositions drifted");
+});
+
+T("EVENT FACTS BECOME QUESTIONS ONLY BY EXPLICIT CHOICE: the default scope emits ZERO parameters even though the source carries a guest count; with the explicit choice, the count parameter appears and the decision is recorded verbatim as 'source fact → reusable question'", () => {
+  const silent = normalizeDesignToContent(design(), names, SC(), "T");
+  ok(silent.content.parameters.length === 0, "a parameter was INFERRED from a source value");
+  ok(silent.stripped.some((x) => x.reason === "STRIPPED_GUESTS"), "the strip must still be named");
+  const asked = normalizeDesignToContent(design(), names, SC({ askGuestCount: true }), "T");
+  ok(asked.content.parameters.length === 1 && asked.content.parameters[0].key === "guest_count"
+     && asked.content.parameters[0].type === "count" && asked.content.parameters[0].required, "the explicit question is wrong");
+  const decision = asked.stripped.find((x) => x.reason === "FACT_TO_QUESTION");
+  ok(decision !== undefined && decision!.detail!.includes("source fact → reusable question"), "the decision wording is missing");
+  ok(asked.validation.ok, "the asked variant must validate");
+});
+
+T("PRICING CARRIAGE IS AN EXPLICIT, REVIEWABLE CHOICE: carryPricing=false emits no intent anywhere and names the omission (PRICING_OMITTED); carryPricing=true converts with the conversion named — neither path is silent", () => {
+  const off = normalizeDesignToContent(design(), names, SC({ carryPricing: false }), "T");
+  const forms = off.content.structure[0].sections.flatMap((s) => s.entries).map((e) => e.pricingIntent).filter(Boolean);
+  ok(forms.length === 0, "an intent leaked past the explicit omission");
+  ok(off.stripped.some((x) => x.reason === "PRICING_OMITTED"), "the omission is unnamed");
+  const on = normalizeDesignToContent(design(), names, SC(), "T");
+  ok(on.stripped.some((x) => x.reason === "CONFIRMED_PRICE_TO_SUGGESTION"), "the conversion is unnamed");
+});
+
+T("INCOMPLETE PARENT SELECTION IS NAMED: a component selected without its parent section surfaces as ORPHANED_SELECTION — visible, not silently dropped", () => {
+  const plan = normalizeDesignToContent(design(), names, SC({ sections: ["role-b"], components: ["c1", "c2"] }), "T");
+  const orphan = plan.stripped.find((x) => x.reason === "ORPHANED_SELECTION");
+  ok(orphan !== undefined && orphan!.at === "Sushi" && orphan!.detail!.includes("Cocktail Hour"), `orphan unnamed: ${JSON.stringify(plan.stripped)}`);
 });
 
 console.log(`\nv255.promotion: ${passed} passed, ${failed} failed`);

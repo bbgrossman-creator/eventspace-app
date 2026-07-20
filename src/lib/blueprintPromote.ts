@@ -33,15 +33,63 @@ export interface PromotionScope {
   sections: string[] | "all";
   /** component ids to carry; "all" carries every component in scope. */
   components: string[] | "all";
+  /** EXPLICIT choice: carry source pricing as reusable INTENT. When false,
+   *  no pricingIntent is emitted and the omission is named (PRICING_OMITTED).
+   *  The conversion is never silent either way. */
+  carryPricing: boolean;
+  /** EXPLICIT transformation: source fact → reusable question. When true,
+   *  the source guest count becomes a required count parameter, recorded as
+   *  a promotion DECISION (FACT_TO_QUESTION). Parameters are NEVER inferred
+   *  merely because the source contains a value. */
+  askGuestCount: boolean;
 }
 
 export const STRIP_REASONS = [
   "STRIPPED_GUESTS", "STRIPPED_ITEM_PRICES", "CONFIRMED_PRICE_TO_SUGGESTION",
   "STRIPPED_BOUND_DRESS", "SKIPPED_NO_DEFINITION", "OUT_OF_SCOPE",
+  "PRICING_OMITTED", "FACT_TO_QUESTION", "ORPHANED_SELECTION",
 ] as const;
 export type StripReason = (typeof STRIP_REASONS)[number];
 
 export interface StripEntry { reason: StripReason; at: string; detail?: string; }
+
+/** ═══ THE EXTRACTION MATRIX (BP-5's defining table) ═══
+ *  Promotion is EXTRACTION, not cloning: the draft is built ONLY from this
+ *  allowlisted model — no field is copied and cleaned afterward; a source
+ *  field is admitted, referenced, omitted-to-resolve-later, or refused, and
+ *  the matrix is TOTAL over the materialized source shape (unit-walked). */
+export type ExtractionDisposition = "copied" | "identity-reference" | "resolve-later" | "refused";
+export const EXTRACTION_MATRIX: Record<string, ExtractionDisposition> = {
+  // structure & placement — admissible, copied
+  "sections[].position": "copied",
+  "components[].title": "copied",
+  "components[].config.schemeId": "copied",
+  "components[].config.choices": "copied",
+  "components[].config.scalars": "copied",
+  "components[].items[].name": "copied",
+  "components[].pricing_mode": "copied",          // as INTENT shape, by explicit choice
+  "components[].package_price": "copied",         // as suggestion INTENT, never confirmed
+  "presentation.theme_key": "copied",             // portable stratum only
+  "presentation.theme_override": "copied",        // delta + section dress; bound refused below
+  "presentation.photo_pins": "copied",            // section pins + document pin
+  // shared knowledge — admissible only as identity reference
+  "sections[].section_type_id": "identity-reference",
+  "components[].definition_id": "identity-reference",
+  // omitted — must resolve later (at instantiation, against the shelf)
+  "components[].items[].unit_price": "resolve-later",
+  "components[].seed_config_revision": "resolve-later",  // SPEC-002's stamp stays with the design
+  // refused — event-, execution-, or confirmation-specific
+  "guests": "refused",                             // becomes a QUESTION only by explicit choice
+  "guests[].category_id": "refused",
+  "guests[].count": "refused",
+  "components[].id": "refused",                    // event identity
+  "components[].instantiation_id": "refused",      // event identity (SPEC-002 provenance)
+  "components[].section_type_id_as_content": "refused",
+  "components[].package_price_confirmed": "refused", // confirmation never promotes
+  "components[].items[].price_confirmed": "refused",
+  "presentation.theme_override.treatments.components": "refused", // bound dress (v241)
+  "structure_prose": "refused",                    // no authored surface; nothing to extract honestly
+};
 
 export interface PromotionPlan {
   content: BlueprintContent;
@@ -51,7 +99,7 @@ export interface PromotionPlan {
 
 const uid = (() => { let n = 0; return (p: string) => `${p}${++n}`; })();
 
-function entryFromComponent(c: MaterializedComponent, stripped: StripEntry[]): ComponentEntry | null {
+function entryFromComponent(c: MaterializedComponent, stripped: StripEntry[], carryPricing: boolean): ComponentEntry | null {
   if (!c.definition_id) {
     stripped.push({ reason: "SKIPPED_NO_DEFINITION", at: c.title ?? c.id,
       detail: "an entry references a definition identity; this component has none" });
@@ -66,7 +114,12 @@ function entryFromComponent(c: MaterializedComponent, stripped: StripEntry[]): C
     }
   }
   let pricingIntent: ComponentEntry["pricingIntent"] = null;
-  if (c.pricing_mode === "package" && typeof c.package_price === "number") {
+  if (!carryPricing) {
+    if (c.pricing_mode === "package" && typeof c.package_price === "number") {
+      stripped.push({ reason: "PRICING_OMITTED", at: c.title ?? c.id,
+        detail: "source pricing left behind by explicit choice — the draft carries no intent here" });
+    }
+  } else if (c.pricing_mode === "package" && typeof c.package_price === "number") {
     pricingIntent = { form: "authored-suggestion", amount: c.package_price };
     if (c.package_price_confirmed) {
       stripped.push({ reason: "CONFIRMED_PRICE_TO_SUGGESTION", at: c.title ?? c.id,
@@ -138,7 +191,7 @@ export function normalizeDesignToContent(
         stripped.push({ reason: "OUT_OF_SCOPE", at: c.title ?? c.id, detail: "component left behind by choice" });
         continue;
       }
-      const e = entryFromComponent(c, stripped);
+      const e = entryFromComponent(c, stripped, scope.carryPricing);
       if (e) entries.push(e);
     }
     sections.push({
@@ -150,14 +203,35 @@ export function normalizeDesignToContent(
     });
   }
 
+  // a selected component whose parent section was left behind is NAMED,
+  // never silently dropped — incomplete parent selection is a warning
+  if (scope.components !== "all") {
+    for (const cid of scope.components) {
+      const c = design.components.find((x) => x.id === cid);
+      if (c && c.section_type_id && !wantSection(c.section_type_id)) {
+        stripped.push({ reason: "ORPHANED_SELECTION", at: c.title ?? cid,
+          detail: `selected, but its parent section (${roleNames[c.section_type_id] ?? c.section_type_id}) is not — nothing travels without its required parent` });
+      }
+    }
+  }
+
+  const parameters = [...emptyContent().parameters];
   if (design.guests.length > 0) {
-    stripped.push({ reason: "STRIPPED_GUESTS", at: "guests",
-      detail: "guest counts are an event's answer; instantiation asks again" });
+    if (scope.askGuestCount) {
+      const total = design.guests.reduce((n, g) => n + g.count, 0);
+      parameters.push({ key: "guest_count", label: "Guest count", type: "count", required: true });
+      stripped.push({ reason: "FACT_TO_QUESTION", at: "guests",
+        detail: `source fact → reusable question: the source's ${total} guests becomes the required count parameter — recorded as a promotion decision, never inferred` });
+    } else {
+      stripped.push({ reason: "STRIPPED_GUESTS", at: "guests",
+        detail: "guest counts are an event's answer; instantiation asks again" });
+    }
   }
 
   const chapter: BlueprintChapter = { key: uid("ch"), title: chapterTitle, prose: "", sections };
   const content: BlueprintContent = {
     ...emptyContent(),
+    parameters,
     structure: [chapter],
     presentation: design.presentation && (design.presentation.theme_key || design.presentation.theme_override || design.presentation.photo_pins)
       ? { portable: portableFromDesign(design.presentation, stripped), provenance: null }

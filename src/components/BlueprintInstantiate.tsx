@@ -14,6 +14,7 @@
 import { useEffect, useState } from "react";
 import {
   BookingOption, listBookingOptions, instantiateBlueprint, BlueprintConflictsError,
+  loadRevisionParameters, DeclaredParameter,
 } from "@/lib/blueprintInstantiateSupabase";
 import { InstantiationConflict, InstantiationResult } from "@/lib/blueprintInstantiate";
 
@@ -27,16 +28,29 @@ export default function BlueprintInstantiate(props: { revisionId: string; revisi
   const [busy, setBusy] = useState(false);
   const [conflicts, setConflicts] = useState<InstantiationConflict[] | null>(null);
   const [result, setResult] = useState<InstantiationResult | null>(null);
+  // v257 (BP-7): every declared question is asked here — no default answers
+  const [params, setParams] = useState<DeclaredParameter[]>([]);
+  const [answers, setAnswers] = useState<Record<string, string | boolean>>({});
   const [plainError, setPlainError] = useState("");
 
   useEffect(() => {
-    if (open) void listBookingOptions().then(setBookings).catch(() => setBookings([]));
-  }, [open]);
+    if (open) {
+      void listBookingOptions().then(setBookings).catch(() => setBookings([]));
+      void loadRevisionParameters(props.revisionId).then((ps) =>
+        setParams(ps.filter((p) => p.key !== "guest_count")));
+    }
+  }, [open, props.revisionId]);
 
   const act = async () => {
     setBusy(true); setConflicts(null); setPlainError("");
     try {
-      const res = await instantiateBlueprint(props.revisionId, bookingId, Number(guests));
+      const typed: Record<string, number | string | boolean> = {};
+      for (const p of params) {
+        const raw = answers[p.key];
+        if (raw === undefined || raw === "") continue;
+        typed[p.key] = p.type === "count" ? Number(raw) : p.type === "flag" ? raw === true : String(raw);
+      }
+      const res = await instantiateBlueprint(props.revisionId, bookingId, Number(guests), undefined, typed);
       setResult(res);
     } catch (e) {
       if (e instanceof BlueprintConflictsError) setConflicts(e.conflicts);
@@ -80,6 +94,29 @@ export default function BlueprintInstantiate(props: { revisionId: string; revisi
                     placeholder="e.g., 200" inputMode="numeric"
                     className="mt-1 w-32 text-[13px] px-2 py-1.5 rounded ring-1 ring-[#E7EDF5]" />
                 </div>
+                {params.map((p) => (
+                  <label key={p.key} className="mt-2 block text-[12px] text-slate-600">
+                    {p.label || p.key}{p.required ? "" : " (optional)"}
+                    {p.type === "count" && (
+                      <input type="number" data-param-count={p.key} value={String(answers[p.key] ?? "")}
+                        onChange={(e) => setAnswers((a) => ({ ...a, [p.key]: e.target.value }))}
+                        className="mt-0.5 w-full text-[12px] px-2 py-1 rounded ring-1 ring-[#E7EDF5]" />
+                    )}
+                    {p.type === "choice" && (
+                      <select data-param-choice={p.key} value={String(answers[p.key] ?? "")}
+                        onChange={(e) => setAnswers((a) => ({ ...a, [p.key]: e.target.value }))}
+                        className="mt-0.5 w-full text-[12px] px-2 py-1 rounded ring-1 ring-[#E7EDF5] bg-white">
+                        <option value="">— answer —</option>
+                        {(p.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    )}
+                    {p.type === "flag" && (
+                      <input type="checkbox" data-param-flag={p.key} checked={answers[p.key] === true}
+                        onChange={(e) => setAnswers((a) => ({ ...a, [p.key]: e.target.checked }))}
+                        className="ml-2 align-middle" />
+                    )}
+                  </label>
+                ))}
                 {conflicts && (
                   <div data-staged-conflicts className="mt-3 rounded-md bg-amber-50 ring-1 ring-amber-200 p-3">
                     <div className="text-[12px] font-medium text-amber-800">

@@ -25,6 +25,8 @@ export default function PromoteToBlueprint({ versionId, designName }: { versionI
   const [sections, setSections] = useState<Record<string, boolean>>({});
   const [components, setComponents] = useState<Record<string, boolean>>({});
   const [mode, setMode] = useState<"new" | "existing">("new");
+  const [carryPricing, setCarryPricing] = useState(true);
+  const [askGuestCount, setAskGuestCount] = useState(false);
   const [name, setName] = useState("");
   const [taxonomy, setTaxonomy] = useState("");
   const [targetId, setTargetId] = useState("");
@@ -49,9 +51,10 @@ export default function PromoteToBlueprint({ versionId, designName }: { versionI
     const scope: PromotionScope = {
       sections: Object.keys(sections).filter((k) => sections[k]),
       components: Object.keys(components).filter((k) => components[k]),
+      carryPricing, askGuestCount,
     };
     return normalizeDesignToContent(design, roleNames, scope, name.trim() || designName);
-  }, [design, roleNames, sections, components, name, designName]);
+  }, [design, roleNames, sections, components, carryPricing, askGuestCount, name, designName]);
 
   const act = async () => {
     if (!plan) return;
@@ -63,6 +66,14 @@ export default function PromoteToBlueprint({ versionId, designName }: { versionI
         identityId: mode === "existing" ? targetId : null,
         name: mode === "new" ? name.trim() : null,
         taxonomy: mode === "new" ? taxonomy.trim() || null : null,
+        detail: {
+          selected_regions: {
+            sections: Object.keys(sections).filter((k) => sections[k]),
+            components: Object.keys(components).filter((k) => components[k]),
+          },
+          transformations: plan.stripped.filter((x) => x.reason === "FACT_TO_QUESTION" || x.reason === "CONFIRMED_PRICE_TO_SUGGESTION"),
+          omissions: plan.stripped.filter((x) => x.reason !== "FACT_TO_QUESTION" && x.reason !== "CONFIRMED_PRICE_TO_SUGGESTION"),
+        },
       });
       setOutcome(`Draft r${res.revision_number} created on the shelf — publication remains its own ceremony.`);
     } catch (e) {
@@ -131,6 +142,15 @@ export default function PromoteToBlueprint({ versionId, designName }: { versionI
                     )}
                     <label className="mt-1.5 flex items-center gap-1.5 text-[12px] text-slate-600">
                       <input type="radio" checked={mode === "existing"} onChange={() => setMode("existing")} /> Existing identity (next draft)
+                    </label>
+                    <div className="mt-3 text-[12px] font-medium text-slate-600">Explicit choices</div>
+                    <label className="mt-1 flex items-center gap-1.5 text-[12px] text-slate-600">
+                      <input type="checkbox" data-carry-pricing checked={carryPricing} onChange={(e) => setCarryPricing(e.target.checked)} />
+                      Carry source pricing as reusable intent
+                    </label>
+                    <label className="mt-1 flex items-center gap-1.5 text-[12px] text-slate-600">
+                      <input type="checkbox" data-ask-guest-count checked={askGuestCount} onChange={(e) => setAskGuestCount(e.target.checked)} />
+                      Ask guest count at instantiation <span className="text-slate-400">(source fact → reusable question)</span>
                     </label>
                     {mode === "existing" && (
                       <select data-promote-target value={targetId} onChange={(e) => setTargetId(e.target.value)}

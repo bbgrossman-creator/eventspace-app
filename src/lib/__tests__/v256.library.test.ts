@@ -78,5 +78,33 @@ T("THE RENDERER WALL STANDS: the preview imports only the content shape; src/lib
   ok(shelfPage.includes("<BlueprintPaperPreview content={c} />"), "the preview is not mounted on the shelf");
 });
 
+
+T("THE LIBRARY IS PROJECTION, NEVER AUTHORITY: the kind and usage modules issue reads only — no insert/update/delete/upsert, no lifecycle RPC — and no parallel registry, cache, or projection table exists (the reads name only the three truth tables)", () => {
+  const usage = fs.readFileSync("src/lib/blueprintUsageSupabase.ts", "utf8");
+  for (const [name, src] of [["blueprintLibraryKind.ts", kindSrc], ["blueprintUsageSupabase.ts", usage]] as const) {
+    ok(!/\.insert\(|\.update\(|\.delete\(|\.upsert\(|\.rpc\(/.test(src), `${name} writes or performs`);
+  }
+  const tables = [...kindSrc.matchAll(/\.from\("([^"]+)"\)/g)].map((m) => m[1]).sort();
+  ok(JSON.stringify(tables) === JSON.stringify(["blueprint_identities", "blueprint_instantiations", "blueprint_revisions"]),
+    `truth tables drifted: ${JSON.stringify(tables)}`);
+});
+
+T("NOTHING BARRED IS INDEXED: the kind's selects touch no customer, booking, date, guest, price, or promotion-provenance column — search is over name and authored taxonomy alone, alphabetical from the database (deterministic neutral order)", () => {
+  const selects = [...kindSrc.matchAll(/\.select\("([^"]+)"\)/g)].map((m) => m[1]).join(",");
+  for (const barred of ["customer", "booking", "event_date", "guest", "price", "detail", "promoted_from", "frozen_baseline", "parameters"]) {
+    ok(!selects.includes(barred), `a barred column is selected: ${barred}`);
+  }
+  ok(kindSrc.includes('.or(`name.ilike.${like},taxonomy.ilike.${like}`)'), "the lawful facets drifted");
+  ok(kindSrc.includes('.order("name")'), "the neutral deterministic base order is missing");
+});
+
+T("USAGE IS A DESCRIPTIVE FACT WITH DESCRIPTIVE LABELS: 'used to start N Designs', zero said as itself, and no superlative vocabulary anywhere in the slice", () => {
+  const usage = fs.readFileSync("src/lib/blueprintUsageSupabase.ts", "utf8");
+  ok(usage.includes("used to start") && usage.includes("not yet used"), "the descriptive labels drifted");
+  for (const [name, src] of [["blueprintLibraryKind.ts", kindSrc], ["blueprintUsageSupabase.ts", usage]] as const) {
+    ok(!/\btop\b|best|popular|trending|score/i.test(src), `superlative vocabulary in ${name}`);
+  }
+});
+
 console.log(`\nv256.library: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

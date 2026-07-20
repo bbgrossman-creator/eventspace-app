@@ -269,6 +269,69 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.31 Conditions (v257 · BP-7) + THE v255/v256 SPEC RETROFITS.** The
+v253 reservation on conditions retires: the complete authoring →
+validation → evaluation → provenance → atomicity path exists.
+◆ THE DISTINCTION, preserved by shape: parameter = a QUESTION answered
+at instantiation; condition = a PREDICATE over parameter answers,
+evaluated exactly once inside BP-3's act; choice = content for later
+HUMAN selection. A condition never asks, never chooses for a customer,
+never survives into the Design (C-2 proves zero predicate residue
+design-side). ◆ CLOSED VOCABULARY (blueprintConditions.ts, pure, zero
+imports): eight predicates — equals · not-equals · greater-than ·
+at-least · less-than · at-most · one-of · present — with a typed
+ADMISSION MATRIX (count: all eight; choice: equals/not-equals/one-of/
+present; flag: equals/not-equals/present), typed operands, trim
+normalization, present = answered (empty string is absence), and eight
+named failures. Nothing programmable: no expressions, scripts, or
+regexes (pinned). ◆ BOUNDED COMPOSITION: all · any · not; max depth 3;
+max 10 predicates; cycles impossible by shape; empty groups refuse.
+◆ CLOSED ATTACHMENT, treatment-registered: chapter · section · entry ·
+itemSelection carry `condition` as COPIED authored structure whose
+RESOLUTION is the branch map; the registry stays TOTAL; root-level
+conditions stay refused. Parameters are referenced by STABLE KEY only;
+label renames break nothing; a missing key stages
+CONDITION_PARAM_MISSING. ◆ ONE TRANSACTION, EXTENDED: v257 REPLACES
+instantiate_blueprint under its own name (no second path, pinned) with
+the sequence: validate every required answer by type
+(PARAMETER_REQUIRED / PARAMETER_INVALID per key, answers = p_answers +
+guest_count) → validate every condition against the exact published
+revision (SQL validator mirroring the client law, name-set parity
+pinned) → evaluate deterministically → produce the COMPLETE branch map
+→ stage ALL conflicts (C-3: missing answer, invalid answer, empty
+group, unknown predicate name themselves in one refusal; nothing
+created) → materialize only included branches (excluded sections/
+entries never exist; a conditioned item selection under false applies
+neither its exclusion nor its addition) → freeze and CITE with the
+branch map AND the full answers on the citation (C-1). ◆ ONE-TIME
+RESOLUTION: included branches are ordinary independent content; later
+Design edits re-evaluate nothing (no machinery exists); an inverted
+condition published as r2 changes no existing design byte (C-4).
+Surfaces: the instantiate dialog asks EVERY declared question with
+typed inputs and no defaults; the shelf editor authors all-of predicate
+rows over declared parameters, admission-filtered. ◆ THE v255/v256
+RETROFITS (recorded amendments, spec-audit): v255 gains the
+EXTRACTION MATRIX (total, exported, disposition-closed:
+copied/identity-reference/resolve-later/refused), explicit-only
+parameters (a source guest count becomes a question ONLY by the
+operator's choice, recorded verbatim as "source fact → reusable
+question"; the default emits ZERO parameters), explicit pricing
+carriage (carryPricing off → PRICING_OMITTED named; nothing silent
+either way), ORPHANED_SELECTION naming, promotion provenance detail on
+the act row (regions/transformations/omissions — metadata only, no
+live edge), and PM-7/PM-8 middle- and final-provenance atomicity with
+the widened source fingerprint (components+items+config+citations).
+v256 gains taxonomy as a lawful search facet, database-alphabetical
+neutral deterministic order, per-revision usage facts on the shelf
+("used to start N Designs", descriptive labels pinned against
+superlatives), and the projection-not-authority pin set (reads-only;
+truth tables exactly the three; no barred column indexed). DEPLOY: run
+the amended v255_promotion.sql, then v257_conditions.sql; server
+proofs psql -f supabase/tests/v255_proof.sql and v257_proof.sql.
+(v257.conditions — 7 claims · server C-1..C-4 + LB-1..LB-3; v255 →
+12 claims · PM-1..PM-8; v256 → 10 claims; v252/v253 amended in place,
+dated.)
+
 **6.30 The Library Learns the Shelf (v256 · BP-6).** The fifth
 registered kind, landed under the v215 doctrine EXERCISED FOR REAL:
 the registration lives in the kind's own modules (blueprintLibrary.ts

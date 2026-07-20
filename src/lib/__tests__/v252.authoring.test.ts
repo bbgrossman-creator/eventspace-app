@@ -73,7 +73,11 @@ T("§6 RESOLVED IS ABSENCE: material that resolves at instantiation or later has
   const withPrice = full(); (withPrice.structure[0].sections[0].entries[0] as unknown as Record<string, unknown>).currentPrice = 42;
   refuses(withPrice, "RESOLVED IS ABSENCE", "captured current price");
   refuses({ ...full(), companyFacts: {} }, "RESOLVED IS ABSENCE", "company facts stored");
-  refuses({ ...full(), conditions: [] }, "conditions arrive in BP-7", "conditions before BP-7");
+  refuses({ ...full(), conditions: [] }, "never at the root", "root-level conditions");
+  const withUnitCondition = full();
+  withUnitCondition.parameters.push({ key: "daypart", label: "Daypart", type: "choice", required: true, options: ["lunch", "evening"] });
+  withUnitCondition.structure[0].sections[0].condition = { predicate: "equals", param: "daypart", operand: "evening" };
+  ok(validateBlueprintContent(withUnitCondition).ok, "a lawful unit condition must validate (v257)");
 });
 
 T("§5 THE BARRED LIST refuses anywhere, regardless of value: event-specific and commercial material never enters organizational knowledge", () => {
@@ -138,8 +142,10 @@ T("NEGATIVE PINS — no live dependency, no event work, no legacy table: the sha
   const shape = fs.readFileSync("src/lib/blueprintContent.ts", "utf8");
   const data = fs.readFileSync("src/lib/blueprintAuthoringSupabase.ts", "utf8");
   const page = fs.readFileSync("src/app/blueprint-shelf/page.tsx", "utf8");
+  // AMENDED v257 (BP-7): the shape lawfully imports the condition law —
+  // its import set is exactly these two, still supabase-free, still pure.
   const shapeImports = [...shape.matchAll(/from "([^"]+)";/g)].map((m) => m[1]);
-  ok(JSON.stringify(shapeImports) === JSON.stringify(["./portable"]), `shape imports: ${JSON.stringify(shapeImports)}`);
+  ok(JSON.stringify(shapeImports) === JSON.stringify(["./blueprintConditions", "./portable"]), `shape imports: ${JSON.stringify(shapeImports)}`);
   const tables = [...data.matchAll(/\.from\("([^"]+)"\)/g)].map((m) => m[1]).sort();
   ok(JSON.stringify(tables) === JSON.stringify(["component_definitions", "publication_themes"]), `authoring reads: ${JSON.stringify(tables)}`);
   for (const [name, src] of [["blueprintContent.ts", shape], ["blueprintAuthoringSupabase.ts", data], ["page.tsx", page]] as const) {

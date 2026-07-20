@@ -18,6 +18,9 @@ const T = (name: string, fn: () => void) => {
 const ok = (cond: boolean, what: string) => { if (!cond) throw new Error(what); };
 
 const sql = fs.readFileSync("supabase/v253_instantiation.sql", "utf8");
+// v257 AMENDMENT: instantiate_blueprint was REPLACED (same name, same
+// transaction — BP-7). Vocabulary claims grep the LIVE body.
+const liveSql = fs.readFileSync("supabase/v257_conditions.sql", "utf8");
 const pure = fs.readFileSync("src/lib/blueprintInstantiate.ts", "utf8");
 const data = fs.readFileSync("src/lib/blueprintInstantiateSupabase.ts", "utf8");
 const surface = fs.readFileSync("src/components/BlueprintInstantiate.tsx", "utf8");
@@ -32,11 +35,17 @@ T("THE STAGED PARSER: a BLUEPRINT_CONFLICTS refusal parses to its named list ver
   ok(parseConflicts('prefix noise BLUEPRINT_CONFLICTS: [{"kind":"DRESS_NO_MATCH"}]')![0].kind === "DRESS_NO_MATCH", "marker found mid-message");
 });
 
-T("THE CLOSED CONFLICT VOCABULARY: every kind the migration can raise is declared in CONFLICT_KINDS, and every declared kind is raised somewhere in the migration — the vocabularies are the same set", () => {
-  const raised = new Set([...sql.matchAll(/'kind','([A-Z_]+)'/g)].map((m) => m[1]));
+T("THE CLOSED CONFLICT VOCABULARY (AMENDED v257): the act's LIVE body is the v257 replacement, so the vocabularies compare against it — every kind the live body can raise is declared in CONFLICT_KINDS, and every declared kind is raised there (condition failures arrive through the validator's indirection and are counted via its return set)", () => {
+  const raised = new Set([...liveSql.matchAll(/'kind','([A-Z_]+)'/g)].map((m) => m[1]));
+  // failures staged via `'kind', v_prob` — the validator's named returns:
+  for (const m of liveSql.matchAll(/'(CONDITION_[A-Z_]+)'/g)) raised.add(m[1]);
+  raised.delete("CONDITION_DUPLICATE_PARAM_KEY_"); // guard against partials
   const declared = new Set<string>(CONFLICT_KINDS);
-  for (const k of raised) ok(declared.has(k), `migration raises undeclared kind ${k}`);
-  for (const k of declared) ok(raised.has(k), `declared kind ${k} is raised nowhere`);
+  // CONDITION_DUPLICATE_PARAM_KEY is authoring-side law (BP-2); the act
+  // sees published content whose keys the validator already proved unique.
+  declared.delete("CONDITION_DUPLICATE_PARAM_KEY");
+  for (const k of raised) ok(declared.has(k), `live body raises undeclared kind ${k}`);
+  for (const k of declared) ok(raised.has(k), `declared kind ${k} is raised nowhere in the live body`);
 });
 
 T("§4 NEGATIVE-LAW PINS in the migration: no update-from/sync/replay verb exists; the citation table is append-only by absence (select+insert policies only); the only blueprint reference from the act's writes is the citation record itself", () => {

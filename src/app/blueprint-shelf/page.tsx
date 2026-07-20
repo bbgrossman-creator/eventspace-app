@@ -40,6 +40,10 @@ import {
 } from "@/lib/blueprintAuthoringSupabase";
 import BlueprintInstantiate from "@/components/BlueprintInstantiate";
 import BlueprintPaperPreview from "@/components/BlueprintPaperPreview";
+import {
+  CONDITION_PREDICATES, PREDICATE_ADMISSION, PredicateNode, BlueprintCondition,
+} from "@/lib/blueprintConditions";
+import { loadRevisionUsage, usageLine, RevisionUsage } from "@/lib/blueprintUsageSupabase";
 
 const NAVY = "#102F56";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -217,6 +221,12 @@ function IdentityPanel(props: {
 
 function ReadOnlyRevision({ revision }: { revision: BlueprintRevision }) {
   const c = revision.content as BlueprintContent | null;
+  const [usage, setUsage] = useState<RevisionUsage | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void loadRevisionUsage(revision.id).then((u) => { if (alive) setUsage(u); });
+    return () => { alive = false; };
+  }, [revision.id]);
   return (
     <div data-readonly-revision className="mt-4 rounded-md ring-1 ring-[#E7EDF5] bg-white p-4">
       <div className="text-[12px] text-slate-400">
@@ -224,6 +234,9 @@ function ReadOnlyRevision({ revision }: { revision: BlueprintRevision }) {
         {revision.published_at ? ` · published ${new Date(revision.published_at).toLocaleDateString()}` : ""}
         {revision.seeded_from_revision_id ? " · seeded" : ""}
       </div>
+      {usage && (
+        <div data-revision-usage className="mt-1 text-[12px] text-slate-500">{usageLine(usage)}</div>
+      )}
       <div className="mt-2 text-[13px] text-slate-600">
         {(c?.structure ?? []).length} chapter(s) ·{" "}
         {(c?.structure ?? []).reduce((n, ch) => n + ch.sections.length, 0)} section(s) ·{" "}
@@ -354,6 +367,80 @@ function DraftEditor(props: { identity: BlueprintIdentity; draft: BlueprintRevis
   );
 }
 
+
+/** v257 (BP-7) — the condition editor: a closed all-of list of predicate
+ *  rows over the DECLARED parameters. Predicates filter by the admission
+ *  matrix; operands type themselves; the law (validation) speaks through
+ *  the draft's refusal panel, never silently. */
+function ConditionEditor(props: {
+  condition: BlueprintCondition | undefined;
+  parameters: BlueprintContent["parameters"];
+  onChange: (c: BlueprintCondition | undefined) => void;
+}) {
+  const rows: PredicateNode[] =
+    props.condition && "all" in props.condition ? (props.condition.all as PredicateNode[])
+    : props.condition ? [props.condition as PredicateNode] : [];
+  const emit = (next: PredicateNode[]) =>
+    props.onChange(next.length === 0 ? undefined : next.length === 1 ? next[0] : { all: next });
+  const declFor = (key: string) => props.parameters.find((p) => p.key === key);
+  return (
+    <div data-condition-editor className="mt-1.5 ml-1 rounded bg-[#FBFCFE] ring-1 ring-[#F1F5FA] p-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-slate-400">
+        Condition — included when ALL hold (resolved once, at instantiation)
+      </div>
+      {rows.map((r, i) => {
+        const decl = declFor(r.param);
+        const admitted = decl ? CONDITION_PREDICATES.filter((p) => PREDICATE_ADMISSION[p].includes(decl.type)) : CONDITION_PREDICATES;
+        return (
+          <div key={i} className="mt-1 flex items-center gap-1.5">
+            <select data-cond-param value={r.param}
+              onChange={(e) => { const n = [...rows]; n[i] = { ...r, param: e.target.value }; emit(n); }}
+              className="text-[11px] px-1.5 py-0.5 rounded ring-1 ring-[#E7EDF5] bg-white">
+              <option value="">— parameter —</option>
+              {props.parameters.map((p) => <option key={p.key} value={p.key}>{p.label || p.key}</option>)}
+            </select>
+            <select data-cond-predicate value={r.predicate}
+              onChange={(e) => { const n = [...rows]; n[i] = { ...r, predicate: e.target.value as PredicateNode["predicate"] }; emit(n); }}
+              className="text-[11px] px-1.5 py-0.5 rounded ring-1 ring-[#E7EDF5] bg-white">
+              {admitted.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {r.predicate !== "present" && (
+              decl?.type === "flag" ? (
+                <select data-cond-operand value={String(r.operand ?? "")}
+                  onChange={(e) => { const n = [...rows]; n[i] = { ...r, operand: e.target.value === "true" }; emit(n); }}
+                  className="text-[11px] px-1.5 py-0.5 rounded ring-1 ring-[#E7EDF5] bg-white">
+                  <option value="true">true</option><option value="false">false</option>
+                </select>
+              ) : (
+                <input data-cond-operand value={String(r.operand ?? "")}
+                  placeholder={r.predicate === "one-of" ? "a, b, c" : decl?.type === "count" ? "number" : "value"}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const n = [...rows];
+                    if (r.predicate === "one-of") {
+                      const parts = raw.split(",").map((x) => x.trim()).filter(Boolean);
+                      n[i] = { ...r, operand: decl?.type === "count" ? parts.map(Number) : parts };
+                    } else {
+                      n[i] = { ...r, operand: decl?.type === "count" ? Number(raw) : raw };
+                    }
+                    emit(n);
+                  }}
+                  className="w-28 text-[11px] px-1.5 py-0.5 rounded ring-1 ring-[#E7EDF5]" />
+              )
+            )}
+            <button className="text-[10px] text-slate-400 hover:text-rose-600"
+              onClick={() => { const n = rows.filter((_, x) => x !== i); emit(n); }}>×</button>
+          </div>
+        );
+      })}
+      <button data-cond-add className="mt-1 text-[10px] text-slate-400 hover:text-slate-600"
+        onClick={() => emit([...rows, { predicate: "equals", param: props.parameters[0]?.key ?? "", operand: "" }])}>
+        + predicate
+      </button>
+    </div>
+  );
+}
+
 function StructureEditor(props: { content: BlueprintContent; defs: DefinitionIdentity[]; patch: (fn: (c: BlueprintContent) => BlueprintContent) => void }) {
   const { content, defs, patch } = props;
   return (
@@ -383,8 +470,10 @@ function StructureEditor(props: { content: BlueprintContent; defs: DefinitionIde
                 <button className="text-[11px] text-slate-400 hover:text-rose-600"
                   onClick={() => patch((c) => { c.structure[ci].sections.splice(si, 1); return c; })}>remove</button>
               </div>
+              <ConditionEditor condition={se.condition} parameters={props.content.parameters}
+                onChange={(cond) => patch((c) => { c.structure[ci].sections[si].condition = cond; return c; })} />
               {se.entries.map((en, ei) => (
-                <EntryEditor key={en.key} entry={en} defs={defs}
+                <EntryEditor key={en.key} entry={en} defs={defs} parameters={props.content.parameters}
                   patchEntry={(fn) => patch((c) => { fn(c.structure[ci].sections[si].entries[ei]); return c; })}
                   remove={() => patch((c) => { c.structure[ci].sections[si].entries.splice(ei, 1); return c; })} />
               ))}
@@ -414,11 +503,13 @@ function StructureEditor(props: { content: BlueprintContent; defs: DefinitionIde
   );
 }
 
-function EntryEditor(props: { entry: ComponentEntry; defs: DefinitionIdentity[]; patchEntry: (fn: (e: ComponentEntry) => void) => void; remove: () => void }) {
+function EntryEditor(props: { entry: ComponentEntry; defs: DefinitionIdentity[]; parameters: BlueprintContent["parameters"]; patchEntry: (fn: (e: ComponentEntry) => void) => void; remove: () => void }) {
   const { entry, defs, patchEntry } = props;
   const intent = entry.pricingIntent;
   return (
     <div data-entry className="mt-2 ml-3 rounded bg-[#FAFBFD] ring-1 ring-[#EDF2F8] p-2">
+      <ConditionEditor condition={entry.condition} parameters={props.parameters}
+        onChange={(cond) => patchEntry((en) => { en.condition = cond; })} />
       <div className="flex items-center gap-2">
         <select data-entry-def value={entry.definitionId}
           onChange={(e) => patchEntry((en) => { en.definitionId = e.target.value; })}
