@@ -11,7 +11,11 @@ import Link from "next/link";
 import { Booking, fmtDate } from "@/lib/workflow";
 import { SourceComponent, loadSimilarEvents, loadRecentEvents, loadSourceComponents } from "@/lib/studio";
 import ComponentPalette from "@/components/ComponentPalette";
-import { Blueprint, BlueprintPreview, listBlueprints, previewBlueprint } from "@/lib/blueprints";
+// v262 — the pane's Blueprints tab is REFERENCE-ONLY (the citation
+// category). Creation is BP-3 (New Proposal → Start from Blueprint);
+// authoring reuse is BP-8 (Copy into Draft, on the Shelf). Nothing here
+// copies content into the open design.
+import { listPublishedBlueprints, PublishedBlueprintSource } from "@/lib/blueprintStartSupabase";
 import { ProposalSource, loadProposalSources, loadVersionComponents } from "@/lib/studio";
 
 const DOMAIN_ICON: Record<string, string> = {
@@ -28,9 +32,7 @@ export default function SourceEventPane({ b, currentProposalId, onAdd, onSeed, b
   busy: boolean;
 }) {
   const [tab, setTab] = useState<"events" | "proposals" | "blueprints" | "components">("events");
-  const [bps, setBps] = useState<Blueprint[] | null>(null);
-  const [bpPreview, setBpPreview] = useState<Record<string, BlueprintPreview>>({});
-  const [openBp, setOpenBp] = useState<string | null>(null);
+  const [bps, setBps] = useState<PublishedBlueprintSource[] | null>(null);
   const [props, setProps] = useState<ProposalSource[] | null>(null);
   const [propFilter, setPropFilter] = useState<"recommended" | "all">("recommended");
   const [openProp, setOpenProp] = useState<string | null>(null);
@@ -124,7 +126,7 @@ export default function SourceEventPane({ b, currentProposalId, onAdd, onSeed, b
             className={`flex-1 rounded-md py-1 text-[10.5px] font-bold transition-colors ${tab === t ? "bg-white text-[#102F56] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
             onClick={() => {
               setTab(t);
-              if (t === "blueprints" && bps === null) listBlueprints().then(setBps).catch(() => setBps([]));
+              if (t === "blueprints" && bps === null) listPublishedBlueprints().then(setBps).catch(() => setBps([]));
               if (t === "proposals" && props === null) loadProposalSources(currentProposalId).then(setProps).catch(() => setProps([]));
             }}>
             {t === "events" ? "Events" : t === "proposals" ? "Proposals" : t === "blueprints" ? "Blueprints" : "Library"}
@@ -276,63 +278,33 @@ export default function SourceEventPane({ b, currentProposalId, onAdd, onSeed, b
           </div>
         </div>
       ) : tab === "blueprints" ? (
-        <div className="overflow-y-auto min-h-0 pr-0.5 space-y-1.5">
-          {bps === null && <p className="text-[12px] text-slate-400">Loading blueprints…</p>}
+        <div data-bp-reference className="overflow-y-auto min-h-0 pr-0.5 space-y-1.5">
+          {bps === null && <p className="text-[12px] text-slate-400">Loading the shelf…</p>}
           {bps?.length === 0 && (
             <p className="text-[12px] text-slate-400">
-              No blueprints yet — they&apos;re promoted, never authored. Build a proposal worth
-              repeating, then <b>📐 Save as Blueprint</b> in the Studio header.
+              No published Blueprints yet. Knowledge is captured with <b>Promote to Blueprint</b> in the
+              Studio header, refined in the Blueprint Editor, and published on the Shelf.
             </p>
           )}
-          {bps?.map((bp) => {
-            const open = openBp === bp.id;
-            const pv = bpPreview[bp.id];
-            return (
-              <div key={bp.id} className={`rounded-lg ring-1 bg-white transition-colors ${open ? "ring-[#4A9EFF]" : "ring-[#E7EDF5] hover:ring-[#B9D9FF]"}`}>
-                <button className="w-full text-left px-2.5 py-2"
-                  onClick={async () => {
-                    const next = open ? null : bp.id;
-                    setOpenBp(next);
-                    if (next && !bpPreview[bp.id]) {
-                      const p = await previewBlueprint(bp);
-                      setBpPreview((x) => ({ ...x, [bp.id]: p }));
-                    }
-                  }}>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-300 text-[10px]">{open ? "▾" : "▸"}</span>
-                    <span className="text-[13px] font-semibold truncate">📐 {bp.name}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 pl-4">
-                    {bp.event_type ?? "Any event"} · from {bp.source_label || "—"}
-                  </div>
-                </button>
-                {open && (
-                  <div className="px-2.5 pb-2.5 space-y-1 reveal">
-                    {!pv && <p className="text-[11px] text-slate-400 pl-4">Loading…</p>}
-                    {pv?.components.length === 0 && <p className="text-[11px] text-slate-400 pl-4">Source no longer available — retire this blueprint under Content → Blueprints.</p>}
-                    {pv?.components.map((c) => (
-                      <div key={c.id} className="group flex items-center gap-2 rounded-md ring-1 ring-[#E7EDF5] bg-[#F6F8FB] px-2 py-1.5 hover:ring-[#4A9EFF] hover:bg-[#F4F9FF] transition-colors">
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[12px] font-medium truncate">{c.title}</div>
-                          <div className="text-[10px] text-slate-400 truncate">{c.sectionName ?? "unsectioned"} · {c.itemCount} item{c.itemCount === 1 ? "" : "s"}</div>
-                        </div>
-                        <button disabled={busy} title="Add just this component"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-[13px] font-bold text-[#2F80ED] hover:text-[#102F56] px-1"
-                          onClick={() => onAdd([c.id], `blueprint "${bp.name}"`)}>＋</button>
-                      </div>
-                    ))}
-                    {pv && pv.components.length > 0 && (
-                      <button disabled={busy} className="text-[11px] font-semibold text-[#2F80ED] hover:underline pl-1"
-                        onClick={() => onAdd(pv.components.map((c) => c.id), `blueprint "${bp.name}"`)}>
-                        ⤓ Apply whole blueprint ({pv.components.length} components)
-                      </button>
-                    )}
-                  </div>
-                )}
+          {bps?.map((bp) => (
+            <div key={bp.revisionId} className="rounded-lg ring-1 ring-[#E7EDF5] bg-white px-2.5 py-2">
+              <div className="text-[13px] font-semibold truncate">📘 {bp.identityName} · r{bp.revisionNumber}</div>
+              <div className="text-[11px] text-slate-400">
+                {bp.taxonomy ?? "Any event"} · {bp.content.structure.length} chapter{bp.content.structure.length === 1 ? "" : "s"}
+                {bp.content.parameters.length > 0 ? ` · asks ${bp.content.parameters.length} question${bp.content.parameters.length === 1 ? "" : "s"}` : ""}
               </div>
-            );
-          })}
-          {bps && bps.length > 0 && <p className="text-[10px] text-slate-300 pt-1">Every blueprint traces to a real proposal — prices arrive unconfirmed, sections carry.</p>}
+              <a data-bp-view-source href="/blueprint-shelf"
+                className="mt-1 inline-block text-[11px] underline text-slate-400 hover:text-slate-600">
+                View on the Shelf
+              </a>
+            </div>
+          ))}
+          {bps && bps.length > 0 && (
+            <p className="text-[10px] text-slate-300 pt-1">
+              Reference only — to design from one, use New Proposal → <b>Start from Blueprint</b>; to reuse
+              authored structure in another Blueprint, use <b>Copy into Draft</b> on the Shelf.
+            </p>
+          )}
         </div>
       ) : (
         <ComponentPalette onAdd={onAdd} busy={busy} />

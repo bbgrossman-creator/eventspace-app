@@ -33,7 +33,6 @@ import ConfigureFacet from "@/components/studio/ConfigureFacet";
 import { bootMoves } from "@/lib/moves/boot";
 import { bootLibraryKinds } from "@/lib/libraryKinds";
 import { canvasDragMimes } from "@/lib/libraryRegistry";
-import LandingDecision from "@/components/studio/LandingDecision";
 import VersionGenesis from "@/components/studio/VersionGenesis";
 import SectionPicker from "@/components/studio/SectionPicker";
 import PresentationControls, { PubRoom } from "@/components/studio/PresentationControls";
@@ -84,7 +83,6 @@ import {
 } from "@/lib/pricingEngine";
 import { copyIntoVersion, loadSourceComponents, diffVersions, VersionDiff } from "@/lib/studio";
 import { SectionType, loadSectionTypes, createSectionType } from "@/lib/sections";
-import { promoteToBlueprint, getBlueprint, previewBlueprint, applyBlueprint, replaceWithBlueprint, applyBlueprintSubset, listBlueprints, Blueprint, BlueprintPreview } from "@/lib/blueprints";
 import { landingRoute } from "@/lib/landing";
 import { formatVersionDiff } from "@/lib/sheetChoice";
 
@@ -507,10 +505,13 @@ export default function StudioPage() {
   // routing rule is landingRoute (blueprints.ts): empty Canvas ⇒ direct (no
   // ceremony without a decision); populated ⇒ the decision, and nothing
   // commits until chosen.
-  const [landing, setLanding] = useState<{ bp: Blueprint; preview: BlueprintPreview } | null>(null);
-  // v220 — VERSION GENESIS: "＋ New Version" is a decision, not a default.
+  // v262 — the v216 land/apply doctrine is RETIRED. Creation from a
+  // Blueprint is BP-3 (New Proposal → Start from Blueprint); authoring
+  // reuse is BP-8 (Copy into Draft, on the Shelf); capture is BP-5
+  // (Promote to Blueprint, below); reference is the citation. One
+  // workflow, one language.
   // No version exists before a route is chosen.
-  const [genesis, setGenesis] = useState<{ blueprints: { id: string; name: string }[]; counts: Record<string, number> } | null>(null);
+  const [genesis, setGenesis] = useState<{ counts: Record<string, number> } | null>(null);
   const [genesisBusy, setGenesisBusy] = useState(false);
   async function commitGenesis(run: () => Promise<{ ok: boolean; detail?: string; id?: string }>) {
     setGenesisBusy(true);
@@ -520,43 +521,6 @@ export default function StudioPage() {
     setGenesis(null);
     window.location.href = `/bookings/${b!.id}/studio/${r.id}`;
   }
-  const [landingBusy, setLandingBusy] = useState(false);
-  async function openLanding(blueprintId: string, name: string) {
-    // This function is defined above the page's !booking early-return, so
-    // narrow here: no booking, no landing. (Caught by Ben's strict
-    // production build — the test config is strict:false and cannot see
-    // nullability; the standing request for the production tsconfig stands.)
-    if (!b) return;
-    if (locked || !session?.perms.includes("bookings.edit")) return;
-    setBusy(true);
-    const bp = await getBlueprint(blueprintId);
-    if (!bp) { setBusy(false); setErr(`"${name}" is in the Library but its blueprint row is gone.`); return; }
-    const preview = await previewBlueprint(bp);
-    setBusy(false);
-    if (!preview.components.length) { setErr(`"${bp.name}" has no content — its source may have been deleted. Retire it.`); return; }
-    if (landingRoute(comps.length) === "direct") {
-      // An empty Canvas: there is nothing to protect — instantiate directly.
-      setLandingBusy(true);
-      const r = await applyBlueprint(b, versionId, bp);
-      setLandingBusy(false);
-      if (!r.ok) { setErr(r.detail ?? "Landing failed."); return; }
-      setToast(`📐 "${bp.name}" landed — ${r.copied} component${r.copied === 1 ? "" : "s"}, prices carried`);
-      loadCanvas();
-      return;
-    }
-    setLanding({ bp, preview });   // the drop is the request, not the commit
-  }
-  async function commitLanding(run: () => Promise<{ ok: boolean; detail?: string; copied: number }>, verb: string) {
-    if (!landing) return;
-    setLandingBusy(true);
-    const r = await run();
-    setLandingBusy(false);
-    if (!r.ok) { setErr(r.detail ?? "Landing failed."); return; }
-    setLanding(null);
-    setToast(`📐 ${verb} — ${r.copied} component${r.copied === 1 ? "" : "s"}, prices carried`);
-    loadCanvas();
-  }
-
   // v208: the Promotion review overlay.
   const [promoView, setPromoView] = useState<{
     definitionId: string; name: string; liveRevisionId: string | null;
@@ -1130,25 +1094,14 @@ export default function StudioPage() {
         split={split}
         onSplit={setSplit}
         desk={[
-          { key: "blueprint", label: "📐 Save as Blueprint", disabled: busy || comps.length === 0,
-            onPick: async () => {
-              const name = prompt('Blueprint name — e.g. "Elegant Wedding", "Backyard BBQ"',
-                b.event_type ? `${b.event_type} — ${proposal.title}` : proposal.title);
-              if (!name?.trim()) return;
-              const r = await promoteToBlueprint(b, version, proposal.title, name, b.event_type ?? null);
-              if (!r.ok) setErr(r.detail ?? ""); else setToast(`📐 "${name.trim()}" saved as a blueprint`);
-            } },
           ...(!locked && versions.length > 0 ? [{ key: "newversion", label: "＋ New Version", disabled: busy,
             onPick: async () => {
-              const [bps, compRows] = await Promise.all([
-                listBlueprints(),
-                supabase.from("event_components").select("proposal_version_id").eq("booking_id", b.id),
-              ]);
+              const compRows = await supabase.from("event_components").select("proposal_version_id").eq("booking_id", b.id);
               const counts: Record<string, number> = {};
               for (const r of (compRows.data ?? []) as { proposal_version_id: string | null }[]) {
                 if (r.proposal_version_id) counts[r.proposal_version_id] = (counts[r.proposal_version_id] ?? 0) + 1;
               }
-              setGenesis({ blueprints: bps.map((x) => ({ id: x.id, name: x.name })), counts });
+              setGenesis({ counts });
             } }] : []),
           { key: "notes", label: "🗒 Notes", onPick: () => setTab("notes") },
           { key: "files", label: "📎 Files", onPick: () => setTab("files") },
@@ -1170,7 +1123,7 @@ export default function StudioPage() {
             open={true}
             onClose={() => setAsk("")}
             onViewDefinition={(definitionId, name) => void openDefinition(definitionId, name)}
-            onLandDesign={(id, name) => { setAsk(""); void openLanding(id, name); }}
+            onLandDesign={() => { /* v262: retired — no Library kind emits land */ }}
             onInstantiate={(identityId, name) => {
               setAsk("");
               if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
@@ -1184,7 +1137,7 @@ export default function StudioPage() {
           open={libraryOpen}
           onClose={() => setLibraryOpen(false)}
           onViewDefinition={(definitionId, name) => void openDefinition(definitionId, name)}
-          onLandDesign={(id, name) => { setLibraryOpen(false); void openLanding(id, name); }}
+          onLandDesign={() => { setLibraryOpen(false); /* v262: retired — no Library kind emits land */ }}
           onInstantiate={(identityId, name) => {
             setLibraryOpen(false);
             if (targetChapter) { instantiate(identityId, name, targetChapter); return; }
@@ -1250,7 +1203,6 @@ export default function StudioPage() {
             date: new Date(v.created_at).toLocaleDateString(),
             count: genesis.counts[v.id] ?? 0,
           }))}
-          blueprints={genesis.blueprints}
           busy={genesisBusy}
           onRevise={() => void commitGenesis(() => createVersion(b, proposal, version))}
           onCopyVersion={(vid) => {
@@ -1258,27 +1210,7 @@ export default function StudioPage() {
             if (src) void commitGenesis(() => createVersion(b, proposal, src));
           }}
           onBlank={() => void commitGenesis(() => createBlankVersion(b, proposal))}
-          onBlueprint={(bpId) => void commitGenesis(async () => {
-            const made = await createBlankVersion(b, proposal);
-            if (!made.ok || !made.id) return made;
-            const bp = await getBlueprint(bpId);
-            if (!bp) return { ok: false, detail: "That blueprint's row is gone." };
-            const applied = await applyBlueprint(b, made.id, bp);
-            return applied.ok ? { ok: true, id: made.id } : { ok: false, detail: applied.detail };
-          })}
           onCancel={() => setGenesis(null)}
-        />
-      )}
-
-      {landing && (
-        <LandingDecision
-          name={landing.bp.name}
-          preview={landing.preview}
-          busy={landingBusy}
-          onAdd={() => void commitLanding(() => applyBlueprint(b, versionId, landing.bp), `"${landing.bp.name}" added to current`)}
-          onReplace={() => void commitLanding(() => replaceWithBlueprint(b, versionId, landing.bp), `Draft replaced with "${landing.bp.name}"`)}
-          onChoose={(ids) => void commitLanding(() => applyBlueprintSubset(b, versionId, landing.bp, ids), `${ids.length} chosen from "${landing.bp.name}"`)}
-          onCancel={() => setLanding(null)}
         />
       )}
 
@@ -1472,12 +1404,6 @@ export default function StudioPage() {
               onDrop={(e) => {
                 if (lens !== "design") return;
                 setDropHot(false);
-                const bpRaw = e.dataTransfer.getData("text/eventcore-blueprint");
-                if (bpRaw) {
-                  e.preventDefault();
-                  try { const d = JSON.parse(bpRaw); void openLanding(d.blueprintId, d.name); } catch {}
-                  return;
-                }
                 const ident = e.dataTransfer.getData("text/eventcore-identity");
                 if (ident) {
                   e.preventDefault();

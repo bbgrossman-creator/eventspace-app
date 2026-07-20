@@ -12,14 +12,21 @@ import { supabase } from "@/lib/supabase";
 import ArchetypePick from "@/components/ArchetypePick";
 import VersionThread from "@/components/VersionThread";
 import VersionGenesis from "@/components/studio/VersionGenesis";
-import { getBlueprint, applyBlueprint } from "@/lib/blueprints";
 import { archetype } from "@/lib/archetypes";
 import { BUILT_IN_THEMES } from "@/lib/publication";
 import { getPublicationSettings, listPublicationThemes, PublicationTheme } from "@/lib/publicationData";
 import { Booking } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import VersionPricing from "@/components/VersionPricing";
-import { Blueprint, listBlueprints } from "@/lib/blueprints";
+// v261 — the legacy v182 pointer model is no longer a creation source.
+// Blueprint starts go through the constitutional path (exact published
+// revision → questions → deterministic review → BP-3's act).
+import StartFromBlueprint from "@/components/StartFromBlueprint";
+// v263 PL-1 — ceremonies at the choke points: creating a proposal is the
+// Open Proposal door (three honest outcomes: transitioned / already /
+// legacy_untouched — a legacy row stays derived, nothing is written);
+// withdrawing an offer is an explicit version ceremony.
+import { openProposing, withdrawOffer } from "@/lib/spineSupabase";
 import {
   Proposal, ProposalVersion, VersionStatus,
   VERSION_FLOW, PROPOSAL_STATUS_LABEL,
@@ -49,8 +56,9 @@ export default function ProposalsCard({ b }: { b: Booking }) {
   }, []);
   const [nTitle, setNTitle] = useState("");
   const [nSeed, setNSeed] = useState(true);
-  const [bps, setBps] = useState<Blueprint[]>([]);
-  const [nBlueprint, setNBlueprint] = useState("");
+  // v261 — the three creation paths: blank / from Blueprint / copy a proposal
+  const [nMode, setNMode] = useState<"blank" | "blueprint" | "copy">("blank");
+  const [nCopyFrom, setNCopyFrom] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [pricingOpen, setPricingOpen] = useState<Record<string, boolean>>({});
   const [session, setSession] = useState<Session | null>(null);
@@ -99,7 +107,7 @@ export default function ProposalsCard({ b }: { b: Booking }) {
     } else setCompCounts({});
   }, [b.id]);
   useEffect(() => {
-    if (caps?.proposals) { load(); listBlueprints().then(setBps).catch(() => {}); }
+    if (caps?.proposals) { load(); }
   }, [caps, load]);
 
   if (!caps?.proposals) return null;
@@ -153,22 +161,49 @@ export default function ProposalsCard({ b }: { b: Booking }) {
             This creates a <b>separate proposal</b> — another commercial option for this booking, with its own version
             history. To revise an existing proposal, use <b>＋ Create New Version</b> on it instead.
           </p>
-          <input className="field !py-1.5 !text-xs !bg-white w-full" autoFocus
-            placeholder='Proposal title — e.g. "Summer Wedding — Option A"'
-            value={nTitle} onChange={(e) => setNTitle(e.target.value)} />
-          {bps.length > 0 && (
-            <select className="field !py-1 !text-xs !bg-white w-full" value={nBlueprint}
-              onChange={(e) => setNBlueprint(e.target.value)}>
-              <option value="">Start from a blueprint? (optional)</option>
-              {bps.map((x) => <option key={x.id} value={x.id}>📐 {x.name}{x.event_type ? ` · ${x.event_type}` : ""}</option>)}
+          <div data-proposal-paths className="flex gap-3 text-[11px]">
+            {([["blank", "Start blank"], ["blueprint", "Start from Blueprint"], ["copy", "Copy an existing Proposal"]] as const).map(([m, label]) => (
+              <label key={m} className="flex items-center gap-1.5 cursor-pointer text-slate-600">
+                <input type="radio" className="accent-[#4A9EFF]" checked={nMode === m} onChange={() => setNMode(m)} />
+                {label}
+              </label>
+            ))}
+          </div>
+          {nMode !== "blueprint" && (
+            <input className="field !py-1.5 !text-xs !bg-white w-full" autoFocus
+              placeholder='Proposal title — e.g. "Summer Wedding — Option A"'
+              value={nTitle} onChange={(e) => setNTitle(e.target.value)} />
+          )}
+          {nMode === "blank" && (
+            <>
+              <label className="flex items-center gap-2 text-[11px] cursor-pointer text-slate-600">
+                <input type="checkbox" className="accent-[#4A9EFF]" checked={nSeed}
+                  onChange={(e) => setNSeed(e.target.checked)} />
+                Start v1 from this event&apos;s current components
+              </label>
+              {!nSeed && <ArchetypePick value={nArch} onChange={setNArch} />}
+            </>
+          )}
+          {nMode === "copy" && (
+            <select data-copy-source className="field !py-1 !text-xs !bg-white w-full" value={nCopyFrom}
+              onChange={(e) => setNCopyFrom(e.target.value)}>
+              <option value="">— copy which proposal&apos;s latest version? —</option>
+              {proposals.map((p) => {
+                const latest = activeVs(p).slice(-1)[0];
+                return latest ? (
+                  <option key={p.id} value={latest.id}>{p.title} · v{latest.version}</option>
+                ) : null;
+              })}
             </select>
           )}
-          <label className={`flex items-center gap-2 text-[11px] cursor-pointer ${nBlueprint ? "text-slate-300" : "text-slate-600"}`}>
-            <input type="checkbox" className="accent-[#4A9EFF]" checked={nSeed && !nBlueprint} disabled={!!nBlueprint}
-              onChange={(e) => setNSeed(e.target.checked)} />
-            Start v1 from this event&apos;s current components
-          </label>
-          {!nBlueprint && !nSeed && <ArchetypePick value={nArch} onChange={setNArch} />}
+          {nMode === "blueprint" && (
+            <StartFromBlueprint bookingId={b.id}
+              hasExistingProposals={proposals.length > 0}
+              latestProposalTitle={proposals.length > 0 ? proposals[proposals.length - 1].title : null}
+              onCreated={(versionId) => { void openProposing(b.id, "sales").catch(() => {})
+                  .then(() => { window.location.href = `/bookings/${b.id}/studio/${versionId}`; }); }} />
+          )}
+          {nMode !== "blueprint" && (
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Theme</p>
             <select data-new-theme className="field !py-1 !text-xs !bg-white w-full" value={nTheme}
@@ -181,23 +216,28 @@ export default function ProposalsCard({ b }: { b: Booking }) {
               {pubThemes.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
-          <div className="flex gap-2">
-            <button className="btn-primary !py-1 !px-2.5 text-xs"
-              disabled={busy || (!nBlueprint && !nSeed && !nArch)}
-              title={!nBlueprint && !nSeed && !nArch ? "Choose how the event is organized first" : undefined}
-              onClick={() => {
-                const bp = bps.find((x) => x.id === nBlueprint);
-                const arch = !bp && !nSeed && nArch ? archetype(nArch) : null;
-                run(() => createProposal(b, nTitle, nSeed && !bp,
-                  bp?.source_version_id ? { sourceVersionId: bp.source_version_id, name: bp.name } : undefined,
-                  arch ? { key: arch.key, label: arch.label, sections: arch.sections } : null,
-                  nTheme === "__default__" ? undefined : nTheme,
-                )).then(() => { setNTitle(""); setNBlueprint(""); setNArch(null); setNTheme("__default__"); setAdding(false); });
-              }}>
-              Create
-            </button>
-            <button className="text-xs text-slate-400 underline" onClick={() => setAdding(false)}>cancel</button>
-          </div>
+          )}
+          {nMode !== "blueprint" && (
+            <div className="flex gap-2">
+              <button className="btn-primary !py-1 !px-2.5 text-xs"
+                disabled={busy || (nMode === "blank" && !nSeed && !nArch) || (nMode === "copy" && !nCopyFrom)}
+                title={nMode === "blank" && !nSeed && !nArch ? "Choose how the event is organized first"
+                  : nMode === "copy" && !nCopyFrom ? "Choose a proposal to copy" : undefined}
+                onClick={() => {
+                  const arch = nMode === "blank" && !nSeed && nArch ? archetype(nArch) : null;
+                  const copySrc = nMode === "copy" ? proposals.find((p) => activeVs(p).slice(-1)[0]?.id === nCopyFrom) : null;
+                  run(() => createProposal(b, nTitle, nMode === "blank" && nSeed,
+                    nMode === "copy" && nCopyFrom ? { sourceVersionId: nCopyFrom, name: copySrc?.title ?? "proposal" } : undefined,
+                    arch ? { key: arch.key, label: arch.label, sections: arch.sections } : null,
+                    nTheme === "__default__" ? undefined : nTheme,
+                  )).then(() => { void openProposing(b.id, "sales").catch(() => {});
+                    setNTitle(""); setNCopyFrom(""); setNArch(null); setNTheme("__default__"); setNMode("blank"); setAdding(false); });
+                }}>
+                Create
+              </button>
+              <button className="text-xs text-slate-400 underline" onClick={() => setAdding(false)}>cancel</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -208,7 +248,7 @@ export default function ProposalsCard({ b }: { b: Booking }) {
       {genesisFor && (() => {
         const vs = activeVs(genesisFor.p);
         const others = vs.filter((v) => v.id !== genesisFor.latest.id).slice().reverse();
-        const flowLabel = (st: string) => VERSION_FLOW.find((f) => f.value === st)?.label ?? st;
+        const flowLabel = (st: string) => VERSION_FLOW.find((f) => f.value === st)?.label ?? (st === "withdrawn" ? "Withdrawn" : st === "superseded" ? "Superseded" : st);
         return (
           <VersionGenesis
             reviseTarget={{
@@ -219,7 +259,6 @@ export default function ProposalsCard({ b }: { b: Booking }) {
               id: v.id, label: `v${v.version}`, statusLabel: flowLabel(v.status),
               date: new Date(v.created_at).toLocaleDateString(), count: compCounts[v.id] ?? 0,
             }))}
-            blueprints={bps.map((x) => ({ id: x.id, name: x.name }))}
             busy={genesisBusy}
             onRevise={() => void commitGenesis(() => createVersion(b, genesisFor.p, genesisFor.latest))}
             onCopyVersion={(vid) => {
@@ -227,14 +266,6 @@ export default function ProposalsCard({ b }: { b: Booking }) {
               if (src) void commitGenesis(() => createVersion(b, genesisFor.p, src));
             }}
             onBlank={() => void commitGenesis(() => createBlankVersion(b, genesisFor.p))}
-            onBlueprint={(bpId) => void commitGenesis(async () => {
-              const made = await createBlankVersion(b, genesisFor.p);
-              if (!made.ok || !made.id) return made;
-              const bp = await getBlueprint(bpId);
-              if (!bp) return { ok: false, detail: "That blueprint's row is gone." };
-              const applied = await applyBlueprint(b, made.id, bp);
-              return applied.ok ? { ok: true, id: made.id } : { ok: false, detail: applied.detail };
-            })}
             onCancel={() => setGenesisFor(null)}
           />
         );
@@ -294,6 +325,10 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                       run(() => next === "sent" ? sendVersion(b, p, v) : setVersionStatus(b, p, v, next));
                     }}
                     onArchiveVersion={(v) => doArchive(p, v)}
+                    onWithdrawVersion={(v) => run(async () => {
+                      const r = await withdrawOffer(v.id, "sales");
+                      return r.ok ? { ok: true } : { ok: false, detail: r.detail };
+                    })}
                     onRestoreVersion={(v) => run(() => restoreVersion(b, v))}
                     onTogglePricing={(vid) => setPricingOpen((x) => ({ ...x, [vid]: !x[vid] }))}
                     pricingOpen={pricingOpen}

@@ -3,6 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase, logActivity } from "@/lib/supabase";
+// v264 PL-2 — the compound door: Open Inquiry + Establish/Find Relationship,
+// one user action, one transaction, two ceremonies, two ledger entries.
+import { openInquiryWithRelationship, listRelationships } from "@/lib/relationshipSupabase";
+import { Relationship, matchRelationships } from "@/lib/relationship";
+import { FoundOrCreate } from "@/components/RelationshipPanel";
 import { runActionAutomation } from "@/lib/automation";
 import { loadPolicies, Policies, changeoverMinutes } from "@/lib/policies";
 import { Booking, findConflicts, fmtTime, fmtDate, stageFor, HOLD_HOURS, dayCapacityUsed, capacityPointsFor } from "@/lib/workflow";
@@ -242,6 +247,16 @@ export default function NewInquiry() {
       ((ph.length >= 7 && digits(b.phone) === ph) || (!!em && (b.email ?? "").toLowerCase() === em)));
   })();
 
+  // v264 — found-or-create: stored parties matched against the typed contact.
+  const [allRels, setAllRels] = useState<Relationship[]>([]);
+  useEffect(() => { void listRelationships().then(setAllRels).catch(() => {}); }, []);
+  const relMatches = matchRelationships(allRels, f.phone, f.email);
+  // FOUND pre-selects ONLY on an unambiguous match; multiple candidates
+  // present as an explicit choice; CREATE is always adjacent.
+  const [relChoice, setRelChoice] = useState<string | null | undefined>(undefined);
+  const chosenRel = relChoice !== undefined ? relChoice
+    : relMatches.length === 1 ? relMatches[0].relationship.id : null;
+
   const [celName, setCelName] = useState("");
   const [celRelation, setCelRelation] = useState("");
   const [celAge, setCelAge] = useState("");
@@ -342,6 +357,15 @@ export default function NewInquiry() {
       hold_expires: null,
     }).select().single();
     if (error || !data) { setErr(error?.message ?? "Couldn't save the lead."); setSaving(false); return; }
+    // v264 PL-2 — THE COMPOUND DOOR: Open Inquiry (PL-1, its own entry) +
+    // Establish/Find Relationship (PL-2, its own entry) in one transaction.
+    // Tolerated on failure: a refused door leaves the row honestly off the
+    // spine and honestly unattached — never fabricated, never partial.
+    try {
+      await openInquiryWithRelationship(data.id, "sales", chosenRel,
+        { name: f.contact_name.trim(), kind: "person",
+          phone: f.phone.trim() || null, email: f.email.trim() || null });
+    } catch { /* stays derived + unattached */ }
     await logActivity(data.id, invoice_num, "Lead Created",
       `Sales opportunity${f.event_date ? ` — estimated date ${f.event_date}` : ""}${f.event_type ? ` · ${f.event_type}` : ""}. No date reserved.`);
     if (withWalkthrough) {
@@ -631,6 +655,10 @@ export default function NewInquiry() {
   // Existing-customer history is context, not a warning: neutral styling.
   const renderRelationshipMemory = (withId: boolean) => (
     <>
+        {/* v264 — found-or-create: stored parties first (the ceremony's
+            choice); the booking-level dupes below remain the derived voice. */}
+        <FoundOrCreate matches={relMatches} chosen={chosenRel}
+          onChoose={(id) => setRelChoice(id)} />
         {dupes.length > 0 && (
           <div id={withId ? "dupes-panel" : undefined} className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm text-slate-700">
             {memory && (

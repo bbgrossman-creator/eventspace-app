@@ -269,6 +269,228 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.38 Proposal Lifecycle — Relationship (PL-2 · v264).** The second
+identity, stored at last, built to the corrected PL-2 specification
+(three operator corrections adopted: the audited correction ceremony;
+door-only creation as slice scope, not ontology; the compound-door
+arithmetic — plus the naming refinement: CORRECT CITATION, because the
+object corrected is the engagement's citation). Reconnaissance had
+found the system waiting by name — customer.ts self-described as
+"pre-customer-entity," party identity derived on read, the customer
+page addressed by a booking id. ◆ THE OBJECT: relationships — IDENTITY
+ONLY per Interpretive Note 1: name, kind (person/household/
+organization, projected as Individual/Family/Organization), normalized
+contact identity, standing notes. Statelessness is STRUCTURAL: no
+status/state/stage/lifecycle/tier/role column EXISTS (proven against
+information_schema, RP-8d) — nothing to misuse; and NO delete policy —
+a Relationship never expires (RP-8e). The citation: ONE nullable
+relationship_id on bookings, NULL = honestly unattached, written by
+exactly three SQL sites and nothing in the app (pinned). ◆ THE
+COMPOUND DOOR (open_inquiry_with_relationship): one user action, one
+transaction, TWO ceremonies, TWO entries — it CALLS PL-1's
+open_inquiry unchanged (its own `opened` entry) and writes exactly one
+of its own (relationship_established / relationship_found); v263
+byte-untouched (pinned). ATOMICITY PROVEN (RP-3): a door refused
+mid-way — the legacy-ahead guardrail firing on the spine leg — left
+ZERO residue: no orphaned party, no citation, no entries. FOUND
+pre-selects only on an unambiguous match (V-1/V-2: one candidate
+pre-selects, two present as explicit choice, CREATE always adjacent);
+identity (name + phone-or-email) required at the door (RP-4).
+◆ ADOPT: one existing engagement, one human act, one entry;
+ALREADY_ATTACHED — adoption never re-writes (RP-5b); SPINE-ORTHOGONAL,
+proven: a legacy-ahead engagement (won proposal, NULL spine) adopted
+cleanly with its spine untouched (RP-5/6) — identity and lifecycle are
+different questions, mechanically. ◆ CORRECT CITATION — the operator's
+correction made law: append-only means corrections stay VISIBLE, not
+that falsehoods become permanent. Previous ref + replacement ref +
+MANDATORY reason; the original adoption entry STANDS (RP-7 counted
+it); three named refusals; NOT merge — combines nothing. The history
+honestly reads "attached to A; corrected to B because the office
+landline matched the wrong family." ◆ AMEND: owned facts; contact
+changes append relationship_identity_amended WITHOUT the values — no
+PII in the undeletable ledger (RP-8c greped the entry for digits and
+@ and found none). ◆ THE TWO VOICES, structural: ceremonial surfaces
+carry data-rel-provenance="ceremonial", derived ones "derived"; the
+new-booking door mounts found-or-create above the old dupes panel;
+the customer page speaks both voices — RelationshipHeader + per-item
+Adopt suggestions when attached, the honest derived banner when not —
+and customer.ts survived byte-untouched as the suggestion law, pure
+and read-only (no IO, pinned): no code path leads from a match to a
+write. ◆ HONEST GRANDFATHERING, third verse: the migration created
+ZERO relationships, ZERO citations, ZERO entries (RP-8a/b);
+extraction proceeds by ceremony as engagements are touched.
+◆ PROVEN TWICE: fifteen server claims on real Postgres (RP-1..RP-8)
+and a SEVENTH Chromium suite (accept-relationship, V-1..V-7:
+unambiguous pre-selection, ambiguous explicit choice, the two voices
+never blended, singular adoption with no select-all, the correction
+door demanding target AND reason and firing once, rendering firing
+nothing, statelessness visible). DEPLOY: src/ + docs/ +
+supabase/v264_relationship.sql (run AFTER v263; the proof file is
+optional verification). LOOKING AHEAD: PL-3 — Send and the Sent
+Snapshot. (v264.relationship — 10 claims · RP-1..RP-8 · V-1..V-7.)
+
+**6.37 Proposal Lifecycle — Spine & Ledger (PL-1 · v263).** The
+first slice of the LOCKED PL map, and the Execution OS era's
+foundation stone, built exactly to the corrected PL-1 specification.
+◆ THE SPINE: bookings.spine_state — the engagement's CEREMONIAL
+lifecycle position, NULLABLE with NULL meaningful (an untouched
+legacy engagement has no ceremonial state), full constitutional
+vocabulary admitted by CHECK so later slices never re-open the
+column, added BESIDE the existing sixteen-value operational
+`bookings.status` pipeline — which stays exactly what the corrected
+spec ruled it: the untouched legacy operational workflow axis, not
+the spine, carrying no authority over lifecycle state, synchronized
+with nothing, and deliberately left constitutionally UNCLASSIFIED
+(the Execution Constitution's ruling to make). Dormant states
+(committed…settled, cancelled) are VALUES WITH NO DOOR: no function
+writes them, pinned. ◆ THE CEREMONY MODEL, built once for every
+future slice: four RPCs (open_inquiry · open_proposing ·
+decline_engagement · withdraw_offer), each atomic — row lock,
+precondition at the door, one state write, exactly ONE ledger entry
+— attached at the product's real choke points (booking creation
+births the spine; both create-proposal paths fire the Proposing
+door; the Withdraw door lives on the version row) and tolerated on
+refusal (a refused ceremony leaves the row honestly derived,
+never fabricated). ◆ THE GUARDRAIL AS LAW: no bridge transitions —
+open_inquiry refuses legacy-ahead rows (CEREMONY_LEGACY_AHEAD);
+open_proposing's third honest outcome is legacy_untouched (zero
+writes; the create proceeds; the row stays derived); decline
+refuses NULL. ◆ THE LEDGER: engagement_ledger, append-only AT THE
+POLICY LAYER (insert+select only — the blueprint_compositions
+discipline), four required fields NOT NULL, zero commercial
+content, and NEVER an input to state — the slice's central
+invariant (state is the answer; the ledger is the history of
+answers) pinned as the sole-reader rule. ◆ THE TWO-CONCEPT MODEL at
+the center of honest grandfathering: CEREMONIAL SPINE STATE
+(stored, ledger-backed) vs LEGACY-DERIVED LIFECYCLE CLASSIFICATION
+(read-time, provenance-marked, ceremonial state ABSENT and legible
+as absent) — the badge exposes value AND provenance, never
+collapsed; an old won proposal reads "Committed · legacy-derived ·
+ceremonial spine state: absent," claiming no ceremony, no
+Instrument, no history. The migration fabricated NOTHING: no
+backfill, no ledger seed, no default. ◆ VERSION TERMINALS:
+Withdrawn reachable only by its ceremony; SUPERSEDED SHIPPED WITH
+NO WRITER — vocabulary + labels + read tolerance + a setter that
+refuses it by name; its first honest writer is PL-3/PL-4 (the
+sendVersion recon stands recorded in the spec). ◆ PROVEN TWICE:
+fifteen server claims green on real Postgres (SP-1..SP-8: virgin
+opening, double-open refusal, the guardrail's three refusals,
+policy-layer append-only under the app role, withdraw semantics,
+superseded-has-no-writer via pg_proc, fabrication zero) and a NEW
+SIXTH Chromium suite (accept-spine, 6 claims: value-and-provenance,
+plain ceremonial badge, zero edit affordances on history + honest
+emptiness, no door for legacy rows, decline fires once with its
+reason, ordinary interaction leaves the badge inert). DEPLOY: src/
++ docs/ + supabase/v263_spine_ledger.sql (run it; the proof file is
+optional verification). LOOKING AHEAD: PL-2 — the Relationship,
+found-or-created at the Open Inquiry door this slice just built.
+(v263.spine — 10 claims · SP-1..SP-8 · S-1..S-6.)
+
+**6.36 Blueprint Workflow Unification (v262).** The reconciliation
+named in §6.35 — the last competing Blueprint doctrine retired. NOT a
+feature: product coherence only — no SQL, no law, validator, resolver,
+or ceremony change (all pinned). After this slice there is ONE
+workflow and ONE language, and every remaining Blueprint action in
+the product maps onto exactly one of FOUR CATEGORIES: CREATION →
+Instantiation (BP-3, New Proposal → Start from Blueprint) · AUTHORING
+REUSE → Composition (BP-8, Copy into Draft on the Shelf) · KNOWLEDGE
+CAPTURE → Promotion (BP-5, the Studio header ceremony) · REFERENCE →
+Citation / View Source. ◆ THE v216 LAND/APPLY DOCTRINE, RETIRED —
+audited consumer by consumer, capability preserved, implementation
+replaced: the Studio page's landing orchestration (openLanding /
+commitLanding / landing state / the apply, replace-with, and subset
+verbs / the legacy promote and list calls) removed wholesale; the
+canvas drop branch for the retired drag payload removed and the
+payload mime extinct across src (pinned); the two onLandDesign hosts
+now no-ops with the retirement named (no Library kind has emitted
+land since v256); the desk's legacy "Save as Blueprint" removed —
+v255's ceremony IS the capture door; LandingDecision.tsx DELETED (a
+blueprint-specific surface with no non-legacy caller); the genesis
+blueprint route removed from VersionGenesis (props, mode, option,
+pick surface) and from both callers — new versions are revise/copy/
+blank; designing from a Blueprint is a proposal-creation act.
+◆ THE PANE'S BLUEPRINTS TAB, RECLASSIFIED into the reference
+category: it now reads the PUBLISHED shelf via the v261 read and
+shows shelf cards with View-on-Shelf links, routing creation and
+reuse to their doors BY NAME; no add/copy action touches blueprint
+content (the constitutional ruling stands: subset-into-a-DESIGN has
+no equivalent by design — composition is draft-side authoring;
+instantiation is whole and parameterized). ◆ THE GLOBAL PIN v261
+COULD NOT MAKE, now made: zero live importers of the legacy module
+across src — only the module itself and its retired-in-place page.
+◆ VOCABULARY swept product-wide (word-bounded, fragment-built in the
+suite so the pin cannot trip itself): the apply/replace-with/refresh-
+from/update-from/pull-latest/sync phrases are extinct; the product
+teaches Start from Blueprint · Instantiate · Copy into Draft · View
+Source · Promote. ◆ PROVENANCE INTACT, INDEPENDENCE UNMOVED: the
+citation keeps toggle/detail/answers/view-source; v255/v258
+provenance records and their append-only policies byte-free of v262;
+the instantiation wrapper and SQL, divergence law, and citation reads
+untouched — independence still rests on the proven acts.
+◆ ACCEPTANCE FOLLOWS THE PRODUCT, recorded: lifecycle G-1's route
+list shrinks to revise/blank and G-4 is REWRITTEN as the negative
+claim (the retired route does not exist; looking commits nothing) —
+count stays 27; the landing suite RESTRUCTURED: the decision-mode
+claims D-1..D-5 retired WITH their surface (their commitment
+disciplines live in the constitutional heirs' unit pins —
+CopyIntoDraft's staged problems block the single act;
+StartFromBlueprint's conflicts land nothing), while the drag-ENGINE
+claims D-6..D-8 remain over a fixture wearing neutral card-payload
+vocabulary — landing count is now 3, and the retired decision-variant
+recipe is removed with its target. ◆ THE ONE STORY a new user learns: write
+reusable organizational knowledge → publish it → instantiate it into
+a proposal → customize → accept → execute → promote improvements
+back. ◆ LOOKING AHEAD, per the operator's direction: the Blueprint
+platform is FUNCTIONALLY COMPLETE. The roadmap pivots from knowledge
+authoring to the PROPOSAL LIFECYCLE — v263 begins the arc from
+conception through client approval into operational execution:
+EventCore as an Execution OS. DEPLOY: src/ + docs/ only.
+(v262.unification — 10 claims.)
+
+**6.35 Blueprint-to-Proposal Workflow Integration (v261).**
+Instantiation becomes a NATIVE proposal-creation path — composed
+entirely from existing law, with no SQL and no law edits (pinned).
+◆ THE THREE PATHS: New Proposal now opens a deliberate chooser —
+Start blank (the existing seed/archetype/theme flow) · Start from
+Blueprint · Copy an existing Proposal (the EXISTING createProposal
+copy machinery, fed by a REAL latest version of this booking's
+proposals — never a pointer). ◆ START FROM BLUEPRINT
+(StartFromBlueprint.tsx): pick an EXACT published revision (read
+filters active + offering; the offered revision fetched by id, pinned)
+→ answer the Blueprint's declared questions (typed inputs; guest count
+required) → read the DETERMINISTIC REVIEW — verdicts from v260's
+simulate, i.e. BP-7's own evaluation law (the flow pinned free of any
+evaluation of its own), blocking BY NAME on missing required answers,
+and disclosing honestly where BP-3's act lands the design (a new
+version on the booking's latest proposal when one exists; a new
+proposal named after the Blueprint otherwise) → the act is BP-3's
+EXISTING v253 wrapper (the slice's only write; staged conflicts render
+named with the zero-residue truth) → success opens Proposal Studio at
+the exact created version. ◆ ORIGIN WITHOUT CONTROL: the citation
+details (v254/v257) now read as the full origin panel — "Started from
+{name} rN" · instantiated timestamp · fingerprint · "Answers given:
+…" · a View-source pointer to the shelf — and the entire slice is
+pinned free of live-dependency vocabulary (no refresh-from,
+apply-latest, or update-from-source anywhere). Divergence view and
+Promotion already sit beside the citation from v254/v255.
+Independence needs no new proof: it IS the existing law (v253
+independence claims, v257 one-time resolution), which this slice is
+pinned not to have touched. ◆ THE LEGACY v182 MODEL LOSES ITS
+CREATION-TIME CONSUMERS: the New Proposal dropdown (which fed
+createProposal from a stale source_version_id pointer) and the
+VersionGenesis blueprint route (createBlank + getBlueprint +
+applyBlueprint) are superseded; the card imports nothing from the
+legacy module (pinned). ◆ NAMED NEXT RECONCILIATION — recorded, not
+half-fixed: the STUDIO-side legacy consumers remain — SourceEventPane's
+blueprints tab (listBlueprints/previewBlueprint), LandingDecision's
+BlueprintPreview, and the studio page's apply verbs (applyBlueprint,
+replaceWithBlueprint, applyBlueprintSubset, promoteToBlueprint,
+getBlueprint) — the v216 land-and-apply machinery reading the retired
+pointer model live into open designs. Retiring it is a full slice
+(drag machinery + the 27-claim lifecycle harness ride on that page)
+and is the queue's next reconciliation. DEPLOY: src/ + docs/ only.
+(v261.workflow — 8 claims.)
+
 **6.34 Blueprint Studio — Object-Centric Authoring & Simulation
 (v260).** A product refinement, PRESENTATION-ONLY over frozen
 BP-1..BP-8: zero SQL, zero law edits, zero change to publication,

@@ -24,7 +24,12 @@ import { getCompanyIdentity } from "./identityData";
 import { projectIdentity } from "./identity";
 
 export type ProposalStatus = "open" | "won" | "lost" | "archived";
-export type VersionStatus = "draft" | "internal_review" | "sent" | "revision_requested" | "approved";
+// v263 PL-1 — the two honest terminals join the VOCABULARY. Withdrawn is
+// reachable only by its ceremony (withdrawOffer, spineSupabase); SUPERSEDED
+// HAS NO WRITER in this slice — read-tolerated, awaiting PL-3/PL-4's honest
+// proof of replacement. Neither is a selectable flow option (VERSION_FLOW
+// unchanged), and the generic setter refuses both.
+export type VersionStatus = "draft" | "internal_review" | "sent" | "revision_requested" | "approved" | "withdrawn" | "superseded";
 
 export interface Proposal {
   id: string; booking_id: string; title: string;
@@ -320,6 +325,11 @@ export async function setVersionStatus(
   status: VersionStatus,
   approvedBy?: string,
 ): Promise<Outcome> {
+  // v263 — terminals are ceremonies, not settings: Withdrawn goes through
+  // the Withdraw ceremony; Superseded has no writer at all in this slice.
+  if (status === "withdrawn" || status === "superseded") {
+    return { ok: false, detail: "Terminal states are set by ceremony, not by the status menu." };
+  }
   if (v.status === "approved") return { ok: false, detail: "Approved versions are immutable — create a new version instead." };
   const patch: Record<string, unknown> = { status };
   if (status === "sent" && !v.sent_at) patch.sent_at = new Date().toISOString();

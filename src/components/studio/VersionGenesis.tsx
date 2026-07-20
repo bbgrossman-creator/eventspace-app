@@ -12,8 +12,8 @@
 //                            (provenance: "from vN", as createVersion logs).
 //   Start blank            — a genuinely empty version: no sections, no
 //                            components, no items (provenance: "blank").
-//   Start from a blueprint — blank + the landing machinery (applyBlueprint),
-//                            listed inline; provenance rides the blueprint's
+//   (v262: the blueprint route is retired — creation from a Blueprint is
+//    BP-3, New Proposal → Start from Blueprint; one workflow, one language.)
 //                            own activity log.
 // ═══════════════════════════════════════════════════════════════════════════
 import React, { useState } from "react";
@@ -32,15 +32,13 @@ export default function VersionGenesis(props: {
   /** Every OTHER version — the "Copy another version…" route's offer, with
    *  the facts a choice needs: number, status, date, component count. */
   otherVersions: GenesisVersionRow[];
-  blueprints: { id: string; name: string }[];
   busy?: boolean;
   onRevise: () => void;
   onCopyVersion: (versionId: string) => void;
   onBlank: () => void;
-  onBlueprint: (blueprintId: string, name: string) => void;
   onCancel: () => void;
 }) {
-  const [mode, setMode] = useState<"decide" | "copy" | "blueprint">("decide");
+  const [mode, setMode] = useState<"decide" | "copy">("decide");
 
   const Option = (p: { mark: string; title: string; blurb: string; onClick: () => void; testid: string }) => (
     <button data-genesis-option={p.testid} disabled={props.busy} onClick={p.onClick}
@@ -74,9 +72,6 @@ export default function VersionGenesis(props: {
             <Option testid="blank" mark="○" title="Start blank"
               blurb="A genuinely empty version — no sections, no components, no items."
               onClick={props.onBlank} />
-            <Option testid="blueprint" mark="📐" title="Start from a blueprint"
-              blurb="An empty version, landed from the Library's designs."
-              onClick={() => setMode("blueprint")} />
           </div>
         )}
 
@@ -96,26 +91,6 @@ export default function VersionGenesis(props: {
               ))}
             </div>
             <button data-genesis-copy-back onClick={() => setMode("decide")}
-              className="text-[12px] text-slate-500 rounded-lg px-3 py-1.5 ring-1 ring-slate-200">Back</button>
-          </div>
-        )}
-
-        {mode === "blueprint" && (
-          <div>
-            <div className="space-y-1 mb-3">
-              {props.blueprints.map((bp) => (
-                <button key={bp.id} data-genesis-bp={bp.id} disabled={props.busy}
-                  onClick={() => props.onBlueprint(bp.id, bp.name)}
-                  className="w-full text-left px-3 py-2 rounded-lg border text-[13px] hover:bg-[#F4F9FF]"
-                  style={{ borderColor: T.rule, color: T.ink }}>📐 {bp.name}</button>
-              ))}
-              {props.blueprints.length === 0 && (
-                <p className="text-[11px] text-slate-400 px-1">
-                  No blueprints yet — promote a design you're proud of, and it will be offered here.
-                </p>
-              )}
-            </div>
-            <button data-genesis-back onClick={() => setMode("decide")}
               className="text-[12px] text-slate-500 rounded-lg px-3 py-1.5 ring-1 ring-slate-200">Back</button>
           </div>
         )}

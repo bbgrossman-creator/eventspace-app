@@ -11,6 +11,7 @@ import FilesPanel from "@/components/FilesPanel";
 import KnowledgeCard from "@/components/KnowledgeCard";
 import DebriefCard from "@/components/DebriefCard";
 import ProposalsCard from "@/components/ProposalsCard";
+import EngagementSpine from "@/components/EngagementSpine";
 import EventLegacyCard from "@/components/EventLegacyCard";
 import {
   Booking,
@@ -838,6 +839,9 @@ export default function BookingDetail() {
           is completed. Event Components — renders only when the operating
           model unlocks it (caps.components_editor). */}
       <DebriefCard b={b} />
+      {/* v263 PL-1 — the engagement's constitutional position (value AND
+          provenance, never collapsed) + its append-only history. */}
+      <div className="card p-4"><EngagementSpine bookingId={b.id} actor="sales" /></div>
       <ProposalsCard b={b} />
       <KnowledgeCard b={b} />
       <FilesPanel b={b} />

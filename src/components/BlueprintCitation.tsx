@@ -82,8 +82,18 @@ export default function BlueprintCitation({ versionId }: { versionId: string }) 
           </div>
           <div className="mt-1 text-[11px] text-slate-400">
             Instantiated {new Date(citation.snapshot_at).toLocaleString()} · fingerprint {citation.fingerprint.slice(0, 12)}…
-            {Object.entries(citation.parameters ?? {}).map(([k, v]) => ` · ${k}: ${String(v)}`).join("")}
           </div>
+          {Object.keys(citation.parameters ?? {}).length > 0 && (
+            <div data-citation-answers className="mt-0.5 text-[11px] text-slate-400">
+              Answers given: {Object.entries(citation.parameters ?? {}).map(([k, v]) => `${k}: ${String(v)}`).join(" · ")}
+            </div>
+          )}
+          {/* v261 — origin without control: a pointer to the shelf, and
+              deliberately nothing else. No verb here updates this design
+              from the Blueprint; the design owns itself. */}
+          <a data-view-source href="/blueprint-shelf" className="mt-1 inline-block text-[11px] underline text-slate-400 hover:text-slate-600">
+            View source revision on the Blueprint Shelf
+          </a>
           {status && (
             <div className="mt-1 text-[11px] text-slate-400">
               Shelf today: {status.shelfNote === "current" ? "this is still the offered revision" : "a later revision is offered"}

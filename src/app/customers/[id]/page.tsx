@@ -4,6 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Booking, fmtDate, fmtTime, stageFor } from "@/lib/workflow";
+// v264 PL-2 — the two voices: ceremonial (a stored Relationship this
+// booking cites) and derived (the surviving phone/email household
+// classification). Value and provenance both always exposed, never
+// collapsed; adoption and correction are the only writers, one act each.
+import { adoptEngagement, correctCitation, loadRelationship, listRelationships, getBookingRelationshipId, listAttachedBookingIds } from "@/lib/relationshipSupabase";
+import { Relationship } from "@/lib/relationship";
+import { RelationshipHeader, SuggestionRow, CorrectCitationDoor } from "@/components/RelationshipPanel";
 import {
   matchHousehold, computeCustomerStats, headsOf, NON_REAL,
   CustomerChargeRow, CustomerPayRow,
@@ -29,6 +36,11 @@ export default function CustomerProfilePage() {
   const [noteEditor, setNoteEditor] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  // v264 — the ceremonial voice
+  const [rel, setRel] = useState<Relationship | null>(null);
+  const [attachedIds, setAttachedIds] = useState<string[]>([]);
+  const [allRels, setAllRels] = useState<Relationship[]>([]);
+  const [relBusy, setRelBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -50,6 +62,13 @@ export default function CustomerProfilePage() {
     setCharges((c.data ?? []) as CustomerChargeRow[]);
     setPays((p.data ?? []) as CustomerPayRow[]);
     setRooms(new Map(((r.data ?? []) as { id: string; name: string }[]).map((x) => [x.id, x.name])));
+    // v264 — load the ceremonial voice beside the derived one
+    try {
+      const relId = await getBookingRelationshipId(id);
+      setRel(relId ? await loadRelationship(relId) : null);
+      setAttachedIds(relId ? await listAttachedBookingIds(relId) : []);
+      setAllRels(await listRelationships());
+    } catch { /* the derived voice stands alone */ }
     setLoading(false);
   }, [id]);
   useEffect(() => { load(); }, [load]);
@@ -70,8 +89,51 @@ export default function CustomerProfilePage() {
     </div>
   );
 
+  const derivedUnattached = matched.filter((m) => !attachedIds.includes(m.id));
+
   return (
     <div className="max-w-4xl">
+      {/* ── v264: the two voices ── */}
+      <div className="mb-4 space-y-2">
+        {rel ? (
+          <>
+            <RelationshipHeader rel={rel} />
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-slate-400">
+                {attachedIds.length} event{attachedIds.length === 1 ? "" : "s"} linked by ceremony
+              </span>
+              <CorrectCitationDoor options={allRels} currentId={rel.id} busy={relBusy}
+                onCorrect={(target, reason) => {
+                  setRelBusy(true);
+                  void correctCitation(id, target, "sales", reason)
+                    .then((res) => { if (!res.ok) setErr(res.detail ?? "The correction was refused."); return load(); })
+                    .finally(() => setRelBusy(false));
+                }} />
+            </div>
+            {derivedUnattached.length > 0 && (
+              <div className="space-y-1">
+                {derivedUnattached.map((m) => (
+                  <SuggestionRow key={m.id}
+                    label={`${m.contact_name} · ${m.event_type ?? "event"}${m.event_date ? ` · ${m.event_date}` : ""}`}
+                    detail="matched by phone/email" busy={relBusy}
+                    onAdopt={() => {
+                      setRelBusy(true);
+                      void adoptEngagement(m.id, rel.id, "sales")
+                        .then((res) => { if (!res.ok) setErr(res.detail ?? "Adoption was refused."); return load(); })
+                        .finally(() => setRelBusy(false));
+                    }} />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <p data-rel-derived-banner data-rel-provenance="derived"
+            className="text-[11px] text-slate-400 bg-[#FAFBFD] ring-1 ring-[#EDF2F8] rounded px-2.5 py-1.5">
+            This view is a derived household — grouped by phone/email match, not by ceremony. New inquiries
+            establish the customer at the door; this page gains its linked history as engagements are adopted.
+          </p>
+        )}
+      </div>
       {/* ── Header ── */}
       <header className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">

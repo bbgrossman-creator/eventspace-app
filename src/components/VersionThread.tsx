@@ -32,6 +32,7 @@ export interface VersionThreadProps {
   onNewVersion: () => void;                 // opens the Genesis ceremony — never mutates here
   onStatus: (v: ProposalVersion, next: VersionStatus) => void;
   onArchiveVersion: (v: ProposalVersion) => void;
+  onWithdrawVersion?: (v: ProposalVersion) => void;
   onRestoreVersion: (v: ProposalVersion) => void;
   onTogglePricing: (versionId: string) => void;
   pricingOpen: Record<string, boolean>;
@@ -49,9 +50,14 @@ function Row(p: {
   v: ProposalVersion; current: boolean; won: boolean; count: number;
   open: boolean; busy?: boolean; href: string;
   onStatus: (next: VersionStatus) => void; onArchive: () => void; onRestore: () => void;
+  onWithdraw?: () => void;
   onPricing: () => void; pricingShown: boolean; onNewVersion?: () => void;
 }) {
-  const flow = VERSION_FLOW.find((f) => f.value === p.v.status);
+  const flow = VERSION_FLOW.find((f) => f.value === p.v.status)
+    // v263 — the terminals aren't flow options, but they render properly:
+    ?? (p.v.status === "withdrawn" ? { value: p.v.status, label: "Withdrawn", color: "#F1F5F9" }
+      : p.v.status === "superseded" ? { value: p.v.status, label: "Superseded", color: "#F1F5F9" }
+      : undefined);
   const isArchived = !!p.v.archived_at;
   const nextSteps: VersionStatus[] = isArchived ? []
     : p.v.status === "draft" ? ["internal_review", "sent"]
@@ -107,10 +113,16 @@ function Row(p: {
       </a>
       <button className="text-[11px] text-slate-400 underline" title="Money view — totals, guests, adjustments for this version"
         onClick={p.onPricing}>{p.pricingShown ? "hide pricing" : "pricing"}</button>
-      {!isArchived ? (
+      {!isArchived ? (<>
         <button className="text-[11px] text-slate-300 hover:text-amber-600"
           title="Archive this version — hidden from knowledge and pickers, kept in this history exactly where it is"
           disabled={p.busy} onClick={p.onArchive}>🗄</button>
+        {p.onWithdraw && p.open
+          && p.v.status !== "approved" && p.v.status !== "withdrawn" && p.v.status !== "superseded" && (
+          <button data-ceremony-withdraw className="text-[12px] text-slate-300 hover:text-rose-500 transition-colors"
+            title="Withdraw this offer — an explicit ceremony: the offer comes off the table, recorded in the engagement history"
+            disabled={p.busy} onClick={p.onWithdraw}>⤵</button>
+        )}</>
       ) : (
         <button data-version-restore={p.v.id} className="text-[11px] text-accent-ink hover:underline"
           title="Restore — back into circulation, at the same place in history it always held"
@@ -137,6 +149,7 @@ export default function VersionThread(p: VersionThreadProps) {
         open={p.proposalOpen} busy={p.busy} href={p.studioHref(current.id)}
         onStatus={(s) => p.onStatus(current, s)} onArchive={() => p.onArchiveVersion(current)}
         onRestore={() => p.onRestoreVersion(current)}
+        onWithdraw={p.onWithdrawVersion ? () => p.onWithdrawVersion!(current) : undefined}
         onPricing={() => p.onTogglePricing(current.id)} pricingShown={!!p.pricingOpen[current.id]}
         onNewVersion={p.onNewVersion} />
       {history.length > 0 && (
