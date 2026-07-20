@@ -38,6 +38,7 @@ import {
   DefinitionIdentity, PresentationTemplate,
   listDefinitionIdentities, listPresentationTemplates,
 } from "@/lib/blueprintAuthoringSupabase";
+import BlueprintInstantiate from "@/components/BlueprintInstantiate";
 
 const NAVY = "#102F56";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -163,6 +164,9 @@ function IdentityPanel(props: {
           <div className="text-[12px] text-slate-400">{identity.taxonomy ?? "—"} · {identity.status}</div>
         </div>
         <div className="flex items-center gap-2">
+          {identity.status === "active" && published && (
+            <BlueprintInstantiate revisionId={published.id} revisionNumber={published.revision_number} blueprintName={identity.name} />
+          )}
           {verbs.includes("begin_draft") && !draft && (
             <button data-begin-draft className="text-[12px] px-3 py-1.5 rounded-md ring-1 ring-[#E7EDF5] bg-white hover:bg-[#FAFBFD]"
               onClick={() => void (async () => {

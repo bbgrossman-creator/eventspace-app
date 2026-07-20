@@ -269,6 +269,53 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.27 Instantiation (v253 · BP-3 — the constitution's center,
+delivered).** THE ACT: instantiate_blueprint(revision, booking,
+guest_count) — one security-definer transaction turning the PUBLISHED
+revision into one independent Event Design (proposal version + sections
++ SPEC-002-instantiated components + items + config + portable + frozen
+guest count), ALL OR NOTHING, server-proven on real Postgres
+(supabase/tests/v253_proof.sql, I-1..I-9). ◆ ONE COHERENT SNAPSHOT:
+gather reads the revision and EVERY referenced definition's current
+config revision in single statements with FOR SHARE locks — a
+concurrent publish WAITS; the provenance records exactly what was seen
+(definition_revisions map + snapshot_at). ◆ NEVER-GUESS: all conflicts
+collected and raised as ONE staged list before anything builds — the
+closed vocabulary (14 kinds: lifecycle, parameter, role, definition,
+CONFIG_SCHEME/KEY/OPTION_GONE, fixed-price policy, v241
+DRESS_NO_MATCH/AMBIGUOUS, CONDITIONS_RESERVED) is unit-pinned equal
+between migration and client. ◆ ATOMICITY: early (parameter), MIDDLE
+(entry-2 explosion rolls back entry 1, proof trigger), and LATE (a
+fully-built design vanishes when the citation cannot be written)
+failures leave the database observably unchanged. ◆ DUAL PROVENANCE:
+SPEC-002's stamps untouched (seed_config_revision · instantiation_id ·
+definition_id) beside blueprint_instantiations {revision · fingerprint
+(md5 of canonical jsonb) · snapshot · parameters · branches (empty,
+recorded, BP-7's) · definition_revisions · fixed_price_decisions ·
+FROZEN BASELINE of the complete materialized result} — append-only by
+absence, unique(version_id): one design, one origin. ◆ INDEPENDENCE
+PROVEN: definition supersession + blueprint r2 change nothing; no
+design table carries a blueprint FK (information_schema-asserted); no
+refresh/follow/re-execute verb exists anywhere (grep-pinned); the
+renderer still contains no blueprint vocabulary. §11: every arriving
+price is DEBT; the fixed-package exception alone confirms, stamped
+{policy · revision · publisher · published_at}. §10: guest count is the
+one seed parameter — required, typed, stamped, never defaulted; a
+structure section materializes under a semantic role (SECTION_ROLE
+conflicts otherwise); authored prose rides the frozen baseline
+(structure_prose) until the workspace era gives it a surface — kept,
+not dropped. SURFACE: BlueprintInstantiate.tsx on the shelf page
+(published+active only): staged conflicts displayed amber, success in
+the started-from voice. ◆ v251 ERRATUM (recorded): the three shelf
+RPCs were security-definer without a tenancy guard — a foreign
+revision id could be published cross-tenant; re-issued in the v253
+migration with the guard (I-9 proves both act and RPCs refuse foreign
+tenants). v252 boundary-pin AMENDED (dated in-suite): the page hosts
+the act's surface; the shape and data modules keep the
+never-instantiates pins forever. DEPLOY: run v253_instantiation.sql;
+server proof runnable via psql -f supabase/tests/v253_proof.sql.
+(v253.instantiation — 6 claims · server I-1..I-9.)
+
 **6.26 Authoring (v252 · BP-2).** The lawful content shape of a draft
 revision (blueprintContent.ts) and its editor (/blueprint-shelf — the
 constitutional shelf's surface; the legacy /blueprints pointer page is

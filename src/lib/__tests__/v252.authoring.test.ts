@@ -147,10 +147,14 @@ T("NEGATIVE PINS — no live dependency, no event work, no legacy table: the sha
     ok(!/from\("blueprints"\)/.test(src) && !src.includes('.from("blueprints")'), `${name} reads the legacy table`);
     ok(!/override/i.test(src), `'override' appears in ${name}`);
     ok(!/blueprint publication/i.test(src), `the banned noun appears in ${name}`);
-    ok(!/instantiate\s*\(/.test(src), `an instantiation call appears in ${name}`);
-    ok(!src.includes("offeredRevisionId"), `${name} consumes the offered revision — instantiation is BP-3's`);
   }
-  ok(!page.includes("data-instantiate"), "the surface renders no instantiate action");
+  // AMENDED v253: the page now hosts BP-3's instantiation surface — the
+  // BP-2 boundary pins below apply to the SHAPE and DATA modules forever
+  // (authored content itself never instantiates), no longer to the page.
+  for (const [name, src] of [["blueprintContent.ts", shape], ["blueprintAuthoringSupabase.ts", data]] as const) {
+    ok(!/instantiate\s*\(/.test(src), `an instantiation call appears in ${name}`);
+    ok(!src.includes("offeredRevisionId"), `${name} consumes the offered revision`);
+  }
 });
 
 console.log(`\nv252.authoring: ${passed} passed, ${failed} failed`);
