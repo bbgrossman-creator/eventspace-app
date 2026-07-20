@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // LIBRARY KINDS (v215 · Library slice 1) — the registrations for the kinds
-// that exist today: components, past events, blueprints. Recipes wait for
+// that exist today: components, past events (blueprints live in
+// blueprintLibrary.ts since v256). Recipes wait for
 // SPEC-006; media stays evidence-side until SPEC-005 (the agreed narrowing
 // of KA §11's slice-1 entry). The projections here are v196's searchLibrary
 // queries, lifted verbatim into the registration contract — one search
@@ -40,6 +41,7 @@ import { PhotoPins } from "./photos";
 import {
   registerLibraryKind, rankPrefix, LibraryEntry, RankedEntry,
 } from "./libraryRegistry";
+import { bootBlueprintShelfKind } from "./blueprintLibraryKind";
 
 const fmt = (d: string | null) => {
   if (!d) return null;
@@ -61,6 +63,7 @@ let booted = false;
  *  calls this on its way up; the first call wins. */
 export function bootLibraryKinds(): void {
   bootPresentationKinds();
+  bootBlueprintShelfKind();
   if (booted) return;
   booted = true;
 
@@ -138,32 +141,10 @@ export function bootLibraryKinds(): void {
   });
 
   // ── Blueprints: curated — the company's standard ─────────────────────────
-  registerLibraryKind({
-    kind: "blueprint", label: "Blueprints", icon: "▤",
-    async search({ q, like }) {
-      const { data } = await supabase
-        .from("blueprints").select("id,name,description").ilike("name", like).limit(5);
-      return ((data ?? []) as { id: string; name: string; description: string | null }[])
-        .map((bp): RankedEntry => ({
-          entry: envelope({
-            id: bp.id, kind: "blueprint", title: bp.name,
-            subtitle: bp.description, pointer: { href: "/blueprints" },
-          }),
-          weight: rankPrefix(bp.name, q),
-        }));
-    },
-    // v216: a blueprint is a WHOLE DESIGN — its verb is "land", and landing
-    // is never a silent merge (the host routes it through the landing
-    // decision; UI_GRAMMAR §10 row "Menu / Blueprint → Canvas"). Without a
-    // landing host, the browser falls back to the pointer.
-    pick: (e) => ({ type: "land", id: e.id, name: e.title }),
-    legalDestinations: ["canvas"],
-    dragMime: "text/eventcore-blueprint",
-    drag: (e) => ({
-      mime: "text/eventcore-blueprint",
-      payload: JSON.stringify({ blueprintId: e.id, name: e.title }),
-    }),
-  });
+  // v256 · BP-6: the v216 legacy blueprint registration (which read the
+  // retired v182 pointer table with a land verb) is superseded by the
+  // constitutional shelf kind — registered in ITS OWN module
+  // (blueprintLibrary.ts), booted below. One word, one meaning.
 }
 
 /** ═══ v243 — PRESENTATION KNOWLEDGE (PA-5 · §5): the Library's four

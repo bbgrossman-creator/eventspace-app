@@ -269,6 +269,35 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.30 The Library Learns the Shelf (v256 · BP-6).** The fifth
+registered kind, landed under the v215 doctrine EXERCISED FOR REAL:
+the registration lives in the kind's own modules (blueprintLibrary.ts
+= the pure LAW, zero imports; blueprintLibraryKind.ts = the projection
+and its reads) and libraryRegistry.ts is byte-untouched by the slice
+(unit-pinned: no shelf vocabulary in the machinery). ◆ VISIBILITY IS
+THE SHELF'S OWN LAW, PROJECTED: shelfEntryVisible = active AND
+offering; retired identities and draft-only identities are hidden —
+not a judgment, the absence of an offer. ◆ PROVENANCE-ONLY PROOF: the
+subtitle states the citation count from blueprint_instantiations as
+FACT ("weddings · r3 · cited by 5 designs"; zero is said out loud —
+"not yet cited"; singular grammar for one) and NOTHING RANKS BY IT:
+the weight expression is rankPrefix(name, q) alone, pinned to contain
+no citation variable and the query pinned to never order by usage.
+◆ THE LIBRARY POINTS, THE SHELF PERFORMS: the kind's verb is
+navigate-only — no land verb, no drag, no shortcut around the
+guest-count ceremony; instantiation remains BP-3's act on the shelf
+surface (all pinned). ◆ THE v216 LEGACY KIND SUPERSEDED: the old
+registration read the retired v182 pointer table with a land verb and
+the text/eventcore-blueprint drag mime; both are gone from
+libraryKinds.ts (pinned), the shelf kind boots through the one
+idempotent bootLibraryKinds() door, and one word means one thing.
+◆ TODAY'S CLOTHES: BlueprintPaperPreview.tsx renders a published
+revision as a page on the shelf, labeled out loud — "presentation
+resolves at instantiation; the portable stratum travels by value" —
+importing ONLY the content shape; the renderer wall stands
+(src/lib/render still blueprint-free, re-pinned). No migration this
+slice. (v256.library — 7 claims.)
+
 **6.29 Promotion (v255 · BP-5) + THE v182 RECONCILIATION.** THE
 CEREMONY: promote_design_to_draft(version, content, target|name) — one
 security-definer transaction, ONE PROMOTION ONE BLUEPRINT (exactly one

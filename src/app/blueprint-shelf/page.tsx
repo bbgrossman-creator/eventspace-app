@@ -39,6 +39,7 @@ import {
   listDefinitionIdentities, listPresentationTemplates,
 } from "@/lib/blueprintAuthoringSupabase";
 import BlueprintInstantiate from "@/components/BlueprintInstantiate";
+import BlueprintPaperPreview from "@/components/BlueprintPaperPreview";
 
 const NAVY = "#102F56";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -231,6 +232,7 @@ function ReadOnlyRevision({ revision }: { revision: BlueprintRevision }) {
         {c?.presentation?.provenance ? ` (from template, ${c.presentation.provenance.fingerprint.slice(0, 8)}…)` : ""}
       </div>
       <div className="mt-1 text-[11px] text-slate-400">Amendment is supersession — begin a new draft to change anything.</div>
+      {c && <BlueprintPaperPreview content={c} />}
     </div>
   );
 }
