@@ -269,6 +269,52 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.34 Blueprint Studio — Object-Centric Authoring & Simulation
+(v260).** A product refinement, PRESENTATION-ONLY over frozen
+BP-1..BP-8: zero SQL, zero law edits, zero change to publication,
+promotion, composition, or instantiation (all pinned; the law files
+and ceremony surfaces are pinned free of v260 edits). The guiding
+question changes from "where would you like to edit this rule?" to
+"WHICH REUSABLE THING ARE YOU WORKING ON?". ◆ THE OBJECT WORKSPACE
+(primary editing experience): a structural tree on the left
+(chapters → sections → components); selecting an object opens a
+workspace showing everything about it TOGETHER — and it is a
+PROJECTION, not a second model: it renders the LITERAL EntryEditor on
+the LITERAL patch path the structure dashboard uses (pinned: exactly
+two EntryEditor sites, identical patch expression, no second save),
+plus read-only cross-references — inherited chapter/section rules
+described in words with "edit them on their own level", influencing
+questions resolved from condition references, section dress presence.
+Removing the object clears focus via onGone plus a content-derived
+guard, so summaries can never go stale (pinned). ◆ FUTURE EVENT
+BEHAVIOR: a descriptive summary assembled from the shape — appears-
+when wording, pricing form name, governing conditions, questions,
+choices — "descriptive only", with assistive vocabulary pinned absent
+(no recommendations, predictions, or auto-anything; the editor stays
+fully deterministic). ◆ describeCondition: deterministic plain
+language over the full BP-7 vocabulary using parameter LABELS ("Guest
+Count is at least 100", AND/OR/NOT composition) — WORDING only, never
+evaluation. ◆ SIMULATION ("instantiate… without saving anything"):
+typed inputs for every declared parameter; verdicts computed
+EXCLUSIVELY by the existing law — branchMap + evaluateCondition, the
+exact functions BP-3's SQL mirrors — with the studio module pinned to
+never index an answer map itself (even the required-answer presence
+check runs through the law's own `present` predicate); nothing
+persists (panel and module pinned free of supabase/rpc/save). Missing
+required answers block BY NAME ("Answer these first: …"); results
+render ✓/✗ per section/component/item rule with expandable reasons
+where EVERY row is the law's own per-leaf verdict (explainCondition
+held-flags proven equal to evaluateCondition leaf-by-leaf; NOT
+inverts and says so). Fixture-proven against instantiation semantics
+(section gates cascade; 150/standard excludes the premium-gated
+component). ◆ GLOBAL AREAS REMAIN as "Organizational dashboards"
+beneath the workspace (all seven pinned present). ◆ REVIEW BEFORE
+PUBLISHING gains READ-ONLY diagnostics: required questions every new
+event must answer; unused parameters (guest_count exempt — the act
+itself always asks it); conditions referencing missing questions.
+Nothing auto-fixes (Diag pinned patch-free). DEPLOY: src/ + docs/
+only. (v260.studio — 10 claims.)
+
 **6.33 Editor Foundation / Guided Draft Entry (v259).** The FIRST
 Blueprint Editor experience — a product-design layer, PRESENTATION-ONLY
 over the frozen BP-1..BP-8 architecture: zero SQL, zero law edits (both

@@ -119,7 +119,7 @@ T("THE EDITOR'S PERMANENT AREAS EXIST AND HOLD THE EXISTING EDITORS: seven named
 });
 
 T("REVIEW BEFORE PUBLISHING IS READ-ONLY AND THE CEREMONY IS UNTOUCHED: the review component renders status prose only (no patch, no save, no publish call); the publish path remains the existing data-open-ceremony button with the constitutional declaration; nothing in the slice publishes", () => {
-  const review = page.slice(page.indexOf("function ReviewBeforePublishing"), page.indexOf("function DraftEditor"));
+  const review = page.slice(page.indexOf("function ReviewBeforePublishing"), page.indexOf("function Diag("));
   ok(!review.includes("patch") && !review.includes("saveDraftContent") && !review.includes("publishRevision"), "the review area must be read-only");
   ok(review.includes("Nothing here publishes"), "the read-only declaration is missing");
   ok(page.includes("data-open-ceremony") && page.includes("PUBLISH_DECLARATION"), "the existing ceremony path must remain");

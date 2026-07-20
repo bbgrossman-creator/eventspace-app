@@ -47,6 +47,11 @@ import {
 } from "@/lib/blueprintGuide";
 import { loadPromotionAct, loadDraftById, PromotionAct } from "@/lib/blueprintGuideSupabase";
 import {
+  objectView, behaviorSummary, describeCondition, simulate, reviewDiagnostics,
+  findEntryPath, SimulationResult, SimulationBlocked,
+} from "@/lib/blueprintStudio";
+import { ParameterAnswers } from "@/lib/blueprintConditions";
+import {
   CONDITION_PREDICATES, PREDICATE_ADMISSION, PredicateNode, BlueprintCondition,
 } from "@/lib/blueprintConditions";
 import { loadRevisionUsage, usageLine, RevisionUsage } from "@/lib/blueprintUsageSupabase";
@@ -325,9 +330,212 @@ function ReviewBeforePublishing(props: {
           {omissions.length} thing{omissions.length === 1 ? "" : "s"} stayed with the source event — reviewed above under "Review what came from the event".
         </div>
       )}
+      <Diag content={props.content} />
       <div className="text-slate-400">
         Publishing is a separate, deliberate ceremony (the Publish… button above). Nothing here publishes.
       </div>
+    </div>
+  );
+}
+
+/** v260 — read-only diagnostics. Nothing auto-fixes. */
+function Diag({ content }: { content: BlueprintContent }) {
+  const d = reviewDiagnostics(content);
+  return (
+    <div data-diagnostics className="space-y-0.5">
+      {d.unusedParameters.length > 0 && (
+        <div>Unused questions: {d.unusedParameters.map((p) => p.label || p.key).join(", ")} — declared, but no condition references them.</div>
+      )}
+      {d.conditionsMissingQuestions.length > 0 && (
+        <div className="text-rose-500">
+          Conditions reference missing questions: {d.conditionsMissingQuestions.map((m) => m.param).join(", ")}.
+        </div>
+      )}
+      {d.unresolvedQuestions.length > 0 && (
+        <div>Questions every new event must answer: {d.unresolvedQuestions.map((p) => p.label || p.key).join(", ")}.</div>
+      )}
+    </div>
+  );
+}
+
+
+/** v260 — THE OBJECT WORKSPACE: everything about one reusable thing,
+ *  together. A PROJECTION: it renders the SAME EntryEditor over the SAME
+ *  patch path as the structure dashboard, plus read-only cross-references
+ *  (inherited rules, influencing questions, section dress) and the
+ *  descriptive Behavior Summary. No second editing model, no second save. */
+function ObjectWorkspace(props: {
+  content: BlueprintContent; entryKey: string; defs: DefinitionIdentity[];
+  patch: (fn: (c: BlueprintContent) => BlueprintContent) => void;
+  onGone: () => void;
+}) {
+  const v = objectView(props.content, props.entryKey);
+  const summary = behaviorSummary(props.content, props.entryKey);
+  if (!v || !summary) return null;
+  const { ci, si, ei } = v.path;
+  return (
+    <div data-workspace-for={props.entryKey}>
+      <div className="text-[15px] font-medium text-slate-700">{v.entry.title || "(component)"}</div>
+      <div className="text-[11px] text-slate-400">
+        in {v.chapter.title || "(chapter)"} → {v.section.title || "(section)"}
+      </div>
+
+      {/* the SAME editor, the SAME patch path — projection, not duplication */}
+      <EntryEditor entry={v.entry} defs={props.defs} parameters={props.content.parameters}
+        patchEntry={(fn) => props.patch((c) => { fn(c.structure[ci].sections[si].entries[ei]); return c; })}
+        remove={() => { props.patch((c) => { c.structure[ci].sections[si].entries.splice(ei, 1); return c; }); props.onGone(); }} />
+
+      {v.inheritedConditions.length > 0 && (
+        <div data-inherited-rules className="mt-2 rounded bg-[#F9FBFE] ring-1 ring-[#EDF2F8] p-2">
+          <div className="text-[11px] font-medium text-slate-500">Inherited rules (edit them on their own level)</div>
+          {v.inheritedConditions.map((g, i) => (
+            <div key={i} className="text-[11px] text-slate-500">
+              · from the {g.from} "{g.at}": {describeCondition(g.condition, props.content)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div data-behavior-summary className="mt-2 rounded bg-[#FBF8F1] ring-1 ring-[#E8E2D4] p-2">
+        <div className="text-[11px] font-medium text-[#8A7B55]">Future Event Behavior</div>
+        <div className="mt-0.5 text-[11px] text-slate-600">Appears when: {summary.appears}</div>
+        <div className="text-[11px] text-slate-600">Pricing: {summary.pricing}</div>
+        {summary.questions.length > 0 && (
+          <div className="text-[11px] text-slate-600">Questions: {summary.questions.join(" · ")}</div>
+        )}
+        {summary.choices.length > 0 && (
+          <div className="text-[11px] text-slate-600">Choices: {summary.choices.join(" · ")}</div>
+        )}
+        {v.sectionDress !== null && v.sectionDress !== undefined && (
+          <div className="text-[11px] text-slate-600">Presentation: this section carries authored dress (edit under Portable Presentation).</div>
+        )}
+        <div className="mt-0.5 text-[10px] text-slate-400">Descriptive only — assembled from the Blueprint's own data.</div>
+      </div>
+    </div>
+  );
+}
+
+/** v260 — SIMULATION: "instantiate… without saving anything." Answers go to
+ *  the law (simulate → branchMap/evaluateCondition); this panel only renders
+ *  the law's verdicts and their per-predicate explanations. Local state
+ *  only; nothing persists, nothing is written anywhere. */
+function SimulationPanel({ content }: { content: BlueprintContent }) {
+  const [answers, setAnswers] = useState<Record<string, string | boolean>>({});
+  const [result, setResult] = useState<SimulationResult | SimulationBlocked | null>(null);
+  const [openReason, setOpenReason] = useState<string>("");
+  const run = () => {
+    const typed: ParameterAnswers = {};
+    for (const p of content.parameters) {
+      const raw = answers[p.key];
+      if (raw === undefined || raw === "") continue;
+      typed[p.key] = p.type === "count" ? Number(raw) : p.type === "flag" ? raw === true : String(raw);
+    }
+    setResult(simulate(content, typed));
+  };
+  return (
+    <section data-simulation className="mt-4 rounded-md ring-1 ring-[#E7EDF5] bg-white p-3">
+      <div className="text-[11px] font-medium tracking-wide uppercase text-slate-400">Blueprint Simulation</div>
+      <div className="text-[11px] text-slate-400">
+        A deterministic preview: exactly what instantiation would decide from these answers — computed by the
+        same rules, saved nowhere.
+      </div>
+      <div className="mt-2 flex flex-wrap gap-3">
+        {content.parameters.map((p) => (
+          <label key={p.key} className="text-[12px] text-slate-600">
+            {p.label || p.key}
+            {p.type === "count" && (
+              <input type="number" data-sim-count={p.key} value={String(answers[p.key] ?? "")}
+                onChange={(e) => setAnswers((a) => ({ ...a, [p.key]: e.target.value }))}
+                className="ml-1.5 w-24 text-[12px] px-2 py-0.5 rounded ring-1 ring-[#E7EDF5]" />
+            )}
+            {p.type === "choice" && (
+              <select data-sim-choice={p.key} value={String(answers[p.key] ?? "")}
+                onChange={(e) => setAnswers((a) => ({ ...a, [p.key]: e.target.value }))}
+                className="ml-1.5 text-[12px] px-2 py-0.5 rounded ring-1 ring-[#E7EDF5] bg-white">
+                <option value="">— answer —</option>
+                {(p.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            )}
+            {p.type === "flag" && (
+              <input type="checkbox" data-sim-flag={p.key} checked={answers[p.key] === true}
+                onChange={(e) => setAnswers((a) => ({ ...a, [p.key]: e.target.checked }))}
+                className="ml-1.5 align-middle" />
+            )}
+          </label>
+        ))}
+        {content.parameters.length === 0 && (
+          <span className="text-[11px] text-slate-400">No questions declared — the whole structure always appears.</span>
+        )}
+        <button data-sim-run onClick={run}
+          className="text-[12px] px-3 py-1 rounded-md text-white" style={{ background: NAVY }}>
+          Run simulation
+        </button>
+      </div>
+
+      {result && "missing" in result && (
+        <div data-sim-blocked className="mt-2 rounded bg-amber-50 ring-1 ring-amber-200 p-2 text-[12px] text-amber-800">
+          Answer these first: {result.missing.map((p) => p.label || p.key).join(", ")} — required questions have no default.
+        </div>
+      )}
+      {result && "sections" in result && (
+        <div data-sim-result className="mt-3 space-y-2">
+          {result.sections.map((se) => (
+            <div key={se.key}>
+              <div className={`text-[13px] font-medium ${se.included ? "text-slate-700" : "text-slate-300 line-through"}`}>
+                {se.included ? "✓" : "✗"} {se.title}
+              </div>
+              {se.reasons.length > 0 && (
+                <ReasonRow id={`se:${se.key}`} open={openReason} setOpen={setOpenReason}
+                  included={se.included} reasons={se.reasons} />
+              )}
+              {se.entries.map((en) => (
+                <div key={en.key} className="ml-4">
+                  <div className={`text-[12px] ${en.included ? "text-slate-600" : "text-slate-300 line-through"}`}>
+                    {en.included ? "✓" : "✗"} {en.title}
+                  </div>
+                  {en.reasons.length > 0 && (
+                    <ReasonRow id={`en:${en.key}`} open={openReason} setOpen={setOpenReason}
+                      included={en.included} reasons={en.reasons} />
+                  )}
+                  {en.itemDecisions.map((it) => (
+                    <div key={it.name} className="ml-4 text-[11px] text-slate-400">
+                      {it.applies ? "· item rule applies:" : "· item rule waived:"} {it.name}
+                      <ReasonRow id={`it:${en.key}|${it.name}`} open={openReason} setOpen={setOpenReason}
+                        included={it.applies} reasons={it.reasons} />
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** v260 — one decision's explanation: each leaf predicate with the law's own
+ *  verdict for it. No hidden reasoning — these ARE the evaluated rules. */
+function ReasonRow(props: {
+  id: string; open: string; setOpen: (s: string) => void;
+  included: boolean; reasons: { text: string; held: boolean }[];
+}) {
+  const isOpen = props.open === props.id;
+  return (
+    <div className="text-[11px]">
+      <button data-sim-reason-toggle={props.id} onClick={() => props.setOpen(isOpen ? "" : props.id)}
+        className="text-slate-400 underline hover:text-slate-600">
+        {isOpen ? "hide reason" : props.included ? "why included?" : "why excluded?"}
+      </button>
+      {isOpen && (
+        <div data-sim-reasons className="ml-2 mt-0.5">
+          {props.reasons.map((r, i) => (
+            <div key={i} className={r.held ? "text-emerald-600" : "text-rose-500"}>
+              {r.held ? "✓" : "✗"} {r.text}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -351,6 +559,14 @@ function DraftEditor(props: { identity: BlueprintIdentity; draft: BlueprintRevis
   const [promotionAct, setPromotionAct] = useState<PromotionAct | null>(null);
   const [onboardDismissed, setOnboardDismissed] = useState(true);
   const [confirmGuestParam, setConfirmGuestParam] = useState(false);
+  // v260 · Object Workspace — which reusable thing is being worked on.
+  const [focusedEntry, setFocusedEntry] = useState<string | null>(null);
+  useEffect(() => {
+    // remove-safety: if the focused object no longer exists in the one
+    // content shape, focus clears immediately — summaries can never go stale
+    // because every panel derives from `content` on each render.
+    if (focusedEntry && !findEntryPath(content, focusedEntry)) setFocusedEntry(null);
+  }, [content, focusedEntry]);
 
   useEffect(() => {
     void listDefinitionIdentities().then(setDefs).catch(() => setDefs([]));
@@ -521,6 +737,53 @@ function DraftEditor(props: { identity: BlueprintIdentity; draft: BlueprintRevis
           destContent={content} onCopied={() => { void props.refresh(); }} />
       </div>
 
+      {/* ═══ v260 · THE OBJECT WORKSPACE — the primary editing experience:
+           a projection over the SAME content and the SAME editors. ═══ */}
+      <section data-object-workspace className="mt-4 rounded-md ring-1 ring-[#E7EDF5] bg-white">
+        <div className="px-3 py-2 border-b border-[#F1F5FA] text-[11px] font-medium tracking-wide uppercase text-slate-400">
+          Object Workspace — which reusable thing are you working on?
+        </div>
+        <div className="flex">
+          <nav data-object-tree className="w-52 shrink-0 border-r border-[#F1F5FA] p-2">
+            {content.structure.map((ch) => (
+              <div key={ch.key} className="mb-2">
+                <div className="text-[11px] font-medium text-slate-500">{ch.title || "(chapter)"}</div>
+                {ch.sections.map((se) => (
+                  <div key={se.key} className="ml-1 mt-0.5">
+                    <div className="text-[11px] text-slate-400">{se.title || "(section)"}</div>
+                    {se.entries.map((en) => (
+                      <button key={en.key} data-object-node={en.key}
+                        onClick={() => setFocusedEntry(en.key)}
+                        className={`ml-2 mt-0.5 block text-left text-[12px] px-1.5 py-0.5 rounded w-full ${
+                          focusedEntry === en.key ? "bg-[#F4F8FD] text-slate-700 ring-1 ring-[#DCE8F5]" : "text-slate-500 hover:text-slate-700"}`}>
+                        {en.title || "(component)"}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ))}
+            {contentCounts(content).entries === 0 && (
+              <div className="text-[11px] text-slate-400 p-1">No components yet — add them in Reusable Structure below.</div>
+            )}
+          </nav>
+          <div className="flex-1 p-3 min-w-0">
+            {focusedEntry ? (
+              <ObjectWorkspace content={content} entryKey={focusedEntry} defs={defs} patch={patch}
+                onGone={() => setFocusedEntry(null)} />
+            ) : (
+              <div className="text-[12px] text-slate-400 py-6 text-center">
+                Select a reusable thing on the left — everything about it appears together here.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ v260 · SIMULATION — the existing law, run without saving ═══ */}
+      <SimulationPanel content={content} />
+
+      <div className="mt-4 text-[11px] text-slate-400 uppercase tracking-wide">Organizational dashboards</div>
       {/* ═══ v259 · the editor's permanent areas ═══ */}
       <EditorArea area={EDITOR_AREAS[0]}>
         <StructureEditor content={content} defs={defs} patch={patch} />
