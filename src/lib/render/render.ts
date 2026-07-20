@@ -1,0 +1,52 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// THE RENDER ENTRY (PR-4). Gate-side orchestration: compose → paginate →
+// impose → backend, with provenance stamped. Pure of the database — the
+// caller supplies the RenderPublication whole; for sent documents that
+// means THE SNAPSHOT (v231/v239 freezing law extends to pages).
+// ═══════════════════════════════════════════════════════════════════════════
+import { PresentationModel } from "../presentation";
+import { ResolvedTheme, RegionTexts } from "../publication";
+import { ResolvedFact } from "../identity";
+import { PhotoPins } from "../photos";
+import { composePublication, composeMasters, RenderPublication } from "./compose";
+import { paginate } from "./paginate";
+import { extentsFrom, imposePages } from "./masters";
+import { standardMetrics } from "./pdfMetrics";
+import { pdfBackend } from "./pdfBackend";
+import { PagedArtifact, RENDER_ENGINE_VERSION } from "./backend";
+
+export async function renderToPdf(
+  pub: RenderPublication,
+  sourceFingerprint: string | null,
+): Promise<{ bytes: Uint8Array; artifact: PagedArtifact }> {
+  const { measurer } = await standardMetrics();
+  const tree = composePublication(pub);
+  const masters = composeMasters(pub);
+  const result = paginate(tree, measurer, extentsFrom(masters));
+  const artifact: PagedArtifact = {
+    pages: imposePages(result, masters),
+    provenance: {
+      engineVersion: RENDER_ENGINE_VERSION,
+      metricsVersion: measurer.version,
+      generatedAt: new Date().toISOString(),
+      sourceFingerprint,
+    },
+  };
+  const bytes = await pdfBackend().render(artifact);
+  return { bytes, artifact };
+}
+
+/** The SNAPSHOT MAPPER — a sent document renders from what was stamped,
+ *  never from live state. Every field below comes off the snapshot. */
+export function renderPublicationFromSnapshot(
+  model: PresentationModel,
+  snapshot: ResolvedTheme & { regionTexts?: RegionTexts; companyFacts?: ResolvedFact[]; photoPins?: PhotoPins | null },
+): RenderPublication {
+  return {
+    model,
+    theme: snapshot,
+    regions: snapshot.regionTexts ?? { footer: null, signature: null, terms: null },
+    company: snapshot.companyFacts ?? [],
+    pins: snapshot.photoPins ?? null,
+  };
+}

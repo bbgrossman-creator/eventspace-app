@@ -21,6 +21,10 @@ export interface Measurer {
   /** Families this measurer declares. Anything else THROWS. */
   declaredFonts(): string[];
   measure(text: string, font: string, size: number, maxWidth: number): Measured;
+  /** PR-4 — the SAME wrapping measure() counted, as lines of text, so a
+   *  backend draws exactly the lines pagination budgeted. LAW:
+   *  wrap(...).length === measure(...).lines, always. */
+  wrap(text: string, font: string, size: number, maxWidth: number): string[];
 }
 
 /** The FIXTURE measurer — the unit suites' deterministic ruler.
@@ -39,6 +43,13 @@ export function fixtureMeasurer(): Measurer {
       const lines = text.length === 0 ? 0 : Math.ceil(text.length / perLine);
       const lineHeight = size * 1.4;
       return { lines, lineHeight, height: lines * lineHeight };
+    },
+    wrap(text, font, size, maxWidth) {
+      if (!FONTS[font]) throw new Error(`UNDECLARED_FONT:${font}`);
+      const perLine = Math.max(1, Math.floor(maxWidth / (size * 0.5)));
+      const out: string[] = [];
+      for (let i = 0; i < text.length; i += perLine) out.push(text.slice(i, i + perLine));
+      return out;
     },
   };
 }
