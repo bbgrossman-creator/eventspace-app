@@ -286,36 +286,16 @@ async function copyComponentsBetween(
  *  last stamp forever. This is the ONE door for the send act; the UI routes
  *  every "send" through here. */
 export async function sendVersion(
-  booking: { id: string; invoice_num: string },
-  proposal: Proposal,
-  v: ProposalVersion,
+  _booking: { id: string; invoice_num: string },
+  _proposal: Proposal,
+  _v: ProposalVersion,
 ): Promise<Outcome> {
-  if (v.status === "approved") return { ok: false, detail: "Approved versions are immutable — create a new version instead." };
-  const resend = v.status === "sent";
-  // v227 — the stamp resolves the FULL ladder: the brand rung is live.
-  const [settings, tenantThemes] = await Promise.all([getPublicationSettings(), listPublicationThemes()]);
-  const named = resolveThemeKey((v.theme_key as string | null) ?? null, tenantThemes);
-  const resolved = resolveTheme(settings.brand, named, (v.theme_override as ThemeDelta | null) ?? null);
-  // v231 — the WORDS freeze with the dress: a sent document is whole.
-  // v239 — and only the RESOLVED company facts freeze with them: the
-  // snapshot never carries the identity record or the policy.
-  const co = await getCompanyIdentity();
-  const snapshot = { ...resolved.theme, regionTexts: settings.regionTexts,
-    companyFacts: projectIdentity(co.identity, co.policy),
-    photoPins: (v.photo_pins as unknown) ?? null };
-  const patch: Record<string, unknown> = {
-    status: "sent",
-    presentation_snapshot: snapshot,
-    presentation_stamped_at: new Date().toISOString(),
-  };
-  if (!v.sent_at) patch.sent_at = new Date().toISOString();
-  const { error } = await supabase.from("proposal_versions").update(patch).eq("id", v.id);
-  if (error) return { ok: false, detail: error.message };
-  await logActivity(booking.id, booking.invoice_num, resend ? "Proposal Re-sent" : "Proposal Sent",
-    `📤 ${proposal.title} v${v.version}${resend ? " re-sent" : " sent"}`);
-  await logActivity(booking.id, booking.invoice_num, "Presentation Stamped",
-    `🎨 v${v.version} presentation stamped${resend ? " (re-send — fresh snapshot)" : " as sent"}`);
-  return { ok: true, id: v.id };
+  // v265 PL-3 Phase A — RETIRED. "Sending" is now Publishing: the offer is
+  // sealed, frozen into one permanent Snapshot bound to its mandatory archived
+  // artifact, and made durably presentable inside the atomic publish_offer
+  // door (see publishSupabase.ts). There is NO parallel send path: this
+  // function refuses so nothing reaches `sent` except through the ceremony.
+  return { ok: false, detail: "Sending is now Publishing — use the Publish door (Prepare → Publish). This path is retired." };
 }
 
 export async function setVersionStatus(
@@ -387,12 +367,15 @@ export interface DeleteGuard { canDelete: boolean; reasons: string[]; }
  *  lines, or being the won version of its proposal. */
 export async function deleteBlockers(v: ProposalVersion, proposal: Proposal): Promise<DeleteGuard> {
   const reasons: string[] = [];
-  const [{ data: bp }, { data: ch }] = await Promise.all([
+  const [{ data: bp }, { data: ch }, { data: snap }] = await Promise.all([
     supabase.from("blueprints").select("name").eq("source_version_id", v.id).eq("active", true),
     supabase.from("charges").select("id", { count: "exact", head: true }).eq("source_proposal_version_id", v.id),
+    // v265 PL-3 — a published Snapshot outlives every convenience (I-10).
+    supabase.from("offer_snapshots").select("id", { count: "exact", head: true }).eq("version_id", v.id),
   ]);
   for (const b of (bp ?? []) as { name: string }[]) reasons.push(`Blueprint: "${b.name}"`);
   if ((ch as unknown as { count?: number })?.count) reasons.push("Has generated invoice lines");
+  if ((snap as unknown as { count?: number })?.count) reasons.push("Has a published offer Snapshot");
   if (proposal.won_version_id === v.id) reasons.push("Accepted (won) version of this proposal");
   return { canDelete: reasons.length === 0, reasons };
 }

@@ -269,6 +269,82 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.39 Proposal Lifecycle — Send & the Sent Snapshot, Phase A (PL-3 · v265).**
+The birth of immutable commercial artifacts — and the constitution's
+longest design phase (a design document, a Reconciliation Addendum,
+ratified Amendment 3 (Offer Sealing), and the Send Publication Boundary
+Amendment) before a line of code. Phase A ships the truth-bearing core;
+Phase B (transport) is reserved. ◆ THE IDENTITY, STABLE AT LAST
+(Amendment 3): a Version is editable only until its first successful
+publication, which SEALS it; the sealed Version IS the Offer; exactly
+ONE permanent Snapshot belongs to each sent Version; every later
+customer-visible change is a NEW Version — so "the customer accepted
+Version N" and "accepted Snapshot F" become one claim, the clean target
+PL-4 needs. ◆ THE CONTROLLING ORDER, mechanized: archive ≺ publish ≺
+visibility/transport. The Publish door verifies the mandatory archived
+artifact EXISTS and is immutable (Guarantee C) BEFORE it seals,
+promotes, or supersedes — so the HEADLINE INVARIANT (I-15) is a
+transaction-ordering fact: an offer is never superseded until its
+replacement exists as a complete, frozen, durably presentable artifact.
+Proven live (PB-6): archive absent → publish refused → no seal, no
+snapshot, no offer_published, no supersession → the prior offer stays
+current. ◆ THE FIFTEEN-STEP ATOMIC DOOR (publish_offer): serialize;
+prove publishable; verify staged fingerprint + tenant + version;
+evaluate CURRENT policy (completeness core + declared offer profile +
+review gate, each named); verify the archive; seal; PROMOTE the staged
+package into the permanent Snapshot; record offer_published; → Sent;
+identify and supersede the prior current offer (offer_superseded's FIRST
+honest writer, exactly as PL-1 promised); mint the durable endpoint;
+(transport = Phase B, inactive, not faked); retire the staged identity;
+commit all or nothing. ◆ THE VERB IS offer_published (not "sent," not
+"extended"): the organization made THIS exact frozen artifact durably
+available. Two evidence bases, never conflated: observed (a durable
+endpoint minted in-transaction) and attested (in-person; the archived
+artifact already exists; the constraint archive ≤ occurred_at ≤
+recorded_at makes fraud unconstructible arithmetic, PB-7b). Email/SMS-
+only is refused (INVALID_CHANNEL) in Phase A — no transport-backed
+presentability is claimed without the outbox. ◆ THE CONSTITUTIONAL
+FINGERPRINT: SHA-256 over the canonical customer-visible model (sorted
+keys, NFC, minor units, the omission law), renderer identity excluded
+(recorded beside, not within — a renderer upgrade never moves it); the
+shipped djb2 fingerprintPortable kept for its provenance-churn duty,
+replaced here because reuse, staleness, staged verification, and
+integrity all hang on collision resistance. ◆ COMPLETENESS, corrected:
+the universal core is FORM-INDEPENDENT (a visible commitment, resolved
+amounts, one currency); guests and date are demoted to the shipped
+CATERING PROFILE — so this operation's behavior is unchanged while the
+law generalizes to venues, rentals, retainers, rate cards. ◆ REVIEW is
+evidence, never a token: the door evaluates current policy at Publish;
+Management may deliberately invalidate an un-published approval by
+tightening policy (PB-5b STALE_APPROVAL). ◆ IMMUTABILITY: the Snapshot
+is insert+select-only and unfabricatable (no app insert path; only the
+SECURITY DEFINER RPC writes it); a sealed Version's customer-visible
+content is frozen by a trigger (PB-11c); a snapshotted Version is
+hard-delete-blocked (I-10). ◆ NO PARALLEL SEND PATH: sendVersion is
+RETIRED to a refusing stub; `sent` is reachable only through the door;
+the presentation_snapshot stamp is subsumed as the Snapshot's
+presentation section (F-1). ◆ GRANDFATHERING: the migration created
+ZERO snapshots, archives, publications, seals, or supersessions; legacy
+sent Versions keep their partial stamp, unsealed; the first PL-3
+publication on a thread supersedes the legacy current offer honestly
+from that point forward. ◆ PROVEN THRICE: seventeen server claims on
+real Postgres (PB-1..PB-11: the door, every refusal tooth —
+ALREADY_PUBLISHED, STALE_PREPARATION, STALE_APPROVAL, REVIEW_REQUIRED,
+INCOMPLETE_OFFER, ARCHIVE_MISSING, INVALID_CHANNEL, NOT_PUBLISHABLE,
+cross-tenant promotion — atomicity with zero residue, the I-15
+headline, immutability under the app role); eleven unit claims (the
+fingerprint law, form-independent completeness, org-neutral evaluator,
+the source-order of archive-before-seal, no parallel send path); and an
+EIGHTH Chromium suite (accept-publish, PU-1..PU-6) with a SEAL-BITING
+variant that fails PU-5 when a sealed offer leaks an edit affordance.
+DEPLOY (Phase A): additive — src/ + docs/ + supabase/v265_publish.sql
+(run AFTER v263; the proof file is optional verification). RESERVED for
+Phase B: the outbox, workers, provider integration, delivery/bounce/
+download facts — none may create or alter any constitutional fact.
+LOOKING AHEAD: PL-3 Phase B (transport), then PL-4 — Acceptance & the
+Instrument, binding to a sealed Version that is one-to-one with its
+Snapshot. (v265.publish — 11 claims · PB-1..PB-11 · PU-1..PU-6.)
+
 **6.38 Proposal Lifecycle — Relationship (PL-2 · v264).** The second
 identity, stored at last, built to the corrected PL-2 specification
 (three operator corrections adopted: the audited correction ceremony;

@@ -30,7 +30,7 @@ import { openProposing, withdrawOffer } from "@/lib/spineSupabase";
 import {
   Proposal, ProposalVersion, VersionStatus,
   VERSION_FLOW, PROPOSAL_STATUS_LABEL,
-  createProposal, createVersion, createBlankVersion, setVersionStatus, sendVersion, setProposalStatus,
+  createProposal, createVersion, createBlankVersion, setVersionStatus, setProposalStatus,
   archiveVersion, restoreVersion, deleteVersionPermanently, deleteBlockers,
 } from "@/lib/proposals";
 import { loadSession, Session } from "@/lib/permissions";
@@ -320,9 +320,10 @@ export default function ProposalsCard({ b }: { b: Booking }) {
                     onNewVersion={() => latest && setGenesisFor({ p, latest })}
                     onStatus={(v, next) => {
                       if (next === "approved" && !confirm(`Approve v${v.version}? This locks it permanently and marks the proposal Won.`)) return;
-                      // v225b: sending is a CEREMONY — one door, always stamps
-                      // (including re-send). Other statuses move normally.
-                      run(() => next === "sent" ? sendVersion(b, p, v) : setVersionStatus(b, p, v, next));
+                      // v265 PL-3 Phase A — Sending is now Publishing (Prepare →
+                      // Publish door). The status menu no longer sends; "sent" is
+                      // unreachable from here (VERSION_FLOW never offers it as a step).
+                      run(() => setVersionStatus(b, p, v, next));
                     }}
                     onArchiveVersion={(v) => doArchive(p, v)}
                     onWithdrawVersion={(v) => run(async () => {
