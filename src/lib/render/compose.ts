@@ -184,3 +184,18 @@ export function composeMasters(pub: RenderPublication): MasterSet {
     master("last", {}),
   );
 }
+
+/** PR-6 — the LABEL MAP, built at the wall's gate: tag prefixes → human
+ *  names, so proof can speak ("Dinner, continued") without ever knowing
+ *  what a section is. Sections and components label; regions that read
+ *  as documents label; machinery stays silent. */
+export function composeProofLabels(pub: RenderPublication): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const section of pub.model.sections) {
+    labels[`section:${section.id}`] = section.name;
+    for (const band of section.bands) for (const comp of band.components)
+      labels[`comp:${comp.id}`] = comp.title;
+  }
+  labels["region:terms"] = "Terms";
+  return labels;
+}

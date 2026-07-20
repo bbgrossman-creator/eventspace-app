@@ -8,10 +8,11 @@
 // can never disagree. Page-number WORDING is PR-6's; the data rides the
 // artifact, nothing is drawn. Provenance stamps into PDF metadata.
 // ═══════════════════════════════════════════════════════════════════════════
-import { PDFDocument, PDFFont, PDFPage, rgb, degrees } from "pdf-lib";
+import { PDFDocument, PDFFont, PDFPage, PDFName, PDFString, rgb, degrees } from "pdf-lib";
 import { Box } from "./box";
 import { PagedArtifact, RenderBackend } from "./backend";
 import { Metrics } from "./brandMetrics";
+import { ProofedPage } from "./proof";
 
 const hex = (h: string | undefined) => {
   const m = /^#([0-9a-f]{6})$/i.exec(h ?? "");
@@ -82,7 +83,34 @@ export function pdfBackend(metrics: Metrics): RenderBackend {
         }
         if (ip.runningFooter)
           drawText(pg, ip.runningFooter, ip.margins.left, ip.size.height - ip.margins.bottom + 16, bodyWidth);
-        // ip.pageNumber DATA rides the artifact; the WORDING is PR-6's.
+        // PR-6 — proof furniture: the wording, finally on paper
+        const proof = (ip as ProofedPage).proof;
+        if (proof?.pageNumber)
+          drawText(pg, proof.pageNumber, ip.margins.left, ip.size.height - ip.margins.bottom + 30, bodyWidth);
+        if (proof?.continued)
+          drawText(pg, proof.continued, ip.margins.left, ip.size.height - ip.margins.bottom + 2, bodyWidth);
+        if (proof?.continuedFrom)
+          drawText(pg, proof.continuedFrom, ip.margins.left, ip.margins.top - 14, bodyWidth);
+      }
+      // PR-6 — BOOKMARKS: the outline is the digital table of contents,
+      // hand-rolled (pdf-lib has no high-level API; the dicts are ours).
+      if (artifact.outline && artifact.outline.length) {
+        const ctx = doc.context;
+        const pageRefs = doc.getPages().map((pg) => pg.ref);
+        const root = ctx.obj({ Type: "Outlines", Count: artifact.outline.length });
+        const rootRef = ctx.register(root);
+        const items = artifact.outline.map((e) => {
+          const d = ctx.obj({ Title: PDFString.of(e.label), Parent: rootRef,
+            Dest: ctx.obj([pageRefs[e.pageIndex], PDFName.of("XYZ"), null, null, null]) });
+          return { d, ref: ctx.register(d) };
+        });
+        items.forEach((it, i) => {
+          if (i > 0) it.d.set(PDFName.of("Prev"), items[i - 1].ref);
+          if (i < items.length - 1) it.d.set(PDFName.of("Next"), items[i + 1].ref);
+        });
+        root.set(PDFName.of("First"), items[0].ref);
+        root.set(PDFName.of("Last"), items[items.length - 1].ref);
+        doc.catalog.set(PDFName.of("Outlines"), rootRef);
       }
       return doc.save();
     },

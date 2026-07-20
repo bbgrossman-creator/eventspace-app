@@ -22,6 +22,9 @@ export interface ArtifactProvenance {
 
 export interface PagedArtifact {
   pages: ImposedPage[];
+  /** PR-6 — the digital contents: labeled first-page entries, feeding
+   *  the PDF outline. Data here; a printed TOC page deliberately not. */
+  outline?: { label: string; pageIndex: number }[];
   provenance: ArtifactProvenance;
 }
 

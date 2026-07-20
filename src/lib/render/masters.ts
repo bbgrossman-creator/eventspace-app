@@ -76,8 +76,9 @@ export interface ImposedPage {
   runningHeader: Box | null;
   runningFooter: Box | null;
   watermark: string | null;
-  /** Post-pass numbering data; wording is PR-6's business. */
-  pageNumber: { n: number; of: number } | null;
+  /** Post-pass numbering data (position from the master's declared
+   *  decoration); wording is PR-6's business. */
+  pageNumber: { n: number; of: number; position: "footer-center" | "footer-outside" } | null;
 }
 
 /** THE IMPOSITION — a post-pass over the COMPLETED sequence. Pure; it
@@ -104,7 +105,7 @@ export function imposePages(result: PaginationResult, set: MasterSet): ImposedPa
       runningHeader: m.runningHeader,
       runningFooter: footerSource.runningFooter,
       watermark: m.decorations.watermark,
-      pageNumber: numberPolicy === "none" ? null : { n: page.index + 1, of: count },
+      pageNumber: numberPolicy === "none" ? null : { n: page.index + 1, of: count, position: numberPolicy },
     };
   });
 }

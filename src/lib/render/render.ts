@@ -8,7 +8,8 @@ import { PresentationModel } from "../presentation";
 import { ResolvedTheme, RegionTexts } from "../publication";
 import { ResolvedFact } from "../identity";
 import { PhotoPins } from "../photos";
-import { composePublication, composeMasters, RenderPublication } from "./compose";
+import { composePublication, composeMasters, composeProofLabels, RenderPublication } from "./compose";
+import { applyProof, tocEntries } from "./proof";
 import { paginate } from "./paginate";
 import { extentsFrom, imposePages } from "./masters";
 import { std14Metrics } from "./pdfMetrics";
@@ -27,8 +28,11 @@ export async function renderToPdf(
   const tree = composePublication(pub);
   const masters = composeMasters(pub);
   const result = paginate(tree, measurer, extentsFrom(masters));
+  const labels = composeProofLabels(pub);
+  const proofed = applyProof(imposePages(result, masters), result.continuations, labels);
   const artifact: PagedArtifact = {
-    pages: imposePages(result, masters),
+    pages: proofed,
+    outline: tocEntries(proofed, labels),
     provenance: {
       engineVersion: RENDER_ENGINE_VERSION,
       metricsVersion: measurer.version,
