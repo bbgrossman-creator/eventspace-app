@@ -42,6 +42,11 @@ import BlueprintInstantiate from "@/components/BlueprintInstantiate";
 import BlueprintPaperPreview from "@/components/BlueprintPaperPreview";
 import CopyIntoDraft from "@/components/CopyIntoDraft";
 import {
+  FRIENDLY_STRIP_COPY, EDITOR_AREAS, GUIDE_CHECKLIST, onboardDismissKey,
+  deriveOpportunities, PROPOSED_GUEST_PARAMETER, contentCounts, Opportunity,
+} from "@/lib/blueprintGuide";
+import { loadPromotionAct, loadDraftById, PromotionAct } from "@/lib/blueprintGuideSupabase";
+import {
   CONDITION_PREDICATES, PREDICATE_ADMISSION, PredicateNode, BlueprintCondition,
 } from "@/lib/blueprintConditions";
 import { loadRevisionUsage, usageLine, RevisionUsage } from "@/lib/blueprintUsageSupabase";
@@ -66,12 +71,29 @@ function ShelfInner() {
   const [newName, setNewName] = useState("");
   const [newTaxonomy, setNewTaxonomy] = useState("");
   const [err, setErr] = useState("");
+  const [deeplinkFailed, setDeeplinkFailed] = useState<"" | "NOT_FOUND" | "NOT_A_DRAFT">("");
 
   const loadList = useCallback(async () => {
     try { setIdentities(await listBlueprintIdentities(true)); setErr(""); }
     catch { setErr("Couldn't load the shelf — run v251_blueprints_shelf.sql."); }
   }, []);
   useEffect(() => { void loadList(); }, [loadList]);
+
+  // v259 · Editor Foundation — deep-link: ?draft=<exact revision id> opens
+  // THAT draft in the editor. Tenant scoping is RLS's (a foreign revision is
+  // simply not found); anything unopenable shows a NAMED state — never a
+  // silent fall-back to the list.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const draftId = q.get("draft");
+    if (!draftId) return;
+    void (async () => {
+      const res = await loadDraftById(draftId);
+      if ("named" in res) { setDeeplinkFailed(res.named); return; }
+      setSelected(res.identity);
+      setOpenRevision(res.revision);
+    })();
+  }, []);
 
   const openIdentity = useCallback(async (id: string) => {
     const ident = await getBlueprintIdentity(id);
@@ -94,6 +116,13 @@ function ShelfInner() {
         Reusable design knowledge — how we repeatedly design each class of event.
         Identities are stable; published revisions are immutable; publication requires intent.
       </p>
+      {deeplinkFailed && (
+        <div data-deeplink-failed className="mb-3 rounded-md bg-amber-50 ring-1 ring-amber-200 px-4 py-2 text-[13px] text-amber-800">
+          {deeplinkFailed === "NOT_A_DRAFT"
+            ? "That revision is no longer a draft — it may have been published or superseded. Its content lives on the shelf below."
+            : "That draft can't be opened here. It may have been discarded, or it may belong to another workspace."}
+        </div>
+      )}
       {err && <div className="mt-3 text-sm text-rose-600">{err}</div>}
 
       <div className="mt-5 grid grid-cols-[280px_1fr] gap-6">
@@ -251,6 +280,58 @@ function ReadOnlyRevision({ revision }: { revision: BlueprintRevision }) {
   );
 }
 
+
+/** v259 — a named, anchorable editor area: the permanent information
+ *  architecture, implemented modestly in this release. */
+function EditorArea(props: {
+  area: { id: string; label: string; hint: string };
+  children: React.ReactNode;
+}) {
+  return (
+    <section id={props.area.id} data-editor-area={props.area.id} className="mt-5">
+      <div className="text-[11px] font-medium tracking-wide uppercase text-slate-400">{props.area.label}</div>
+      <div className="text-[11px] text-slate-400">{props.area.hint}</div>
+      <div className="mt-1">{props.children}</div>
+    </section>
+  );
+}
+
+/** v259 — Review Before Publishing: live validation, open questions, and
+ *  the promotion's omissions in one place. READ-ONLY: publication remains
+ *  the ceremony behind the Publish… button above; this area only shows
+ *  where things stand. */
+function ReviewBeforePublishing(props: {
+  content: BlueprintContent; act: PromotionAct | null; dirty: boolean;
+}) {
+  const v = validateBlueprintContent(props.content);
+  const counts = contentCounts(props.content);
+  const omissions = props.act?.detail && Array.isArray(props.act.detail.omissions) ? props.act.detail.omissions : [];
+  return (
+    <div data-review-before-publishing className="text-[12px] text-slate-500 space-y-1">
+      <div>
+        {v.ok
+          ? "The draft currently passes validation."
+          : `The validator would refuse this draft as it stands (${v.refusals.length} refusal${v.refusals.length === 1 ? "" : "s"} — shown above on save).`}
+        {props.dirty ? " Unsaved changes exist." : ""}
+      </div>
+      <div>
+        {props.content.parameters.length === 0
+          ? "No questions declared — future events will only be asked for guest count."
+          : `${props.content.parameters.length} question${props.content.parameters.length === 1 ? "" : "s"} will be asked when a new event starts from this Blueprint.`}
+        {" "}{counts.conditions > 0 ? `${counts.conditions} condition${counts.conditions === 1 ? "" : "s"} will resolve from the answers.` : ""}
+      </div>
+      {omissions.length > 0 && (
+        <div>
+          {omissions.length} thing{omissions.length === 1 ? "" : "s"} stayed with the source event — reviewed above under "Review what came from the event".
+        </div>
+      )}
+      <div className="text-slate-400">
+        Publishing is a separate, deliberate ceremony (the Publish… button above). Nothing here publishes.
+      </div>
+    </div>
+  );
+}
+
 function DraftEditor(props: { identity: BlueprintIdentity; draft: BlueprintRevision; refresh: () => Promise<void> }) {
   const initial = useMemo<BlueprintContent>(() => {
     const c = props.draft.content as BlueprintContent | null;
@@ -264,11 +345,32 @@ function DraftEditor(props: { identity: BlueprintIdentity; draft: BlueprintRevis
   const [ceremony, setCeremony] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  // v259 · Editor Foundation — the guide layer. Event-review content is
+  // gated on THIS draft's exact BP-5 promotion act; composed or seeded
+  // drafts have no such act and never wear event-learning language.
+  const [promotionAct, setPromotionAct] = useState<PromotionAct | null>(null);
+  const [onboardDismissed, setOnboardDismissed] = useState(true);
+  const [confirmGuestParam, setConfirmGuestParam] = useState(false);
 
   useEffect(() => {
     void listDefinitionIdentities().then(setDefs).catch(() => setDefs([]));
     void listPresentationTemplates().then(setTemplates).catch(() => setTemplates([]));
-  }, []);
+    void loadPromotionAct(props.draft.id).then(setPromotionAct).catch(() => setPromotionAct(null));
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const forced = q.get("onboard") === "1" && q.get("draft") === props.draft.id;
+      setOnboardDismissed(!forced && localStorage.getItem(onboardDismissKey(props.draft.id)) === "1");
+    } catch { setOnboardDismissed(false); }
+  }, [props.draft.id]);
+
+  const dismissOnboard = () => {
+    // a personal UI preference — never Blueprint state, never review status
+    try { localStorage.setItem(onboardDismissKey(props.draft.id), "1"); } catch { /* preference only */ }
+    setOnboardDismissed(true);
+  };
+  const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const counts = contentCounts(content);
+  const opportunities = deriveOpportunities(promotionAct?.detail ?? null, content);
 
   const patch = (fn: (c: BlueprintContent) => BlueprintContent) => {
     setContent((c) => fn(structuredClone(c)));
@@ -329,14 +431,131 @@ function DraftEditor(props: { identity: BlueprintIdentity; draft: BlueprintRevis
         </div>
       )}
 
+      {/* ═══ v259 · the editor's identity: company knowledge, not a proposal ═══ */}
+      <div data-knowledge-banner className="mt-3 rounded-md px-3 py-2 ring-1 ring-[#E8E2D4]" style={{ background: "#FBF8F1" }}>
+        <span className="text-[11px] font-medium tracking-wide uppercase text-[#8A7B55]">📘 Reusable Knowledge · Organization Standard</span>
+        <span className="ml-2 text-[12px] text-[#8A7B55]">
+          You are writing the company's cookbook — how this kind of event should be designed in the future.
+        </span>
+      </div>
+
+      {promotionAct && !onboardDismissed && (
+        <div data-onboarding className="mt-3 rounded-md bg-[#F4F8FD] ring-1 ring-[#DCE8F5] p-3">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-[13px] font-medium" style={{ color: NAVY }}>Draft Blueprint created</div>
+              <p className="mt-0.5 text-[12px] text-slate-600">
+                This Blueprint was extracted from a real event. Now refine it into reusable
+                organizational knowledge before publishing.
+              </p>
+            </div>
+            <button data-onboard-dismiss onClick={dismissOnboard}
+              className="text-[11px] text-slate-400 hover:text-slate-600">dismiss</button>
+          </div>
+          <ul className="mt-2 space-y-0.5">
+            {GUIDE_CHECKLIST.map((item) => (
+              <li key={item.jump} className="text-[12px] text-slate-600">
+                · {item.text}{" "}
+                <button onClick={() => jump(item.jump)} className="text-[11px] underline text-slate-400 hover:text-slate-600">jump</button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-1.5 text-[11px] text-slate-400">
+            This list is guidance. Readiness is judged by the validator and by you — not by dismissing this note.
+          </div>
+        </div>
+      )}
+
+      {promotionAct && opportunities.length > 0 && (
+        <div data-event-review className="mt-3 rounded-md ring-1 ring-[#EDF2F8] bg-white p-3">
+          <div className="text-[13px] font-medium text-slate-700">Review what came from the event</div>
+          <p className="mt-0.5 text-[11px] text-slate-400">
+            The promotion recorded what was transformed or left behind. What any of it should MEAN for
+            future events is yours to decide — nothing below changes the Blueprint without your say-so.
+          </p>
+          <ul className="mt-2 space-y-2">
+            {opportunities.map((op: Opportunity, i: number) => (
+              <li key={i} className="text-[12px]">
+                <span className="font-medium text-slate-600">{FRIENDLY_STRIP_COPY[op.entry.reason].title}</span>
+                <span className="text-slate-500"> — {op.entry.at}</span>
+                <div className="text-[11px] text-slate-400">{FRIENDLY_STRIP_COPY[op.entry.reason].body}</div>
+                {op.kind === "ask-guest-count" && !confirmGuestParam && (
+                  <button data-offer-guest-param onClick={() => setConfirmGuestParam(true)}
+                    className="mt-1 text-[11px] px-2 py-0.5 rounded ring-1 ring-[#DCE8F5] text-slate-600 hover:bg-[#F4F8FD]">
+                    Ask this on future events…
+                  </button>
+                )}
+                {op.kind === "ask-guest-count" && confirmGuestParam && (
+                  <div data-confirm-parameter className="mt-1.5 rounded bg-[#F9FBFE] ring-1 ring-[#EDF2F8] p-2">
+                    <div className="text-[11px] text-slate-500">This will add the question below — nothing is created until you confirm:</div>
+                    <div className="mt-1 text-[12px] text-slate-600">
+                      Question: <span className="font-medium">{PROPOSED_GUEST_PARAMETER.label}</span>
+                      <span className="text-slate-400"> · key {PROPOSED_GUEST_PARAMETER.key} · number · required</span>
+                    </div>
+                    <div className="mt-1.5 flex gap-2">
+                      <button data-confirm-guest-param
+                        onClick={() => { patch((c) => { c.parameters.push({ ...PROPOSED_GUEST_PARAMETER }); return c; }); setConfirmGuestParam(false); }}
+                        className="text-[11px] px-2 py-0.5 rounded text-white" style={{ background: NAVY }}>Add the question</button>
+                      <button onClick={() => setConfirmGuestParam(false)}
+                        className="text-[11px] px-2 py-0.5 rounded ring-1 ring-[#E7EDF5] text-slate-500">Not now</button>
+                    </div>
+                  </div>
+                )}
+                {op.kind === "review-pricing" && (
+                  <button onClick={() => jump("area-pricing")}
+                    className="mt-1 text-[11px] px-2 py-0.5 rounded ring-1 ring-[#DCE8F5] text-slate-600 hover:bg-[#F4F8FD]">
+                    Review pricing guidance
+                  </button>
+                )}
+                {op.kind === "info" && (
+                  <span className="mt-1 inline-block text-[11px] text-slate-400">Leave event-specific — nothing to do.</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="mt-2 flex justify-end">
         <CopyIntoDraft destIdentityId={props.identity.id} destRevisionId={props.draft.id}
           destContent={content} onCopied={() => { void props.refresh(); }} />
       </div>
-      <StructureEditor content={content} defs={defs} patch={patch} />
-      <ConstraintsEditor content={content} patch={patch} />
-      <ParametersEditor content={content} patch={patch} />
-      <PresentationEditor content={content} templates={templates} patch={patch} />
+
+      {/* ═══ v259 · the editor's permanent areas ═══ */}
+      <EditorArea area={EDITOR_AREAS[0]}>
+        <StructureEditor content={content} defs={defs} patch={patch} />
+        <ConstraintsEditor content={content} patch={patch} />
+      </EditorArea>
+      <EditorArea area={EDITOR_AREAS[1]}>
+        <ParametersEditor content={content} patch={patch} />
+      </EditorArea>
+      <EditorArea area={EDITOR_AREAS[2]}>
+        <div className="text-[12px] text-slate-500">
+          {counts.conditions === 0
+            ? "No conditions yet. Add one on a section or component in Reusable Structure when content only belongs in certain situations — e.g. guest count at least 150, or evening events."
+            : `${counts.conditions} condition${counts.conditions === 1 ? "" : "s"} authored — they live on sections, components, and items in Reusable Structure, and resolve once when a new event is created.`}
+        </div>
+      </EditorArea>
+      <EditorArea area={EDITOR_AREAS[3]}>
+        <div className="text-[12px] text-slate-500">
+          {counts.choiceGroups === 0
+            ? "No choice groups yet. Add one on a component in Reusable Structure to offer optional upgrades — e.g. Coffee Bar, Ice Cream Bar."
+            : `${counts.choiceGroups} choice group${counts.choiceGroups === 1 ? "" : "s"} authored — future events pick from them.`}
+        </div>
+      </EditorArea>
+      <EditorArea area={EDITOR_AREAS[4]}>
+        <div className="text-[12px] text-slate-500">
+          {counts.pricedEntries === 0
+            ? `No pricing guidance yet across ${counts.entries} component${counts.entries === 1 ? "" : "s"}. Set intent on a component in Reusable Structure — a suggestion, a per-guest formula, or the catalog's current price.`
+            : `${counts.pricedEntries} of ${counts.entries} component${counts.entries === 1 ? "" : "s"} carry pricing guidance. This is guidance for future events — never a confirmed price.`}
+        </div>
+      </EditorArea>
+      <EditorArea area={EDITOR_AREAS[5]}>
+        <PresentationEditor content={content} templates={templates} patch={patch} />
+      </EditorArea>
+      <EditorArea area={EDITOR_AREAS[6]}>
+        <ReviewBeforePublishing content={content} act={promotionAct} dirty={dirty} />
+      </EditorArea>
 
       {ceremony && (
         <div data-ceremony className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
@@ -529,6 +748,7 @@ function EntryEditor(props: { entry: ComponentEntry; defs: DefinitionIdentity[];
       </div>
       <div className="mt-1.5 flex items-center gap-2">
         <span className="text-[11px] text-slate-400 w-20">Pricing intent</span>
+        <span data-pricing-hint className="text-[10px] text-slate-300">guidance for future events — never a confirmed price</span>
         <select data-intent-form value={intent?.form ?? ""}
           onChange={(e) => patchEntry((en) => {
             const f = e.target.value;

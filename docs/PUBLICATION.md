@@ -269,6 +269,54 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.33 Editor Foundation / Guided Draft Entry (v259).** The FIRST
+Blueprint Editor experience — a product-design layer, PRESENTATION-ONLY
+over the frozen BP-1..BP-8 architecture: zero SQL, zero law edits (both
+pinned), the guide modules write-free, publication untouched. Named
+deliberately: this is Editor Foundation, NOT the complete Blueprint
+Studio — simulation, richer structural authoring, and assisted
+recommendations remain later work. ◆ THE FLOW COMPLETES: Event Design
+→ review extraction → create draft → OPEN THE EXACT DRAFT in the
+editor (?draft=<revision id>&onboard=1) → review opportunities to
+generalize → author deliberately → publish separately. ◆ EXACT
+DEEP-LINK: resolution by revision id; RLS scopes tenant (a foreign
+draft is simply NOT_FOUND); state must be 'draft' (else NOT_A_DRAFT);
+failure renders a NAMED banner — never a silent fall-back to the list.
+◆ THE GATE IS THE ACT: event-review content appears only when THIS
+exact draft has a BP-5 promotion act (act='promote' ∧ revision_id) —
+never a seeded/promoted_from heuristic, so composed, seeded, and
+future creation paths can never wear event-learning language (gate
+region pinned free of lineage heuristics). The act's recorded detail
+(transformations, omissions, decisions) is the sole source.
+◆ HONEST LANGUAGE: the panel is "Review what came from the event" —
+the software knows what was transformed or omitted; the AUTHOR decides
+what should become optional, conditional, or parameterized (learning
+claims pinned absent). FRIENDLY_STRIP_COPY maps ONE-TO-ONE onto
+STRIP_REASONS (totality pinned) — "Guest count belongs to an event",
+"Item prices stay with your catalog", "Pricing converted into reusable
+guidance" — with the exact constitutional codes preserved under an
+Advanced disclosure in the staged review. ◆ DELIBERATE ACTIONS ONLY:
+the one content-changing action (create the guest-count question)
+shows the FULL proposed parameter and commits only on explicit
+confirm (offer button pinned patch-free; confirm button pinned as the
+only patch site); pricing actions navigate; info rows say "leave
+event-specific". ◆ DISMISSAL IS PREFERENCE, NOT STATE: a scoped
+localStorage key flips visibility and nothing else; the checklist is
+plain guidance bullets with jump links — no checkboxes, no completion
+claims; copy states that readiness is judged by the validator and the
+author. ◆ THE PERMANENT INFORMATION ARCHITECTURE, implemented
+modestly: seven named anchorable areas — Reusable Structure
+(structure + constraints) · Questions for Future Events (parameters) ·
+Rules · Choices · Pricing Guidance · Portable Presentation · Review
+Before Publishing (read-only status: validation, questions,
+conditions, omissions; "Nothing here publishes" — the ceremony stays
+behind the existing Publish… button with the constitutional
+declaration). The knowledge banner declares the cookbook: "Reusable
+Knowledge · Organization Standard — you are writing the company's
+cookbook." One gentle per-entry hint: pricing is guidance for future
+events, never a confirmed price. DEPLOY: src/ + docs/ only.
+(v259.editor — 10 claims.)
+
 **6.32 Authoring-Time Composition (v258 · BP-8).** THE ACT: an author
 deliberately COPIES selected lawful authored material from an EXACT
 source revision into a destination DRAFT; afterward the material is

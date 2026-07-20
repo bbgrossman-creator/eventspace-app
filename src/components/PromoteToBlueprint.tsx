@@ -14,6 +14,7 @@ import { loadCurrentMaterialized } from "@/lib/blueprintDivergenceSupabase";
 import {
   loadSectionRoleNames, loadPromotionTargets, promoteDesignToDraft, PromotionTarget,
 } from "@/lib/blueprintPromoteSupabase";
+import { FRIENDLY_STRIP_COPY } from "@/lib/blueprintGuide";
 
 const NAVY = "#102F56";
 
@@ -32,6 +33,8 @@ export default function PromoteToBlueprint({ versionId, designName }: { versionI
   const [targetId, setTargetId] = useState("");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<string>("");
+  const [editorHref, setEditorHref] = useState("/blueprint-shelf");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -75,7 +78,8 @@ export default function PromoteToBlueprint({ versionId, designName }: { versionI
           omissions: plan.stripped.filter((x) => x.reason !== "FACT_TO_QUESTION" && x.reason !== "CONFIRMED_PRICE_TO_SUGGESTION"),
         },
       });
-      setOutcome(`Draft r${res.revision_number} created on the shelf — publication remains its own ceremony.`);
+      setEditorHref(`/blueprint-shelf?draft=${res.revision_id}&onboard=1`);
+      setOutcome(`Draft r${res.revision_number} created. Next: refine it into reusable organizational knowledge — the editor will guide you. Publication remains its own ceremony.`);
     } catch (e) {
       setErr((e as Error).message);
     } finally { setBusy(false); }
@@ -98,7 +102,9 @@ export default function PromoteToBlueprint({ versionId, designName }: { versionI
                 <p data-promotion-outcome className="mt-2 text-[13px] text-slate-600">{outcome}</p>
                 <div className="mt-4 flex justify-end gap-2">
                   <button onClick={() => { setOpen(false); setOutcome(""); }} className="text-[12px] px-3 py-1.5 rounded-md ring-1 ring-[#E7EDF5]">Close</button>
-                  <a href="/blueprint-shelf" className="text-[12px] px-3 py-1.5 rounded-md text-white" style={{ background: NAVY }}>Open the Shelf</a>
+                  <a data-open-editor href={editorHref} className="text-[12px] px-3 py-1.5 rounded-md text-white" style={{ background: NAVY }}>
+                    Open the Blueprint Editor
+                  </a>
                 </div>
               </>
             ) : (
@@ -173,13 +179,30 @@ export default function PromoteToBlueprint({ versionId, designName }: { versionI
                       {plan.content.structure[0].sections.reduce((n, s) => n + s.entries.length, 0)} entr(ies) travel
                     </div>
                     {plan.stripped.length > 0 && (
-                      <ul data-stripped className="mt-1.5 space-y-0.5">
-                        {plan.stripped.map((s, i) => (
-                          <li key={i} className="text-[12px] text-slate-500">
-                            · <span className="font-medium">{s.reason}</span> — {s.at}{s.detail ? `: ${s.detail}` : ""}
-                          </li>
-                        ))}
-                      </ul>
+                      <>
+                        <ul data-stripped className="mt-1.5 space-y-1.5">
+                          {plan.stripped.map((s, i) => (
+                            <li key={i} className="text-[12px]">
+                              <span className="font-medium text-slate-600">{FRIENDLY_STRIP_COPY[s.reason].title}</span>
+                              <span className="text-slate-500"> — {s.at}</span>
+                              <div className="text-[11px] text-slate-400">{FRIENDLY_STRIP_COPY[s.reason].body}</div>
+                            </li>
+                          ))}
+                        </ul>
+                        <button data-advanced-toggle onClick={() => setShowAdvanced((v) => !v)}
+                          className="mt-2 text-[11px] text-slate-400 hover:text-slate-600 underline">
+                          {showAdvanced ? "Hide advanced detail" : "Advanced detail"}
+                        </button>
+                        {showAdvanced && (
+                          <ul data-stripped-advanced className="mt-1 space-y-0.5">
+                            {plan.stripped.map((s, i) => (
+                              <li key={i} className="text-[11px] font-mono text-slate-400">
+                                {s.reason} — {s.at}{s.detail ? `: ${s.detail}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
                     )}
                     {!plan.validation.ok && (
                       <div data-promotion-refusals className="mt-2 rounded bg-rose-50 ring-1 ring-rose-200 p-2">
