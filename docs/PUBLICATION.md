@@ -411,6 +411,58 @@ additive — run v266_hardening.sql AFTER v263 + v265. NO Phase-B transport
 and NO PL-4 acceptance were added (a unit pin proves it). VERDICT: after
 v266, PL-3 Phase A is READY FOR BOTH.
 
+**6.39b Proposal Lifecycle — Phase A Boundary Completion (PL-3 · v267).**
+The enumeration closed. A verification audit of v266 found the seal and
+the revision witness were built against an INCOMPLETE list of the
+resolver's version-scoped customer-visible tables; a dedicated
+reconnaissance then traced buildPresentationModel (the one resolver
+feeding the renderer) exhaustively and proved the true boundary. v267
+brings the ENTIRE resolver read-set inside both mechanisms. ◆ THE CLOSED
+ENUMERATION. buildPresentationModel reads exactly ten tables. Of those,
+the version-scoped customer-visible set is SEVEN: event_components,
+component_items, component_requirements (sealed in v266) PLUS
+version_adjustments, version_guests, version_sections, choice_groups
+(sealed here) — the last, choice_groups, was missed by BOTH prior audits
+and carries the customer-facing choice labels and counts. PLUS three
+customer-visible FIELDS on the version row the v265 guard never listed:
+customer_intro, customer_closing, price_visibility (the offer's opening
+letter, closing text, and whether prices show at all). version_adjustments
+is the gravest: it carries the offer's MONEY — the service charge, the
+mashgiach fee, discounts. Outside the boundary, correctly: bookings and
+proposals (booking- and thread-scoped — frozen BY VALUE in the Snapshot,
+never sealed at their operational source, which would freeze data that
+legitimately changes for reasons unrelated to any one offer);
+section_types and guest_categories (tenant config); blueprints (a
+template-lineage pointer, not in the model). The distinction IS the
+constitutional content: the boundary is version-scoped customer-visible
+truth; booking/thread/config data is frozen by value, not sealed. ◆ THE
+SEAL SPANS IT ALL (I-18, completed). guard_sealed_version_scoped (a
+version_id-direct trigger) refuses insert/update/delete on all four new
+tables when the owning version is sealed; the version-row guard now also
+freezes customer_intro/closing/price_visibility. A sealed offer's money,
+guests, structure, choices, and prose are all immutable — proven
+(VB-1..VB-5). ◆ THE REVISION WITNESS SPANS IT ALL (B3, completed). Each
+new table bumps content_revision; the version-row bump now covers the
+three fields. The gravest v266 hole is closed: an adjustment edited
+between Prepare and Publish now stales the package — MONEY cannot be
+published stale (VB-7). ◆ STEP-11 HARDENED. The supersession UPDATE
+carries a status='sent' guard and offer_superseded is written only when
+exactly one row was actually superseded — a withdraw racing between the
+prior-offer SELECT and the supersession UPDATE can no longer overwrite a
+withdrawn offer to superseded or write a false ledger entry (VB-8).
+Invariant: supersession transitions sent→superseded and no other state.
+◆ PROVEN: twelve v267 server claims (VB-1..VB-8 on real Postgres); the
+full standing bar re-run with NO regression (54 unit suites incl. a
+closed-enumeration pin that fails if the resolver grows an unclassified
+read; v266's 17 server claims and genuine race intact under the v267
+door; both compiler gates; eight Chromium suites; five variants biting).
+◆ THE ENUMERATION IS CLOSED: every version-scoped customer-visible source
+the publication resolver reads now participates in both the seal and the
+revision witness; no additional such source remains. DEPLOY: additive —
+run v267_boundary.sql AFTER v263 + v265 + v266. NO Phase-B transport and
+NO PL-4 acceptance were added. After v267, PL-3 Phase A is READY FOR BOTH.
+
+
 **6.38 Proposal Lifecycle — Relationship (PL-2 · v264).** The second
 identity, stored at last, built to the corrected PL-2 specification
 (three operator corrections adopted: the audited correction ceremony;
