@@ -62,7 +62,8 @@ function Row(p: {
   const nextSteps: VersionStatus[] = isArchived ? []
     : p.v.status === "draft" ? ["internal_review", "sent"]
     : p.v.status === "internal_review" ? ["draft", "sent"]
-    : p.v.status === "sent" ? ["revision_requested", "approved"]
+    : (p.v.status === "sent" && !p.v.sealed_at) ? ["revision_requested", "approved"]
+    : p.v.status === "sent" ? ["revision_requested"]  // sealed: no content edits; only mark the request or start a new version
     : [];
   return (
     <div data-version-row={p.v.id} {...(p.current ? { "data-version-current": true } : {})}
@@ -90,11 +91,9 @@ function Row(p: {
             title={STATUS_TITLES[s] ?? undefined}
             onClick={() => p.onStatus(s)}>→ {VERSION_FLOW.find((f) => f.value === s)?.label}</button>
         ))}
-        {p.v.status === "sent" && p.open && !isArchived && (
-          <button data-version-resend={p.v.id} className="text-[11px] text-accent-ink hover:underline" disabled={p.busy}
-            title="Send again — takes a FRESH snapshot of the presentation actually sent and logs it. The prior send's stamp stays on the record."
-            onClick={() => p.onStatus("sent")}>↻ Send again</button>
-        )}
+        {/* v265/v266 PL-3 — the retired "Send again" affordance is gone:
+            sending is now Publishing (the Publish door), and a sealed offer's
+            content is frozen. Re-presentation is a communication, not a status. */}
         {p.v.status === "revision_requested" && p.open && (
           <span className="text-[11px] text-slate-400 italic">changes go in a new version →</span>
         )}
@@ -106,10 +105,12 @@ function Row(p: {
           ＋ Create New Version
         </button>
       )}
-      <a href={p.href} data-thread-studio={p.v.id}
-        title="Open this version in the Studio — the design surface where the proposal is composed"
+      <a href={p.href} data-thread-studio={p.v.id} data-thread-sealed={p.v.sealed_at ? "1" : undefined}
+        title={p.v.sealed_at
+          ? "View this published offer in the Studio — its content is sealed and frozen; changes begin a new version"
+          : "Open this version in the Studio — the design surface where the proposal is composed"}
         className={`text-[11px] font-semibold text-accent-ink hover:underline ${p.current ? "rounded-md ring-1 ring-[#E7EDF5] px-2 py-1" : ""}`}>
-        🎨 {p.current ? "Open Studio" : "Studio"} ↗
+        🎨 {p.v.sealed_at ? "View (sealed)" : p.current ? "Open Studio" : "Studio"} ↗
       </a>
       <button className="text-[11px] text-slate-400 underline" title="Money view — totals, guests, adjustments for this version"
         onClick={p.onPricing}>{p.pricingShown ? "hide pricing" : "pricing"}</button>

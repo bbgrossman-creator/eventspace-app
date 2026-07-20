@@ -30,6 +30,12 @@ export async function prepare(
   profile: OfferProfile,
   render: (m: ResolvedModel) => Promise<{ bytes: Uint8Array; hash: string; meta: Record<string, unknown> }>,
 ): Promise<{ ok: boolean; staged?: StagedPackage; detail?: string }> {
+  // B3 — capture the version's current content_revision as the freshness
+  // witness. The door compares it under lock; an edit between here and Publish
+  // bumps it and makes this package STALE_PREPARATION.
+  const { data: verRow } = await supabase.from("proposal_versions")
+    .select("content_revision").eq("id", versionId).maybeSingle();
+  const contentRevision = (verRow as { content_revision: number } | null)?.content_revision ?? 0;
   const fp = fingerprint(model);
   const completeness = evaluateCompleteness(model, profile);
   // render + freeze the archive (mandatory; Guarantee C). Failure here is a
@@ -48,6 +54,7 @@ export async function prepare(
     version_id: versionId, fingerprint: fp, model: storedModel,
     artifact_bytes: artifact.bytes, artifact_hash: artifact.hash,
     artifact_meta: artifact.meta, assets: model.assets,
+    content_revision: contentRevision,   // B3 freshness witness
   }).select("id").single();
   if (error || !data) return { ok: false, detail: error?.message ?? "staging failed" };
   return { ok: true, staged: {

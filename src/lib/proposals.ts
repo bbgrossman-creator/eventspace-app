@@ -48,6 +48,7 @@ export interface ProposalVersion {
   presentation_snapshot?: unknown;
   photo_pins?: unknown;   // v233 — the version's pinned imagery
   presentation_stamped_at?: string | null;
+  sealed_at?: string | null;   // v265/v266 PL-3 — set at first publish; content-immutable thereafter
 }
 
 export const VERSION_FLOW: { value: VersionStatus; label: string; color: string }[] = [

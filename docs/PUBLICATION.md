@@ -345,6 +345,72 @@ LOOKING AHEAD: PL-3 Phase B (transport), then PL-4 — Acceptance & the
 Instrument, binding to a sealed Version that is one-to-one with its
 Snapshot. (v265.publish — 11 claims · PB-1..PB-11 · PU-1..PU-6.)
 
+**6.39a Proposal Lifecycle — Phase A Hardening (PL-3 · v266).** The
+adversarial acceptance audit of v265 (conducted against the shipped SQL,
+not the release notes) returned STOP with three blocking and three
+required findings — and v266 corrects all six. NOT a change to
+constitutional law: the law was right; the implementation under-
+delivered it in six bounded places, and this release is the catch-up.
+◆ B1 · THE THREAD IS SERIALIZED. v265 locked only the publishing
+version row; two salespeople publishing sibling versions of one thread
+could each find and supersede the same prior offer, committing TWO
+current offers — the exact ambiguity the Publication Boundary Amendment
+exists to kill. v266 locks the THREAD (proposal row) BEFORE the version,
+in a consistent order. A load-bearing discovery, surfaced honestly: the
+naive version-then-proposal order DEADLOCKED under a genuine parallel
+race; thread-first makes concurrent sibling publishes serialize cleanly
+— both commit, the second supersedes the first, exactly ONE current
+offer survives. Proven with two real backends racing (v266_race.sql),
+not sequentially. I-16 (Single Current Offer). ◆ B2 · THE SEAL SPANS THE
+CONTENT. v265's seal froze only proposal_versions columns; the version's
+customer-visible CONTENT rows (event_components, component_items,
+component_requirements) stayed mutable — a hidden second source of truth
+where the Studio could edit a sealed offer. v266 adds BEFORE triggers on
+all three content tables, resolving ownership through the FK path to the
+owning version's sealed_at and refusing SEALED_VERSION_IMMUTABLE. I-18
+(The Seal Spans the Content). ◆ B3 · FRESHNESS IS A DATABASE FACT. v265
+trusted the staged package's own fingerprint ("caught by the app's re-
+resolve"); v266 adds a content_revision counter bumped by unbypassable
+triggers on every content write, captured at Prepare and compared in the
+door under lock — STALE_PREPARATION is now a database fact, not an app
+courtesy. ◆ R2 · ARCHIVE INTEGRITY. The door now verifies
+sha256(artifact_bytes) = artifact_hash before seal/promotion, refusing
+ARCHIVE_CORRUPT. I-17 (Verified Promotion). ◆ R3 · APPROVER AUTHORITY.
+When policy declares requiredApproverRoles, the door evaluates the
+recorded approval authority, refusing INVALID_APPROVER_AUTHORITY;
+empty-is-information preserved (no declaration → no gate). ◆ R1 · THE
+DURABLE ENDPOINT. /api/offer/[token] now serves offer_snapshots
+.artifact_bytes by token — the archived artifact, never live content;
+non-disclosing 404 for invalid/inactive/cross-tenant/nonexistent tokens;
+an x-artifact-sha256 integrity witness; revocation flips active without
+touching the Snapshot. I-19 (Endpoint Honesty). ◆ THE APP CAUGHT UP:
+the retired "↻ Send again" affordance is GONE (sending is Publishing;
+re-presentation is a communication) — the lifecycle T-5 claim was
+updated to assert its ABSENCE, a claim tracking the corrected law, not a
+weakening. Sealed versions read "View (sealed)" and offer no content
+edit. ◆ FOUR NEW INVARIANTS enter canon: I-16 Single Current Offer
+(at most one sent, non-superseded version per thread at every committed
+state); I-17 Verified Promotion (a package promotes only if its bytes
+hash to its recorded hash); I-18 The Seal Spans the Content (a sealed
+version's customer-visible truth includes its content rows; no app-role
+write alters it); I-19 Endpoint Honesty (an observed endpoint resolves
+to the archived artifact, never live content). ◆ PROVEN: seventeen v266
+server claims (HB-1..HB-7, including the two-backend race and a v265-
+guarantee regression block confirming no regression under the hardened
+door); a genuine parallel race (v266_race.sql); ten new unit claims
+(seven source-law pins + three real-renderer-identity integration
+claims); four route claims (I-19); the full standing bar re-run
+(53 unit suites; both compiler gates; eight Chromium suites — T-5
+updated; five variants biting). ◆ RESERVED, RECORDED, NOT IMPLEMENTED:
+the staged-package cleanup job; archive bytea scaling (move bytes to
+immutable object storage keyed by hash when it bites); an offer validity
+window for PL-4 (a future offer-profile fact); a first-class shown-
+recipient line; and the legacy approved→won acceptance-shaped writer,
+which PL-4 must subsume exactly as PL-3 subsumed sendVersion. DEPLOY:
+additive — run v266_hardening.sql AFTER v263 + v265. NO Phase-B transport
+and NO PL-4 acceptance were added (a unit pin proves it). VERDICT: after
+v266, PL-3 Phase A is READY FOR BOTH.
+
 **6.38 Proposal Lifecycle — Relationship (PL-2 · v264).** The second
 identity, stored at last, built to the corrected PL-2 specification
 (three operator corrections adopted: the audited correction ceremony;
