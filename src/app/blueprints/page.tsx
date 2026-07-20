@@ -12,6 +12,19 @@ import { Blueprint, listBlueprints } from "@/lib/blueprints";
 export default function BlueprintsPage() {
   return (
     <PageGuard perm="content.manage" cap="proposals">
+      {/* v255 BP-5 · RECONCILIATION OF THE v182 SURFACE (canon §6.29):
+          this page is a POINTER list — entries read content LIVE from a
+          proposal version, which is exactly the live ancestry the
+          Publication Blueprints constitution forbids. Promotion (the
+          lawful capture) now exists, so this surface is retired in place:
+          entries remain readable (history is preserved, never deleted),
+          the nav entry is gone, and new reuse goes through the Shelf. */}
+      <div data-legacy-retired className="max-w-5xl mx-auto mt-4 mx-6 px-4 py-2 rounded-md bg-amber-50 ring-1 ring-amber-200 text-[13px] text-amber-800">
+        This legacy surface is retired. These entries point at live proposal versions rather than
+        holding knowledge of their own. To capture a design as reusable knowledge, open its Studio and
+        use <span className="font-medium">Promote to Blueprint</span>; the result lives on the{" "}
+        <a href="/blueprint-shelf" className="underline font-medium">Blueprint Shelf</a>. Existing entries stay readable here.
+      </div>
       <BlueprintsInner />
     </PageGuard>
   );

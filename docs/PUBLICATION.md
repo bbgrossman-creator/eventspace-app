@@ -269,6 +269,53 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.29 Promotion (v255 · BP-5) + THE v182 RECONCILIATION.** THE
+CEREMONY: promote_design_to_draft(version, content, target|name) — one
+security-definer transaction, ONE PROMOTION ONE BLUEPRINT (exactly one
+identity insert and one revision insert in the RPC, grep-pinned;
+PM-1/PM-3 prove counts), producing a DRAFT and nothing else: no publish
+statement exists in the file, published_revision_id is untouched, and
+publication remains §3's intent ceremony (PM-1). PROMOTED-FROM
+provenance = promoted_from_version_id as a PLAIN uuid — deliberately no
+foreign key: a recorded fact, never a dependency, never dangles.
+◆ NORMALIZATION (blueprintPromote.ts, pure): the BP-3 reversal —
+design config {schemeId,choices,scalars} → authored
+{scheme,values}; items → selections carrying names and inclusion,
+never prices; version presentation → the portable stratum (delta
+without treatments, sectionDress from treatments.sections, photo_pins
+split into sectionPins/documentPin); output validated by BP-2's OWN
+validator (one shape, one law) and structurally unable to emit a
+barred key (walked ∩ BARRED_KEYS = ∅, unit-proven). ◆ STRIPPED BY
+NAME, staged for review before the act: STRIPPED_GUESTS ·
+STRIPPED_ITEM_PRICES · CONFIRMED_PRICE_TO_SUGGESTION (a confirmed
+design price arrives as authored-suggestion INTENT — §11: no price is
+confirmed by copying, and promotion cannot invent a fixed-price
+policy; the module cannot construct the fixed form, pinned) ·
+STRIPPED_BOUND_DRESS (v241) · SKIPPED_NO_DEFINITION ·
+OUT_OF_SCOPE. ◆ PARTIAL PROMOTION FIRST-CLASS: scope = chosen sections
+× chosen components; the left-behind are named, the scoped result
+validates. ◆ THE BARRED BELT: the schema re-carries §5 — a recursive
+jsonb key walk refuses barred keys by name before any row exists
+(PM-2); the SQL key array equals BP-2's BARRED_KEYS verbatim
+(one-wording-one-source, unit-pinned). ◆ EVIDENCE INFORMS, NEVER
+WRITES: the design's rows are byte-identical through the ceremony
+(PM-4). Busy targets refuse (PROMOTION_TARGET_BUSY); blank names
+refuse (PM-6); tenancy guarded (PM-5); the act vocabulary grows by
+exactly one word ('promote'). SURFACE: PromoteToBlueprint.tsx in the
+Studio — scope checkboxes, the staged stripping report, validation
+refusals, then "Create the draft"; success points to the Shelf and
+says out loud that publication is its own ceremony. ◆ THE v182
+RECONCILIATION (the BP-1 reservation, resolved): the legacy /blueprints
+surface is a pointer list reading content LIVE from proposal versions —
+the exact live ancestry the constitution forbids; with lawful capture
+now existing, it is RETIRED IN PLACE: nav entry removed, banner names
+the reason and points to the Shelf, entries stay readable forever
+(history preserved, nothing deleted, table and module untouched), and
+no promotion file imports the legacy world (pinned). DEPLOY: run
+v255_promotion.sql; server proof via psql -f
+supabase/tests/v255_proof.sql. (v255.promotion — 8 claims · server
+PM-1..PM-6.)
+
 **6.28 Divergence & Citation (v254 · BP-4).** The frozen baseline earns
 its keep. ◆ ONE SOURCE OF TRUTH BY SHAPE: compareToBaseline(current,
 frozen_baseline) — arity two, and blueprintDivergence.ts imports

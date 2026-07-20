@@ -25,6 +25,7 @@ import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { resolveTaxForTenant, TaxResolution } from "@/lib/tax";
 import StudioLine from "@/components/studio/StudioLine";
 import BlueprintCitation from "@/components/BlueprintCitation";
+import PromoteToBlueprint from "@/components/PromoteToBlueprint";
 import SecondSheet from "@/components/studio/SecondSheet";
 import { Meter, Drawer, GhostOutline } from "@/components/studio/StageFurniture";
 import LibraryBrowser from "@/components/studio/LibraryBrowser";
@@ -1155,6 +1156,8 @@ export default function StudioPage() {
       />
       {/* v254 BP-4 — the design's origin in the started-from voice; renders nothing without a citation */}
       <BlueprintCitation versionId={version.id} />
+      {/* v255 BP-5 — the ceremony's door: staged scope, named stripping, drafts only */}
+      <div className="px-4 py-0.5 bg-white border-b border-[#EDF2F8] flex justify-end"><PromoteToBlueprint versionId={version.id} designName={proposal.title} /></div>
       {/* ── the Summon row: the registry's rails inline beneath the Line while
            you type, the Paper visible beneath — UI_GRAMMAR §12's Ctrl+K
            citizen, honored literally. The full Shade is ⌘K. ── */}
