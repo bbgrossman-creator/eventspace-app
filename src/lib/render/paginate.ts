@@ -55,8 +55,8 @@ export function paginate(
   // ── intrinsic content height (margins handled at placement) ──
   const contentHeight = (b: Box, width: number): number => {
     if (b.kind === "text") {
-      const m = measurer.measure(b.text ?? "", b.style.font ?? "serif", b.style.size ?? 10, width - (b.style.indent ?? 0));
-      return m.height * (b.style.lineHeight ? b.style.lineHeight / 1.4 : 1);
+      // heights come from the MEASURER alone — the wrap contract's law
+      return measurer.measure(b.text ?? "", b.style.font ?? "serif", b.style.size ?? 10, width - (b.style.indent ?? 0)).height;
     }
     if (b.kind === "image") return b.style.height ?? 0;
     if (b.kind === "rule") return b.style.ruleWidth ?? 1;
@@ -68,17 +68,25 @@ export function paginate(
   const fullHeight = (b: Box, width: number): number =>
     (b.style.marginTop ?? 0) + contentHeight(b, width) + (b.style.marginBottom ?? 0);
 
-  // ── bounded lookahead: the smallest honest prefix of a box ──
-  const minimalPrefixHeight = (b: Box, width: number): number => {
+  // ── bounded lookahead: the smallest honest prefix of a box.
+  //    CHAINS RESPECTED (PR-5 defect fix): a keepWithNext box's minimal
+  //    prefix is its WHOLE self plus its companion's prefix — each link
+  //    still looks one sibling ahead; transitivity emerges. Without
+  //    this, a checked companion could itself defect to the next page
+  //    and strand the box that trusted it. ──
+  const minimalPrefixHeight = (b: Box, width: number, next: Box | null = null): number => {
     const mt = b.style.marginTop ?? 0;
+    if (b.rules.keepWithNext && next)
+      return mt + contentHeight(b, width) + (b.style.marginBottom ?? 0) + minimalPrefixHeight(next, width);
     if (b.kind === "text") {
       const m = measurer.measure(b.text ?? "", b.style.font ?? "serif", b.style.size ?? 10, width - (b.style.indent ?? 0));
       const lines = Math.min(m.lines, Math.max(1, b.rules.minLinesBefore ?? 2));
       return mt + lines * m.lineHeight;
     }
     if (b.kind === "image" || b.rules.keepTogether) return mt + contentHeight(b, width);
-    const first = (b.children ?? [])[0];
-    return first ? mt + minimalPrefixHeight(first, width) : mt + contentHeight(b, width);
+    const kids = b.children ?? [];
+    const first = kids[0];
+    return first ? mt + minimalPrefixHeight(first, width, kids[1] ?? null) : mt + contentHeight(b, width);
   };
 
   const place = (b: Box, y: number, height: number, extra?: Partial<PlacedBox>): void => {
@@ -153,19 +161,20 @@ export function paginate(
     }
     cur.y += atTop() ? 0 : (b.style.marginTop ?? 0);
     const startPage = cur.page;
-    for (let i = 0; i < kids.length; i++) placeChild(kids[i], kids[i + 1] ?? null, width);
+    for (let i = 0; i < kids.length; i++) placeChild(kids[i], kids[i + 1] ?? null, width, kids[i + 2] ?? null);
     for (let pg = startPage; pg < cur.page; pg++)           // one marker per crossing
       continuations.push({ tag: b.tag, fromPage: pg, toPage: pg + 1 });
     cur.y += (b.style.marginBottom ?? 0);
   };
 
-  const placeChild = (b: Box, next: Box | null, width: number): void => {
+  const placeChild = (b: Box, next: Box | null, width: number, nextNext: Box | null = null): void => {
     if (b.rules.breakBefore === "always" && !atTop()) closePage();
-    // keepWithNext / next.breakBefore avoid — ONE sibling of bounded lookahead
+    // keepWithNext / next.breakBefore avoid — each link looks ONE sibling
+    // ahead; the prefix respects the companion's own chain (defect fix).
     const wantsCompanion = (b.rules.keepWithNext || next?.rules.breakBefore === "avoid") && next;
     if (wantsCompanion) {
       const mine = (atTop() ? 0 : (b.style.marginTop ?? 0)) + contentHeight(b, width) + (b.style.marginBottom ?? 0);
-      const theirs = minimalPrefixHeight(next!, width);
+      const theirs = minimalPrefixHeight(next!, width, nextNext);
       if (mine <= remaining() && mine + theirs > remaining() && !atTop()) closePage();
     }
     if (b.kind === "text") placeText(b, width);
@@ -176,6 +185,6 @@ export function paginate(
 
   const width = extents(0).width;
   const top = root.children ?? [root];
-  for (let i = 0; i < top.length; i++) placeChild(top[i], top[i + 1] ?? null, width);
+  for (let i = 0; i < top.length; i++) placeChild(top[i], top[i + 1] ?? null, width, top[i + 2] ?? null);
   return { pages, continuations, overflows };
 }

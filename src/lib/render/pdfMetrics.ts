@@ -29,6 +29,19 @@ export interface Std14 {
   face(font: string, weight?: number, italic?: boolean): PDFFont;
 }
 
+/** PR-5 — Std14 as a Metrics (the injectable shape brand metrics share):
+ *  one measurer for paginate AND draw, faces embedded per document. */
+export async function std14Metrics(): Promise<{ measurer: Measurer; embed(doc: PDFDocument): Promise<(font: string, weight: number, italic: boolean) => PDFFont> }> {
+  const { measurer } = await standardMetrics();
+  return {
+    measurer,
+    async embed(doc) {
+      const per = await standardMetrics(doc);
+      return (font, weight, italic) => per.face(font, weight, italic);
+    },
+  };
+}
+
 /** Async once (embedding); sync forever after — the port stays pure. */
 export async function standardMetrics(doc?: PDFDocument): Promise<Std14> {
   const scratch = doc ?? await PDFDocument.create();

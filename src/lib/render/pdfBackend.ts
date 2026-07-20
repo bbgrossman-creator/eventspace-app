@@ -1,94 +1,90 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// THE PDF ADAPTER (PR-4). Dumb by law: it draws what imposition placed,
-// re-wrapping text with the SAME measurer pagination budgeted with (the
-// wrap()===lines law), and decides nothing. Page-number WORDING stays
-// PR-6's — the data rides through undrawn. Images draw as light frames
-// until PR-5's placement rules bring bytes; the frame is honest, never a
-// silent absence. pdf-lib appears in this file and nowhere upstream.
+// THE PDF ADAPTER (PR-4 · docs/PUBLICATION_RENDERER.md §5)
+//
+// The first adapter behind the RenderBackend port. It receives the
+// PagedArtifact and produces bytes — no layout decisions, no breaking:
+// text draws the EXACT lines the measurer wrapped (the port's wrap()
+// contract, using the SAME Standard-14 faces), so counting and drawing
+// can never disagree. Page-number WORDING is PR-6's; the data rides the
+// artifact, nothing is drawn. Provenance stamps into PDF metadata.
 // ═══════════════════════════════════════════════════════════════════════════
-import { PDFDocument, rgb, degrees } from "pdf-lib";
+import { PDFDocument, PDFFont, PDFPage, rgb, degrees } from "pdf-lib";
 import { Box } from "./box";
-import { PlacedBox } from "./paginate";
-import { RenderBackend, PagedArtifact } from "./backend";
-import { standardMetrics, Std14 } from "./pdfMetrics";
+import { PagedArtifact, RenderBackend } from "./backend";
+import { Metrics } from "./brandMetrics";
 
-const hex = (h?: string) => {
-  const m = /^#?([0-9a-f]{6})$/i.exec(h ?? "");
-  if (!m) return rgb(0.12, 0.16, 0.23);
+const hex = (h: string | undefined) => {
+  const m = /^#([0-9a-f]{6})$/i.exec(h ?? "");
+  if (!m) return rgb(0.12, 0.16, 0.22);
   const n = parseInt(m[1], 16);
   return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
 };
 
-export function pdfBackend(): RenderBackend {
+/** PR-5 — metrics are INJECTED: the backend receives the same measurer
+ *  pagination used and faces built from the same source. It cannot
+ *  choose its own, so counting and drawing agree by construction. */
+export function pdfBackend(metrics: Metrics): RenderBackend {
   return {
     name: "pdf",
     async render(artifact: PagedArtifact): Promise<Uint8Array> {
       const doc = await PDFDocument.create();
-      // provenance into fields pdf-lib round-trips (Producer is pdf-lib's own)
-      doc.setKeywords([`engine:${artifact.provenance.engineVersion}`, `metrics:${artifact.provenance.metricsVersion}`]);
-      doc.setCreationDate(new Date(artifact.provenance.generatedAt));
-      if (artifact.provenance.sourceFingerprint) doc.setSubject(artifact.provenance.sourceFingerprint);
-      const std: Std14 = await standardMetrics(doc);
+      const { measurer } = metrics;
+      const face = await metrics.embed(doc);
 
-      const drawBox = (page: ReturnType<PDFDocument["addPage"]>, pb: PlacedBox, ox: number, oy: number, width: number, pageH: number) => {
-        const b: Box = pb.box;
-        const top = oy + pb.y;                                  // from page top
-        const x = ox + (b.style.indent ?? 0);
-        if (b.kind === "text") {
-          const size = b.style.size ?? 10;
-          const f = std.face(b.style.font ?? "serif", b.style.weight ?? 400, !!b.style.italic);
-          const lines = std.measurer.wrap(b.text ?? "", b.style.font ?? "serif", size, width - (b.style.indent ?? 0));
-          const from = pb.slice?.fromLine ?? 0;
-          const to = pb.slice?.toLine ?? lines.length;
-          const lh = size * 1.4;
-          for (let i = from; i < to; i++) {
-            const line = lines[i] ?? "";
-            let lx = x;
-            if (b.style.align === "center") lx = ox + (width - f.widthOfTextAtSize(line, size)) / 2;
-            else if (b.style.align === "right") lx = ox + width - f.widthOfTextAtSize(line, size);
-            page.drawText(line, { x: lx, y: pageH - (top + (i - from + 1) * lh) + size * 0.25,
-              size, font: f, color: hex(b.style.color) });
-          }
-        } else if (b.kind === "rule") {
-          const w = b.style.width ?? width;
-          page.drawLine({ start: { x: ox, y: pageH - top }, end: { x: ox + w, y: pageH - top },
-            thickness: b.style.ruleWidth ?? 1, color: hex(b.style.ruleColor) });
-        } else if (b.kind === "image") {
-          const w = pb.scaledTo?.width ?? b.style.width ?? width;
-          const h = pb.scaledTo?.height ?? pb.height;
-          page.drawRectangle({ x, y: pageH - (top + h), width: w, height: h,
-            borderColor: rgb(0.85, 0.87, 0.9), borderWidth: 0.5 });   // honest frame until PR-5
-        }
-        // spacers draw nothing; group children were placed individually
+      doc.setProducer(`EventCore Publication Renderer ${artifact.provenance.engineVersion}`);
+      doc.setCreator(`metrics ${artifact.provenance.metricsVersion}`);
+      doc.setSubject(JSON.stringify(artifact.provenance));
+
+      const faceOf = (b: Box): PDFFont => face(b.style.font ?? "serif", b.style.weight ?? 400, !!b.style.italic);
+
+      const drawText = (pg: PDFPage, b: Box, x: number, yTop: number, width: number,
+        slice?: { fromLine: number; toLine: number }): void => {
+        const size = b.style.size ?? 10;
+        const lineH = size * 1.4;
+        const avail = width - (b.style.indent ?? 0);
+        const all = measurer.wrap(b.text ?? "", b.style.font ?? "serif", size, avail);
+        const lines = slice ? all.slice(slice.fromLine, slice.toLine) : all;
+        const f = faceOf(b);
+        lines.forEach((line, i) => {
+          let lx = x + (b.style.indent ?? 0);
+          if (b.style.align === "center") lx = x + (width - f.widthOfTextAtSize(line, size)) / 2;
+          else if (b.style.align === "right") lx = x + width - f.widthOfTextAtSize(line, size);
+          pg.drawText(line, { x: lx, y: pg.getHeight() - (yTop + (i + 1) * lineH) + size * 0.28,
+            size, font: f, color: hex(b.style.color) });
+        });
       };
 
       for (const ip of artifact.pages) {
-        const page = doc.addPage([ip.size.width, ip.size.height]);
-        const pageH = ip.size.height;
-        const bodyW = ip.size.width - ip.margins.left - ip.margins.right;
-        // furniture — margin bands
-        const band = (b: Box | null, topY: number) => {
-          if (!b || b.kind !== "text") return;
-          const size = b.style.size ?? 8;
-          const f = std.face(b.style.font ?? "sans", b.style.weight ?? 400, !!b.style.italic);
-          const text = b.text ?? "";
-          const tw = f.widthOfTextAtSize(text, size);
-          const lx = b.style.align === "center" ? ip.margins.left + (bodyW - tw) / 2 : ip.margins.left;
-          page.drawText(text, { x: lx, y: pageH - topY, size, font: f, color: hex(b.style.color) });
-        };
-        band(ip.runningHeader, ip.margins.top * 0.55);
-        band(ip.runningFooter, ip.size.height - ip.margins.bottom * 0.4);
-        if (ip.watermark) {
-          const f = std.face("sans", 700, false);
-          const size = 84;
-          const tw = f.widthOfTextAtSize(ip.watermark, size);
-          page.drawText(ip.watermark, { x: (ip.size.width - tw * 0.72) / 2, y: ip.size.height * 0.32,
-            size, font: f, color: rgb(0.93, 0.94, 0.96), rotate: degrees(35) });
+        const pg = doc.addPage([ip.size.width, ip.size.height]);
+        const bodyWidth = ip.size.width - ip.margins.left - ip.margins.right;
+        if (ip.watermark)
+          pg.drawText(ip.watermark, { x: ip.size.width / 2 - 120, y: ip.size.height / 2 - 40,
+            size: 64, font: face("sans", 700, false), color: rgb(0.93, 0.93, 0.95), rotate: degrees(35) });
+        if (ip.runningHeader)
+          drawText(pg, ip.runningHeader, ip.margins.left, ip.margins.top - 26, bodyWidth);
+        for (const placed of ip.content.placed) {
+          const b = placed.box;
+          const yTop = ip.contentOrigin.y + placed.y;
+          if (b.kind === "text") drawText(pg, b, ip.contentOrigin.x, yTop, bodyWidth, placed.slice);
+          else if (b.kind === "rule") {
+            const w = b.style.width ?? bodyWidth;
+            pg.drawLine({ start: { x: ip.contentOrigin.x, y: pg.getHeight() - yTop },
+              end: { x: ip.contentOrigin.x + w, y: pg.getHeight() - yTop },
+              thickness: b.style.ruleWidth ?? 1, color: hex(b.style.ruleColor) });
+          } else if (b.kind === "image") {
+            const w = placed.scaledTo?.width ?? b.style.width ?? 100;
+            const h = placed.scaledTo?.height ?? placed.height;
+            // Remote imagery embeds with the asset-corpus work; the geometry
+            // is honest today — a bordered frame, never a silent lie.
+            pg.drawRectangle({ x: ip.contentOrigin.x, y: pg.getHeight() - yTop - h, width: w, height: h,
+              borderColor: rgb(0.85, 0.87, 0.9), borderWidth: 0.5 });
+          }
         }
-        for (const pb of ip.content.placed) drawBox(page, pb, ip.contentOrigin.x, ip.contentOrigin.y, bodyW, pageH);
-        // pageNumber DATA present, wording undrawn — PR-6's business.
+        if (ip.runningFooter)
+          drawText(pg, ip.runningFooter, ip.margins.left, ip.size.height - ip.margins.bottom + 16, bodyWidth);
+        // ip.pageNumber DATA rides the artifact; the WORDING is PR-6's.
       }
-      return doc.save();   // Keywords/Subject round-trip; Producer is pdf-lib's own
+      return doc.save();
     },
   };
 }

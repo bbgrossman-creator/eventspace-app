@@ -15,6 +15,7 @@ import { ResolvedTheme, ThemeDelta, RegionTexts, resolveTheme, resolveThemeKey }
 import { getPublicationSettings, listPublicationThemes } from "@/lib/publicationData";
 import { ResolvedFact, projectIdentity } from "@/lib/identity";
 import { renderToPdf, renderPublicationFromSnapshot } from "@/lib/render/render";
+import { fetchBrandFonts } from "@/lib/render/fonts";
 import { getCompanyIdentity } from "@/lib/identityData";
 import { PhotoPins } from "@/lib/photos";
 
@@ -73,7 +74,8 @@ export default function ProposalPreviewPage() {
               try {
                 // THE SNAPSHOT LAW: a sent document renders from what was
                 // stamped — every field below is frozen material.
-                const { bytes } = await renderToPdf(renderPublicationFromSnapshot(model, frozen.snap), frozen.stamp);
+                const brand = await fetchBrandFonts("/fontsource");   // graceful: null → Std14
+                const { bytes } = await renderToPdf(renderPublicationFromSnapshot(model, frozen.snap), frozen.stamp, brand ?? undefined);
                 const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
                 const a = document.createElement("a");
                 a.href = url; a.download = "proposal.pdf"; a.click();

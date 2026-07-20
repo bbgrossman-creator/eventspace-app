@@ -27,12 +27,12 @@ export interface RenderPublication {
 }
 
 /** Print-scale constants (points). PR-5 owns tuning; PR-1 owns existence. */
-const SIZES = { title: 26, eyebrow: 9, sectionHead: 15, compTitle: 12, body: 10.5, small: 9, terms: 8.5 } as const;
+const SIZES = { title: 30, eyebrow: 9, sectionHead: 16, compTitle: 12.5, body: 10.5, small: 9, terms: 8.5 } as const;
 const seriffed = (t: ResolvedTheme): string => (t.fonts.pairing ? "serif" : "serif");
 const sans = (): string => "sans";
 
 const textBox = (tag: string, text: string, style: Box["style"], rules: Box["rules"] = {}): Box =>
-  box("text", tag, { text, style: { lineHeight: 1.4, ...style }, rules: { minLinesBefore: 2, minLinesAfter: 2, ...rules } });
+  box("text", tag, { text, style, rules: { minLinesBefore: 2, minLinesAfter: 2, ...rules } });
 
 export function composePublication(pub: RenderPublication): Box {
   const t = pub.theme;
@@ -73,7 +73,7 @@ export function composePublication(pub: RenderPublication): Box {
       { keepWithNext: true }));
     const pin = pinnedFor(pub.pins, section.id);
     if (pin) kids.push(box("image", `section:${section.id}/photo`, { src: pin.url,
-      style: { width: 480, height: 180, marginBottom: 8 }, rules: {} }));
+      style: { width: 504, height: 200, marginBottom: 10 }, rules: {} }));
     for (const band of section.bands) {
       if (band.label) kids.push(textBox(`section:${section.id}/band`, band.label,
         { font: sans(), size: SIZES.small, weight: 700, letterSpacing: 0.08, color: "#94A3B8" }, { keepWithNext: true }));
@@ -82,17 +82,19 @@ export function composePublication(pub: RenderPublication): Box {
           textBox(`comp:${comp.id}/title`, comp.title,
             { font: seriffed(t), size: SIZES.compTitle, weight: 600, color: ink }, { keepWithNext: true }),
         ];
+        const hasItems = comp.blocks.some((bl) => bl.items.length > 0);
         if (comp.description) c.push(textBox(`comp:${comp.id}/desc`, comp.description,
-          { font: sans(), size: SIZES.body, color: "#475569" }));
+          { font: sans(), size: SIZES.body, color: "#475569" },
+          hasItems ? { keepWithNext: true } : {}));
         const cPin = pinnedFor(pub.pins, "comp:" + comp.id);
-        if (cPin) c.push(box("image", `comp:${comp.id}/photo`, { src: cPin.url, style: { width: 220, height: 120 } }));
+        if (cPin) c.push(box("image", `comp:${comp.id}/photo`, { src: cPin.url, style: { width: 230, height: 130, marginBottom: 4 } }));
         for (const block of comp.blocks) {
           if (block.label && block.showHeading)
             c.push(textBox(`comp:${comp.id}/blockhead`, block.label,
               { font: sans(), size: SIZES.small, weight: 600, color: "#64748B" }, { keepWithNext: true }));
           for (const it of block.items)
             c.push(textBox(`comp:${comp.id}/item`, "\u00b7 " + it.name,
-              { font: sans(), size: SIZES.body, color: "#475569", indent: 10 }));
+              { font: sans(), size: SIZES.body, color: "#475569", indent: 12 }));
         }
         kids.push(box("group", `comp:${comp.id}`, { children: c, style: { marginBottom: 8 } }));
       }

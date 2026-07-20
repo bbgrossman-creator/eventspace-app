@@ -91,7 +91,9 @@ export function imposePages(result: PaginationResult, set: MasterSet): ImposedPa
     const m = key === "first" ? set.first : key === "last" ? set.last : set.interior;
     const onePage = count === 1 && page.index === 0;
     const footerSource = onePage ? set.last : m;                 // closure furniture
-    const numberPolicy = (onePage ? set.last : m).decorations.pageNumbers;
+    // Numbering exists to locate a page AMONG pages: a one-page document
+    // is never numbered, whatever any master's policy says.
+    const numberPolicy = count === 1 ? "none" : m.decorations.pageNumbers;
     return {
       index: page.index,
       master: key,

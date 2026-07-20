@@ -11,15 +11,19 @@ import { PhotoPins } from "../photos";
 import { composePublication, composeMasters, RenderPublication } from "./compose";
 import { paginate } from "./paginate";
 import { extentsFrom, imposePages } from "./masters";
-import { standardMetrics } from "./pdfMetrics";
+import { std14Metrics } from "./pdfMetrics";
 import { pdfBackend } from "./pdfBackend";
+import { brandMetrics, BrandFontBytes } from "./brandMetrics";
 import { PagedArtifact, RENDER_ENGINE_VERSION } from "./backend";
 
 export async function renderToPdf(
   pub: RenderPublication,
   sourceFingerprint: string | null,
+  brand?: BrandFontBytes,
 ): Promise<{ bytes: Uint8Array; artifact: PagedArtifact }> {
-  const { measurer } = await standardMetrics();
+  // ONE metrics choice — the same measurer paginates and draws (PR-5).
+  const metrics = brand ? brandMetrics(brand) : await std14Metrics();
+  const { measurer } = metrics;
   const tree = composePublication(pub);
   const masters = composeMasters(pub);
   const result = paginate(tree, measurer, extentsFrom(masters));
@@ -32,7 +36,7 @@ export async function renderToPdf(
       sourceFingerprint,
     },
   };
-  const bytes = await pdfBackend().render(artifact);
+  const bytes = await pdfBackend(metrics).render(artifact);
   return { bytes, artifact };
 }
 
