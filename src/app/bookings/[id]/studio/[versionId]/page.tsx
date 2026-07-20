@@ -24,6 +24,7 @@ import { Booking, fmtDate } from "@/lib/workflow";
 import { loadCapabilities, Capabilities } from "@/lib/capabilities";
 import { resolveTaxForTenant, TaxResolution } from "@/lib/tax";
 import StudioLine from "@/components/studio/StudioLine";
+import BlueprintCitation from "@/components/BlueprintCitation";
 import SecondSheet from "@/components/studio/SecondSheet";
 import { Meter, Drawer, GhostOutline } from "@/components/studio/StageFurniture";
 import LibraryBrowser from "@/components/studio/LibraryBrowser";
@@ -1152,6 +1153,8 @@ export default function StudioPage() {
           { key: "files", label: "📎 Files", onPick: () => setTab("files") },
         ]}
       />
+      {/* v254 BP-4 — the design's origin in the started-from voice; renders nothing without a citation */}
+      <BlueprintCitation versionId={version.id} />
       {/* ── the Summon row: the registry's rails inline beneath the Line while
            you type, the Paper visible beneath — UI_GRAMMAR §12's Ctrl+K
            citizen, honored literally. The full Shade is ⌘K. ── */}

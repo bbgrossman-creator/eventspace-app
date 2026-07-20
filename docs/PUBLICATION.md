@@ -269,6 +269,46 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.28 Divergence & Citation (v254 · BP-4).** The frozen baseline earns
+its keep. ◆ ONE SOURCE OF TRUTH BY SHAPE: compareToBaseline(current,
+frozen_baseline) — arity two, and blueprintDivergence.ts imports
+NOTHING: there is no channel through which the current blueprint, the
+offered revision, event history, or the act ledger could reach the
+result (unit-pinned; server D-3/D-4 prove the INPUTS byte-immune to
+audit noise and to r2/r3 publishes). ◆ HONESTY TIERS from NAMED
+STRUCTURAL CRITERIA, no weighted score, no numeric rank anywhere in
+the report (pinned): HEAVY = component added/removed/moved · section
+added/removed · presentation-replaced (theme change) ·
+config-scheme-changed · pricing-mode-changed; LIGHT = item
+add/remove/reorder/price · price-confirmation · package-price ·
+config-value · retitle · component/section reorder · dress-adjusted
+(same theme) · guest-count. Sets disjoint, every finding classified
+exactly once, every criterion exercised alone in the suite;
+light+heavy together = heavy WITH all findings preserved.
+◆ EARLIER-REVISION IS ORTHOGONAL: citationStatus speaks about the
+shelf (offered vs cited; retirement a note), never about the design;
+unchanged×earlier and heavy×current proven coexistent; never collapsed
+into the tier. ◆ AUTHORED PROSE: no editable design surface exists, so
+the report carries prose:"unavailable" — reported, never compared,
+never invented. ◆ BASELINE INTEGRITY: malformed baselines surface as
+named states (MISSING_SECTIONS/COMPONENTS/GUESTS ·
+COMPONENT_WITHOUT_ID · NOT_AN_OBJECT); comparison refuses; the input
+object is proven unmutated (read, never repaired); server D-5: update
+and delete on blueprint_instantiations touch zero rows under policy
+absence. ◆ THE CITATION: "Started from {name} rN" — resolves by exact
+revision id forever; D-1 supersession and D-2 retirement leave it
+answering precisely; the banned voices (powered-by ·
+inherited · synchronized-with · proof-of · based-on-current) are
+grep-absent from the slice; the data layer reads blueprint_revisions
+WITHOUT the content column (the current blueprint is not even
+fetched). ◆ DISPLAY, NEVER JUDGMENT: nothing blocks, nothing urges,
+nothing prices; empty divergence renders as itself ("that is
+information, not praise"). SURFACE: BlueprintCitation.tsx — one line
+under the Studio bar (v217-consistent: details summoned on click),
+rendering nothing when no citation exists. No migration this slice;
+server proof runnable via psql -f supabase/tests/v254_proof.sql.
+(v254.divergence — 9 claims · server D-1..D-5.)
+
 **6.27 Instantiation (v253 · BP-3 — the constitution's center,
 delivered).** THE ACT: instantiate_blueprint(revision, booking,
 guest_count) — one security-definer transaction turning the PUBLISHED
