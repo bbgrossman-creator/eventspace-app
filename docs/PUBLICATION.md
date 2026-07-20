@@ -269,6 +269,67 @@ control — gated so sent and approved versions, being history, refuse
 disposal. Reset Presentation is a presentation act; disposal is a
 version-lifecycle act; deleting the proposal remains outside the Studio.
 
+**6.32 Authoring-Time Composition (v258 · BP-8).** THE ACT: an author
+deliberately COPIES selected lawful authored material from an EXACT
+source revision into a destination DRAFT; afterward the material is
+ordinary destination content with NO edge back. ◆ COPY-ONLY BY
+CONSTRUCTION (blueprintCompose.ts, pure — imports only the content
+shape and the condition law): the composer emits ordinary BP-2
+content — deep-copied structure, STABLE identity references
+(section role, component definition identity — never a captured
+definition revision), resolve-later fields absent, barred fields
+impossible (emitted-key ∩ BARRED_KEYS = ∅, unit-proven) — validated
+by BP-2's OWN validator before it is written. No second content
+model; no live edge of any kind. ◆ FRESH LOCAL IDS: every copied
+node (chapter/section/entry/choiceGroup) regenerates its key, so no
+authored-id collision is possible and no two blueprints ever share a
+key. ◆ MINIMUM LAWFUL ANCESTRY: selecting an entry brings its
+section and chapter; a section brings its chapter; unrelated
+siblings do not travel. ◆ CONDITIONS COPY AS PREDICATES, NOT
+OUTCOMES: a copied condition arrives intact and unevaluated, and its
+referenced parameters ride along automatically (conditionParamRefs)
+or stage COMPOSE_PARAM_MISSING_DEP; keys are never renamed silently —
+operator remaps are explicit and recorded; incompatible
+type/meaning refuse (COMPOSE_PARAM_TYPE_INCOMPATIBLE /
+COMPOSE_PARAM_MEANING_INCOMPATIBLE). ◆ DEFINITION UNAVAILABLE →
+COMPOSE_DEFINITION_UNAVAILABLE (refuse, never embed source knowledge
+or guess a substitute; resolution stays BP-3's concern). ◆ THE
+COLLISION MATRIX, deterministic: role collision → append (default) /
+insert-at / refuse (COMPOSE_ROLE_COLLISION); never a silent
+overwrite; the destination content is never mutated in place.
+◆ PRESENTATION portable-only, no silent blend: keep-destination
+(omission named) / replace-with-source; fresh destination simply
+receives the portable; bound dress never travels; template
+provenance rides as recorded fact within the portable value.
+◆ PRICING copies as intent exactly; fixed-package without its policy
+→ COMPOSE_FIXED_PRICE_NO_POLICY. ◆ ONE ATOMIC TRANSACTION
+(compose_into_draft, SECURITY DEFINER): (1) lock+validate the EXACT
+source FOR SHARE — fingerprint cited, no floating "current", no
+identity-alone, no latest-at-render; (2) lock+validate the
+destination draft FOR UPDATE — published/superseded refuse
+(COMPOSE_DEST_NOT_DRAFT), foreign tenant invisible both ways; (3)
+write the candidate content; (4) append copy provenance LAST. A
+failure at any step leaves the destination byte-identical and writes
+no provenance (server CO-4 late-rollback). ◆ PROVENANCE OUTSIDE
+CONTENT, APPEND-ONLY: blueprint_compositions records source identity/
+revision/fingerprint, destination, actor, timestamp, selected
+regions, collision choices, omissions, transformations — select+insert
+policies only, no update/delete path; no resolver, view, or
+instantiation ever reads it (v257 act carries no composition
+reference, pinned). ◆ INDEPENDENCE (server CO-5): source
+supersession + retirement + draft deletion change nothing in the
+copied content; the destination publishes by the ordinary BP-1
+ceremony, needing no composition edge; no source reference lives in
+authored content (CO-6). ◆ LEGACY BOUNDARY: only constitutional
+revisions supply material — the retired v182 pointer table is never a
+source (pinned); legacy designs must first pass BP-5 promotion.
+SURFACE: CopyIntoDraft.tsx in the draft editor — exact-revision source
+picker, scope selection, the review showing what copies, what
+dependencies ride, what is omitted, and how collisions resolve before
+the act; copy verbs only. DEPLOY: run v258_composition.sql; server
+proof psql -f supabase/tests/v258_proof.sql. (v258.composition — 11
+claims · server CO-1..CO-6.)
+
 **6.31 Conditions (v257 · BP-7) + THE v255/v256 SPEC RETROFITS.** The
 v253 reservation on conditions retires: the complete authoring →
 validation → evaluation → provenance → atomicity path exists.

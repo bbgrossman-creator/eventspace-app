@@ -40,6 +40,7 @@ import {
 } from "@/lib/blueprintAuthoringSupabase";
 import BlueprintInstantiate from "@/components/BlueprintInstantiate";
 import BlueprintPaperPreview from "@/components/BlueprintPaperPreview";
+import CopyIntoDraft from "@/components/CopyIntoDraft";
 import {
   CONDITION_PREDICATES, PREDICATE_ADMISSION, PredicateNode, BlueprintCondition,
 } from "@/lib/blueprintConditions";
@@ -328,6 +329,10 @@ function DraftEditor(props: { identity: BlueprintIdentity; draft: BlueprintRevis
         </div>
       )}
 
+      <div className="mt-2 flex justify-end">
+        <CopyIntoDraft destIdentityId={props.identity.id} destRevisionId={props.draft.id}
+          destContent={content} onCopied={() => { void props.refresh(); }} />
+      </div>
       <StructureEditor content={content} defs={defs} patch={patch} />
       <ConstraintsEditor content={content} patch={patch} />
       <ParametersEditor content={content} patch={patch} />
