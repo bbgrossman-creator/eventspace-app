@@ -411,6 +411,33 @@ additive — run v266_hardening.sql AFTER v263 + v265. NO Phase-B transport
 and NO PL-4 acceptance were added (a unit pin proves it). VERDICT: after
 v266, PL-3 Phase A is READY FOR BOTH.
 
+**6.41 Proposal Lifecycle — PL-4 Acceptance Records (v269).** The second PL-4
+slice: the immutable acceptance data model, storage only — no ceremony, no
+validation, no rescission, no publication change. Two additive tables. (A.1)
+offer_acceptances — the immutable acceptance evidence, insert+select only, with
+UNIQUE(snapshot_id) enforcing at-most-one-acceptance-per-Offer (I-20). It
+reserves EVERY constitutional field now so the schema needs no later redesign:
+snapshot_id + fingerprint (the accepted object and its binding, I-21), and the
+reserved identity model — principal, acting_person, recording_operator,
+authority_basis, evidence_basis, channel, recorded_moment, claimed_moment,
+capability_ref, attestation_ref — of which the identity/attestation fields are
+first POPULATED by the v271 ceremony (present here so the shape is settled). (A.2)
+acceptance_selection_sets — the immutable 1:1 selection-set child, insert+select
+only, with UNIQUE(acceptance_id) enforcing exactly-one-child. Its selections are
+stored by value naming FROZEN group/option identities from the snapshot model,
+with NO FK to the live choice_groups table (I-21/I-26), and an explicit empty-set
+marker when the Offer carried no choices. Validation is NOT implemented here — it
+belongs to v271. Immutability is structural: neither table has an update or delete
+policy (the PL-3 append-only discipline). PROVEN: v269 proof (AR-1 immutable
+create, AR-2 UNIQUE(snapshot) duplicate refused, AR-3 exactly-one selection child,
+AR-4 tenant isolation, AR-5 no update path), rerunnable with zero residue; the
+standing bar re-run with NO regression (zero new tsc vs baseline, 54 unit suites,
+both gates, eight Chromium suites, five variants biting; v265/v266/v267/v268
+proofs intact). Additive, forward-compatible, rerunnable; no PL-3/earlier-PL-4
+object touched. Next: v270 protective compatibility amendments (publish_offer
+accepted-bar, withdraw_offer accepted-guard + thread-first locking, status
+vocabulary widening) — which MUST deploy before v271 ceremonies.
+
 **6.40 Proposal Lifecycle — PL-4 Offered Terms (v268).** The first PL-4 slice,
 additive, PL-3 untouched. The publication resolver's frozen model now carries the
 offered terms the acceptance ceremony will bind to. THREE additions, all frozen
