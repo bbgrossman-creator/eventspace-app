@@ -411,6 +411,49 @@ additive — run v266_hardening.sql AFTER v263 + v265. NO Phase-B transport
 and NO PL-4 acceptance were added (a unit pin proves it). VERDICT: after
 v266, PL-3 Phase A is READY FOR BOTH.
 
+**6.43 Proposal Lifecycle — PL-4 Acceptance Ceremony (v271).** The first
+operational realization of Acceptance: the SQL ceremony public.accept_offer that
+converts a published Offer into an immutable Acceptance. SECURITY DEFINER,
+search_path=public; authorization is by current_tenant_id() (auth.uid() → active
+tenant_users), so definer privilege never becomes the authorization model —
+every read/write is tenant-scoped and an out-of-tenant version does not resolve
+(CEREMONY_NOT_FOUND, no existence leak). The ceremony: (1) takes the SHARED
+thread-first lock — proposal row, then version row, identical to publish_offer /
+withdraw_offer, so accept/publish/withdraw acquire locks in one compatible order
+(no deadlock); (2) at the linearization point proves eligibility from the locked
+row (sealed, not withdrawn/superseded) and refuses a second acceptance via the
+RELATION (offer_acceptances by snapshot), before the status check, so replay
+returns ALREADY_ACCEPTED not NOT_ELIGIBLE; (3) resolves the immutable snapshot
+(one per version) and binds ITS fingerprint (I-21, no recompute); (4) validates
+selections against the FROZEN model.choiceGroups (v268 groupId/optionId) — never
+live choice_groups — refusing foreign options (ACCEPT_INVALID_SELECTION) and
+duplicates (ACCEPT_DUPLICATE_SELECTION, never deduped); (5) ATOMICALLY writes
+offer_acceptances (A.1) + acceptance_selection_sets (A.2, by-value frozen ids) +
+one offer_accepted ledger fact (snapshot_ref/fingerprint_ref identify the same
+object) + the status='accepted' projection (I-30). Observed self-service: it
+populates snapshot/fingerprint/booking/tenant, evidence_basis='observed',
+channel, authority_basis='self', principal=acting_person, capability_ref,
+recorded_moment=now(); recording_operator/claimed_moment/attestation_ref stay
+NULL (no invention; the attested path is a later slice). v271 DELTA to
+publish_offer: STEP 10 discovery widened from status='sent' to ('sent',
+'accepted') so an accepted Offer (now projected 'accepted') remains discoverable
+and the v270 accepted-bar evaluates it — the STEP 11 UPDATE still targets ONLY
+'sent', so an accepted prior is barred, never mutated. (This closed a real
+projection/bar interaction found in proof: without it a sibling published over an
+accepted Offer.) Application: POST /api/offer/[token] gathers only acknowledgment
++ selections and calls the ceremony once — no eligibility judgement, no
+client-authored timestamp, no selection mutation, refusals mapped to stable
+non-disclosing codes. PROVEN: v271 proof AC-1..AC-12 (normal accept; one
+acceptance; one selection set; double refused; fingerprint equality; atomic
+forced-rollback leaves neither row; foreign+duplicate options refused; accepted
+cannot be withdrawn/superseded; tenant isolation; replay leaves one row+one
+ledger fact; zero residue), rerunnable; GENUINE two-backend races (accept/accept
+→ one acceptance; accept/withdraw → one serialization; accept/publish → accepted
+Offer never superseded) all deadlock-free. Standing bar green, NO regression
+(zero new tsc, 54 unit suites, both gates, eight Chromium suites, route 7/7, five
+variants biting; v265–v270 proofs pass). Additive; deploy after v270. Next: PL-4
+rescission (v272) per the approved roadmap — NOT part of v271.
+
 **6.42 Proposal Lifecycle — PL-4 Protective Compatibility Amendments (v270).**
 The bars that MUST exist before the v271 acceptance ceremonies, so an acceptance
 can never exist for even one production interval without the accepted-Offer

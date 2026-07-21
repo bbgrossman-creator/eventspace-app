@@ -15,6 +15,77 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /api/offer/[token] — v271 · the Acceptance ceremony (A.3).
+// The token is the capability. This handler gathers ONLY the acknowledgment and
+// the customer's selections, then calls the SQL ceremony public.accept_offer,
+// which performs ALL constitutional enforcement (eligibility, fingerprint
+// binding, selection validation against the frozen snapshot, atomic write of
+// acceptance + selection set + ledger). The route decides nothing: it does not
+// judge eligibility, author timestamps, mutate selections, or infer acceptance
+// from status. It resolves token → endpoint → snapshot → version, calls the
+// ceremony once, and renders the stable outcome or a stable failure code.
+// ═══════════════════════════════════════════════════════════════════════════
+export async function POST(req: Request, ctx: { params: Promise<{ token: string }> }) {
+  const { token } = await ctx.params;
+  const notFound = () => new Response("Not found", { status: 404 });
+  const fail = (code: string, status = 409) =>
+    new Response(JSON.stringify({ outcome: "refused", code }), {
+      status, headers: { "content-type": "application/json" } });
+  if (!token || token.length < 32) return notFound();
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return new Response("Service unavailable", { status: 503 });
+  const db = createClient(url, key);
+
+  // token → active endpoint → snapshot → version. Inactive/absent = 404.
+  const { data: ep } = await db.from("offer_endpoints")
+    .select("snapshot_id, active, tenant_id").eq("token", token).maybeSingle();
+  if (!ep || !(ep as { active: boolean }).active) return notFound();
+  const { data: snap } = await db.from("offer_snapshots")
+    .select("version_id, fingerprint")
+    .eq("id", (ep as { snapshot_id: string }).snapshot_id).maybeSingle();
+  if (!snap) return notFound();
+  const sv = snap as { version_id: string; fingerprint: string };
+
+  // gather ONLY acknowledgment + selections from the request body (no authority)
+  let body: { selections?: unknown; principal?: unknown; acknowledgment?: unknown } = {};
+  try { body = await req.json(); } catch { body = {}; }
+
+  // one call; the ceremony is the sole enforcer. It authors the timestamp,
+  // validates selections against the frozen model, and writes atomically.
+  const { data, error } = await db.rpc("accept_offer", {
+    p_version: sv.version_id,
+    p_actor: "customer",
+    p_fingerprint: sv.fingerprint,
+    p_selections: body.selections ?? [],
+    p_principal: body.principal ?? null,
+    p_channel: "endpoint",
+  });
+
+  if (error) {
+    // map the ceremony's stable exception text to a stable failure code; never
+    // leak internals or cross-tenant existence.
+    const m = String(error.message || "");
+    const code =
+      m.includes("ALREADY_ACCEPTED")     ? "already_accepted" :
+      m.includes("OFFER_WITHDRAWN")       ? "offer_withdrawn" :
+      m.includes("OFFER_SUPERSEDED")      ? "offer_superseded" :
+      m.includes("NOT_PUBLISHED")         ? "offer_not_published" :
+      m.includes("NOT_ELIGIBLE")          ? "offer_not_eligible" :
+      m.includes("INVALID_SELECTION")     ? "invalid_selection" :
+      m.includes("DUPLICATE_SELECTION")   ? "duplicate_selection" :
+      m.includes("FINGERPRINT_MISMATCH")  ? "fingerprint_mismatch" :
+      m.includes("CEREMONY_NOT_FOUND")    ? "not_found" : "refused";
+    if (code === "not_found") return notFound();
+    return fail(code);
+  }
+
+  return new Response(JSON.stringify({ outcome: "accepted", result: data }), {
+    status: 200, headers: { "content-type": "application/json" } });
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
   const notFound = () => new Response("Not found", { status: 404 });
