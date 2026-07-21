@@ -48,10 +48,25 @@ export interface PresentationItem {
   hiddenReason?: string | null;  // why the customer won't see this
 }
 export interface PresentationChoiceGroup {
+  /** v268 — the stable frozen identity of this choice group WITHIN the snapshot.
+   *  Captured by value at seal from the live choice_groups row; because the
+   *  snapshot model is immutable, this id is stable forever and a recorded
+   *  acceptance selection references it, not the live table (I-21/I-26). */
+  groupId: string;
   label: string; chooseCount: number;
+  /** v268 — explicit frozen selection bounds. Derived at publication:
+   *  mandatory = min>=1, optional = min=0; "choose exactly N" = min=max=N.
+   *  The legacy chooseCount maps to min=max=chooseCount (exact choice). These
+   *  are the contract the acceptance ceremony validates against — never inferred
+   *  at accept time. A group frozen with neither explicit bounds nor a
+   *  chooseCount is unresolved and refuses at acceptance
+   *  (LEGACY_CHOICE_CONTRACT_UNRESOLVED). */
+  min: number; max: number;
   /** v195 P1.7: choices honour the layout system like any other run of items. */
   layout: "vertical" | "comma" | "dot";
-  options: { name: string; description: string | null; priceLabel: string | null; priceStatus: PriceStatus }[];
+  /** v268 — each option carries a stable frozen optionId (captured by value at
+   *  seal), the referent a recorded selection names. */
+  options: { optionId: string; name: string; description: string | null; priceLabel: string | null; priceStatus: PriceStatus }[];
 }
 /** A run of items rendered together — one category, or the ungrouped run.
  *  Presentation-only: no pricing, no identity beyond its component. */
@@ -112,6 +127,14 @@ export interface PresentationModel {
   status: string;                // draft | sent | approved … (for a "DRAFT" ribbon)
   hasUnconfirmedVisiblePrice: boolean;  // a visible price is still amber/carried
   summary: PresentationSummary | null;  // v195: shown only at full visibility
+  /** v268 — the offered validity deadline, frozen into the snapshot and thus
+   *  fingerprint-covered: the customer accepts this exact deadline. Null =
+   *  open-ended (no time limit); the offer stays acceptable until superseded or
+   *  withdrawn. The acceptance ceremony reads this; an operator cannot extend or
+   *  shorten it post-publication — a different deadline is a different Offer.
+   *  ISO-8601 UTC instant; the first instant of invalidity (half-open
+   *  [published_at, validUntil)). */
+  validUntil: string | null;
 }
 
 /** v195 P1.3 — "Soup Course — choose one" inside the "Soup Course" component
@@ -223,10 +246,13 @@ export async function buildPresentationModel(
 ): Promise<PresentationModel | null> {
   const xray = opts.xray === true;
   const { data: v } = await supabase.from("proposal_versions")
-    .select("id,proposal_id,version,status,price_visibility,customer_intro,customer_closing")
+    .select("id,proposal_id,version,status,price_visibility,customer_intro,customer_closing,valid_until")
     .eq("id", versionId).maybeSingle();
   if (!v) return null;
-  const ver = v as { id: string; proposal_id: string; version: number; status: string; price_visibility: string; customer_intro: string | null; customer_closing: string | null };
+  // v268 — valid_until is an additive, version-scoped operator-set field; when
+  // absent/unset it is null = open-ended. Frozen into the model at publication,
+  // so it becomes fingerprint-covered and the customer accepts this exact deadline.
+  const ver = v as { id: string; proposal_id: string; version: number; status: string; price_visibility: string; customer_intro: string | null; customer_closing: string | null; valid_until: string | null };
 
   // ── Ownership gate ── resolve this version's tenant (version→proposal→
   // booking→tenant) and require it to match the caller's session tenant.
@@ -347,7 +373,20 @@ export async function buildPresentationModel(
   // of normal component rendering and present as a "Choose N".
   const choiceItems: Record<string, PresentationChoiceGroup> = {};
   for (const cg of (cgs ?? []) as { id: string; section_type_id: string | null; label: string; choose_count: number; position: number }[]) {
-    choiceItems[cg.id] = { label: cg.label, chooseCount: cg.choose_count, layout: "vertical", options: [] };
+    // v268 — freeze stable identity + explicit bounds. The live choice_groups
+    // model carries a single choose_count meaning "choose exactly N", so
+    // min=max=choose_count (the closed contract's exact-choice mapping). The
+    // groupId is the live id captured by value; because the model is frozen it
+    // is stable forever.
+    choiceItems[cg.id] = {
+      groupId: cg.id,
+      label: cg.label,
+      chooseCount: cg.choose_count,
+      min: cg.choose_count,
+      max: cg.choose_count,
+      layout: "vertical",
+      options: [],
+    };
   }
 
   // Build components, honoring translation rules.
@@ -370,6 +409,7 @@ export async function buildPresentationModel(
       if (i.choice_group_id && choiceItems[i.choice_group_id]) {
         const pi = priceInfo(i.unit_price, i.quantity_basis, i.price_confirmed, i.price_state);
         choiceItems[i.choice_group_id].options.push({
+          optionId: i.id,   // v268 — stable frozen option identity (the item id, by value)
           name: i.name, description: i.description,
           priceLabel: pi.label, priceStatus: pi.status,
         });
@@ -682,5 +722,6 @@ export async function buildPresentationModel(
     status: ver.status,
     hasUnconfirmedVisiblePrice,
     summary,
+    validUntil: ver.valid_until ?? null,   // v268 — frozen offered deadline; null = open-ended
   };
 }

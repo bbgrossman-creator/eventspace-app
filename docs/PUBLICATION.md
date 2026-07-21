@@ -411,6 +411,33 @@ additive — run v266_hardening.sql AFTER v263 + v265. NO Phase-B transport
 and NO PL-4 acceptance were added (a unit pin proves it). VERDICT: after
 v266, PL-3 Phase A is READY FOR BOTH.
 
+**6.40 Proposal Lifecycle — PL-4 Offered Terms (v268).** The first PL-4 slice,
+additive, PL-3 untouched. The publication resolver's frozen model now carries the
+offered terms the acceptance ceremony will bind to. THREE additions, all frozen
+by value into offer_snapshots.model at publication and therefore fingerprint-
+covered — the customer accepts them exactly: (1) valid_until — the offered
+validity deadline, an additive nullable version-scoped field (null = open-ended);
+(2) stable frozen choice-group and option identities (groupId, optionId) captured
+by value at seal, the referents a recorded acceptance selection will name —
+never the live choice_groups table (I-21/I-26); (3) explicit minimum/maximum
+selection bounds, with the legacy choose_count mapping to min=max (exact choice).
+The choice identities and bounds are pure resolver output (no schema change — the
+model is already sealed jsonb). Only valid_until needs a column; it is added to
+proposal_versions, read by the resolver, and — extending the v267 version-row
+seal guard and revision witness by one field each — frozen at seal and staling a
+prepared package on a draft edit. Forward-compatible: absent valid_until reads as
+null/open-ended, so every existing draft and published Offer is unaffected;
+missing choice bounds are NOT defaulted (a group with neither explicit bounds nor
+choose_count will refuse at acceptance with LEGACY_CHOICE_CONTRACT_UNRESOLVED —
+the ceremony never infers contractual meaning). PROVEN: v268 proof (VT-1 null
+default, VT-2 draft bump, VT-3 sealed refusal) on the full stack; the standing
+bar re-run with NO regression (54 unit suites, both gates, zero new tsc vs
+baseline, eight Chromium suites incl. paper rendering the enriched model, five
+variants biting; v265/v266/v267 proofs intact under the extended guard/bump). No
+PL-3 law, ceremony, or invariant altered — publish_offer, the publication
+ordering, and the archive discipline are unchanged. Next: v269 acceptance
+evidence records.
+
 **6.39b Proposal Lifecycle — Phase A Boundary Completion (PL-3 · v267).**
 The enumeration closed. A verification audit of v266 found the seal and
 the revision witness were built against an INCOMPLETE list of the
