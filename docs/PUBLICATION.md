@@ -411,6 +411,38 @@ additive — run v266_hardening.sql AFTER v263 + v265. NO Phase-B transport
 and NO PL-4 acceptance were added (a unit pin proves it). VERDICT: after
 v266, PL-3 Phase A is READY FOR BOTH.
 
+**6.42 Proposal Lifecycle — PL-4 Protective Compatibility Amendments (v270).**
+The bars that MUST exist before the v271 acceptance ceremonies, so an acceptance
+can never exist for even one production interval without the accepted-Offer
+protections and the shared thread-first lock. Narrow replace-in-place amendments
+to exactly two PL-3 functions; no acceptance rows, no validation, no rescission,
+no new lifecycle model; no PL-3/PL-4 invariant weakened. (C.1) publish_offer
+gains an ACCEPTED-OFFER BAR at STEP 10/11: when the prior current Offer has an
+acceptance record it refuses PUBLISH_BLOCKED_BY_ACCEPTANCE rather than superseding
+it (I-23) — under the existing STEP-1 thread lock, so race-safe; the body is
+otherwise the byte-identical v267 law with the v267b digest qualification
+preserved. (C.2) withdraw_offer gains TWO amendments: it adopts the v266
+thread-first lock order (proposal row first, then version row — the deployed body
+locked only the version), bringing withdrawal into the single total order (I-25);
+and an ACCEPTED-GUARD refusing WITHDRAW_BLOCKED_BY_ACCEPTANCE on an accepted Offer
+(releasing a commitment is rescission, a later slice, never withdrawal). (C.3)
+status vocabulary: proposal_versions.status is free text (no CHECK/enum, verified),
+so 'accepted' is already admissible with NO DDL — deliberately no CHECK is added
+(that would be a new lifecycle model, and status stays a projection of the
+immutable acceptance record, never a substitute, I-30). Both bars resolve
+STRUCTURALLY against the immutable v269 acceptance relation (an offer_acceptances
+row whose snapshot's version_id is the Offer's version), NOT status text. PROVEN:
+v270 proof — PV-1 unaccepted publishes, PV-2 unaccepted withdraws, PV-3 accepted
+cannot be replaced + PV-3b the accepted object is not mutated, PV-4 accepted
+cannot be withdrawn, PV-5 protection is STRUCTURAL (status held constant at 'sent',
+removing the relation re-enables withdrawal), PV-6 thread-first lock present in
+withdraw, PV-7 tenant isolation — rerunnable, zero residue, production-faithful
+identity harness. Standing bar re-run with NO regression (zero new tsc, 54 unit
+suites, both gates, eight Chromium suites, five variants biting; v265/v266/v267/
+v268/v269 proofs green). Rerunnable, production-safe; deploy after v269, before
+v271. Next: v271 acceptance ceremonies. (Also: the v268 proof was corrected to
+the production-faithful discover-existing-user identity harness, matching v269.)
+
 **6.41 Proposal Lifecycle — PL-4 Acceptance Records (v269).** The second PL-4
 slice: the immutable acceptance data model, storage only — no ceremony, no
 validation, no rescission, no publication change. Two additive tables. (A.1)
