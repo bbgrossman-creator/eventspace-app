@@ -4,6 +4,7 @@ import {
   getEventWorkspace, startService, closeEvent, recordEvidence,
   type EventWorkspace, type ObligationState, type EventStage, type WsCard,
 } from "@/lib/execution/spine";
+import StaffingSection from "@/components/execution/StaffingSection";
 
 /** Event Operations Workspace (v277). A single first-class operational surface:
  *  header, lifecycle rail, readiness by category, the workboard, blockers,
@@ -127,6 +128,10 @@ export default function EventWorkspace({ eventId, actor = "ops" }: { eventId: st
           ))}
         </div>
       </section>
+
+      {/* 3b · Staffing coverage (v278) */}
+      <StaffingSection eventId={eventId} actor={actor} staffing={ws.staffing}
+        canManage={!!h.can_manage_staffing} onChanged={refresh} />
 
       {/* 4 · Operational workboard */}
       <section className="space-y-3" data-daily-ops>

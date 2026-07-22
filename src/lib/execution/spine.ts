@@ -182,6 +182,7 @@ export interface WsHeader {
   released_at: string; released_by: string; stage: EventStage;
   readiness: { resolved: number; total: number };
   blocker_count: number; exception_count: number; last_activity: string | null;
+  can_manage_staffing: boolean;
 }
 export interface WsCategory {
   department: Department; resolved: number; total: number; exceptions: number;
@@ -203,6 +204,7 @@ export interface WsActivity {
 export interface EventWorkspace {
   header: WsHeader;
   lifecycle: EventStageDetail;
+  staffing?: EventStaffing;
   readiness_by_category: WsCategory[];
   workboard: WsCard[];
   blockers: WsBlocker[];
@@ -216,4 +218,59 @@ export async function getEventWorkspace(eventId: string): Promise<EventWorkspace
   const { data, error } = await supabase.rpc("event_workspace", { p_event: eventId });
   if (error) throw new Error(error.message);
   return (data as EventWorkspace | null) ?? null;
+}
+
+// ─── v278 staffing (explicit relations + derived coverage; thin actions → ceremonies) ─
+
+export interface StaffAssignee {
+  assignment_id: string; staff_ref: string; staff_name: string | null;
+  window_start: string; window_end: string; conflict: boolean;
+}
+export interface StaffingRequirementView {
+  requirement_id: string; role: string; department: string; required: number;
+  assigned: number; shortage: number; over: number; conflicts: number; covered: boolean;
+  assignees: StaffAssignee[];
+}
+export interface EventStaffing {
+  total_requirements: number; covered: number; partial: number; uncovered: number;
+  conflicts: number; open_positions: number;
+  readiness: "no_requirements" | "covered" | "incomplete";
+  requirements: StaffingRequirementView[];
+  blockers: { what: string; cause_ref: string; why: string; next_action: string }[];
+}
+export interface EligibleStaff { id: string; name: string; }
+
+export async function getEligibleStaff(eventId: string): Promise<EligibleStaff[]> {
+  const { data, error } = await supabase.rpc("eligible_staff", { p_event: eventId });
+  if (error) throw new Error(error.message);
+  return (data as EligibleStaff[] | null) ?? [];
+}
+
+export async function assignStaff(args: {
+  requirement: string; staff: string; windowStart: string; windowEnd: string; actor: string;
+}): Promise<{ assignmentId: string }> {
+  const { data, error } = await supabase.rpc("assign_staff", {
+    p_requirement: args.requirement, p_staff: args.staff,
+    p_window_start: args.windowStart, p_window_end: args.windowEnd, p_actor: args.actor,
+  });
+  if (error) throw new Error(error.message);
+  return { assignmentId: data.assignment_id };
+}
+
+export async function correctStaffingAssignment(args: {
+  assignment: string; newStaff: string; windowStart: string; windowEnd: string; actor: string; reason: string;
+}): Promise<{ assignmentId: string }> {
+  const { data, error } = await supabase.rpc("correct_staffing_assignment", {
+    p_assignment: args.assignment, p_new_staff: args.newStaff,
+    p_window_start: args.windowStart, p_window_end: args.windowEnd, p_actor: args.actor, p_reason: args.reason,
+  });
+  if (error) throw new Error(error.message);
+  return { assignmentId: data.assignment_id };
+}
+
+export async function releaseStaffingAssignment(assignment: string, actor: string, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc("release_staffing_assignment", {
+    p_assignment: assignment, p_actor: actor, p_reason: reason ?? null,
+  });
+  if (error) throw new Error(error.message);
 }

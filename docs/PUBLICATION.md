@@ -1835,3 +1835,57 @@ sections, permitted-only actions, successful-action refresh, rejected-action
 error handling, ledger activity, cross-tenant non-render, tablet width) plus the
 v276 acceptance updated for the evolved layout — all green. Full regression (PL
 v265–v273, v275, v276, v277) green; no frozen Proposal Lifecycle object touched.
+
+---
+
+## §6.49 — Staffing Assignment & Coverage (v278)
+
+v278 is the first operational vertical slice: it turns a released event's staffing
+obligations into real assignable positions, lets authorized users assign tenant
+staff to roles, and derives coverage, shortage, and scheduling-conflict truth that
+flows into the event workspace, readiness, and the Start-Service gate. It adds
+staffing invariants I-42…I-47 (requirements derive from released truth; assignments
+are explicit relations not JSON; history is permanent and append-only; coverage and
+conflicts are derived, never stored; authority is tenant-scoped default-deny).
+
+The person assigned resolves to the EXISTING authoritative tenant staff roster
+(public.staff) — v278 introduces no second employee directory; a compatibility
+guard ensures the roster is present on a fresh deploy and is a no-op where it
+already exists. Three explicit append-only relations carry the model:
+staffing_requirement (derived from each released staffing obligation, natural-keyed,
+idempotently regenerated, quantity read from the FROZEN accepted model),
+staffing_assignment (this person to this requirement, with a shift window), and
+staffing_release (the append-only unassign / correction fact — the original
+assignment always survives). Coverage is a pure projection: required, assigned,
+shortage, over, conflicts, covered — with no stored covered/staffed column anywhere.
+Conflicts use half-open interval semantics ([start,end)); adjacent windows do not
+overlap.
+
+The ceremonies follow the established pattern exactly — SECURITY DEFINER,
+authorization by current_tenant_id(), thread-first lock on the requirement,
+non-disclosing CEREMONY_NOT_FOUND cross-tenant, named default-deny refusals
+(STAFFING_NOT_AUTHORIZED / STAFFING_STAFF_INVALID / STAFFING_WINDOW_INVALID /
+STAFFING_DUPLICATE_ASSIGNMENT / STAFFING_EVENT_CLOSED / STAFFING_ALREADY_RELEASED):
+generate_staffing_requirements, assign_staff, correct_staffing_assignment (release
+old + assign new), release_staffing_assignment. The UI routes directly to these — no
+bespoke action framework; a common action-routing registry is a later slice.
+Integration is additive and backward-compatible: event_staffing_ready is vacuously
+true when an event has no requirements, so v275/v276/v277 behavior is preserved;
+event_stage's ready predicate and start_service now also require staffing coverage,
+and event_workspace gains a first-class staffing section plus coverage blockers and
+a can_manage_staffing header flag that hides assignment controls from unauthorized
+users.
+
+Verified: 22 SQL proof claims (requirements determinism/idempotency/provenance/
+frozen-source pinning; authorized assignment; duplicate/invalid-staff/unauthorized/
+closed-event refusals; correction preserves the original and is attributable; hard
+delete denied; partial/covered/over coverage; released/corrected counted correctly;
+totals equal the requirement population; overlap conflict detected on both events;
+adjacent windows allowed; cross-tenant null and no forgeable coverage column) —
+rerunnable, zero residue. Genuine two-backend race certification, 5 pairs in both
+launch orders (same-staff duplicate → one wins; two staff fill the final position →
+both recorded; overlapping assignments → both conflicted; assignment × correction →
+serialized; assignment × closure → lawful). Browser acceptance against the mounted
+tree: 10 staffing claims plus the v277 (13) and v276 (5) suites, all green. Full
+regression (PL v271–v273, v275, v276, v277, v278) green; no frozen Proposal Lifecycle
+object modified.
