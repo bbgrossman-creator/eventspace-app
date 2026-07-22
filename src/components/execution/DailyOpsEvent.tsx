@@ -39,7 +39,7 @@ export default function DailyOpsEvent({ eventId, actor }: { eventId: string; act
   if (view.total === 0) return <div className="p-4 text-sm text-neutral-500">No operational obligations for this event.</div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-daily-ops>
       <div className="flex flex-wrap gap-2 text-xs">
         {(Object.keys(view.counts) as ObligationState[])
           .filter((s) => view.counts[s] > 0)
@@ -50,7 +50,7 @@ export default function DailyOpsEvent({ eventId, actor }: { eventId: string; act
           ))}
       </div>
       {view.byDepartment.map((group) => (
-        <section key={group.department} className="rounded-lg border border-neutral-200">
+        <section key={group.department} data-dept={group.department} className="rounded-lg border border-neutral-200">
           <header className="border-b border-neutral-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
             {group.department}
           </header>

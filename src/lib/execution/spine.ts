@@ -130,3 +130,47 @@ export async function loadEvidence(eventId: string, obligationId?: string): Prom
   const { data } = await q;
   return (data as EvidenceRow[] | null) ?? [];
 }
+
+// ─── v276 lifecycle (stage is derived in SQL; the app renders, never recomputes) ─
+
+export type EventStage = "released" | "in_prep" | "ready" | "in_service" | "closed";
+
+export interface EventStageDetail {
+  event_id: string;
+  stage: EventStage;
+  why: string;
+  established_by: { kind: string; actor: string; moment: string }[];
+  blockers: string[];
+  next_action: string;
+  readiness: Record<string, unknown>;
+}
+
+/** The authoritative stage + explanation, derived in SQL (event_stage_detail). */
+export async function getEventStageDetail(eventId: string): Promise<EventStageDetail | null> {
+  const { data, error } = await supabase.rpc("event_stage_detail", { p_event: eventId });
+  if (error) throw new Error(error.message);
+  return (data as EventStageDetail | null) ?? null;
+}
+
+export async function getEventStage(eventId: string): Promise<EventStage | null> {
+  const { data, error } = await supabase.rpc("event_stage", { p_event: eventId });
+  if (error) throw new Error(error.message);
+  return (data as EventStage | null) ?? null;
+}
+
+/** Authorized service-start ceremony (default-deny; refuses unless ready). */
+export async function startService(eventId: string, actor: string): Promise<{ eventId: string; stage: EventStage }> {
+  const { data, error } = await supabase.rpc("start_service", { p_event: eventId, p_actor: actor });
+  if (error) throw new Error(error.message);
+  return { eventId: data.event_id, stage: data.stage };
+}
+
+/** Authorized close ceremony (default-deny; refuses while a closeout predicate is
+ *  unresolved; requires an explicit closeout override — never a fabricated close). */
+export async function closeEvent(eventId: string, actor: string, closeoutOverride: string): Promise<{ eventId: string; stage: EventStage }> {
+  const { data, error } = await supabase.rpc("close_event", {
+    p_event: eventId, p_actor: actor, p_closeout_override: closeoutOverride,
+  });
+  if (error) throw new Error(error.message);
+  return { eventId: data.event_id, stage: data.stage };
+}

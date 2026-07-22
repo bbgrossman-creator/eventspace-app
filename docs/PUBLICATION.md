@@ -1754,3 +1754,42 @@ scope, the release action, and obligation detail render the proven spine; the
 legacy `tasks(done)`/`OpsWorkspace` surface is untouched and superseded only for
 released events. Company/personal DailyOps scopes, the non-operational work-item
 classes, and the department domains follow in later slices.
+
+---
+
+## §6.47 — Event Lifecycle & Stage Projection (v276)
+
+v276 gives the canonical event a lifecycle without giving it a mutable status.
+Stage — `released → in_prep → ready → in_service → closed` — is a **projection**
+(I-34), derived by `event_stage` from immutable evidence + obligation state +
+dependencies, plus two authorized, default-deny lifecycle ceremonies. There is no
+`event.stage`, `event.status`, or authoritative `booking.status`; a forged legacy
+status cannot move the projected stage (it reads facts, not status).
+
+Predicates: `released` on materialization with no preparation evidence; `in_prep`
+on the first preparation action; `ready` when every pre-service obligation
+(culinary_prepare, equipment_pull, staffing_assign, venue_setup) is resolved
+(complete|invalidated) with no pre-service exception; `in_service` only on an
+authorized `service_start` fact (`start_service` refuses unless ready — the ready
+gate is load-bearing); `closed` only on an authorized `event_closed` fact.
+`close_event` is default-deny and never silently completes closeout: it refuses
+while breakdown is pending or an exception is open, and the unmodeled return /
+inspection / financial closeout domains (v285+/v288) are represented **explicitly**
+as a required authorized override, recorded verbatim as evidence — not fabricated.
+`event_stage_detail` renders the stage with its reason, the facts that established
+it, the named blockers, and the next authorized action, so no lifecycle badge is
+unexplained.
+
+Two new append-only evidence kinds (`service_start`, `event_closed`) — authorized
+ceremony facts, not disguised statuses. Verified against a production-faithful
+database: 18 proof claims (LC/BY/PR/TI) walking one event through the full
+lifecycle with load-bearing negatives (ready gate, breakdown-pending,
+closeout-unresolved, not-in-service, forged status, cross-tenant not-found),
+rerunnable with zero residue; five race pairs (prep×prep, readiness×invalidation,
+service-start×rescission, close×close, completion×exception) green in both launch
+orders — no deadlock, no lost evidence, one deterministic stage. Full regression
+(PL v265–v273, v275, v276) green; v275's generation, proofs, and races are
+untouched. The app renders the SQL derivation; no second lifecycle calculation
+exists in React. Scheduling, production, warehouse, transportation, breakdown/
+return, financial settlement, and company/personal DailyOps scopes remain
+explicit seams for later slices.

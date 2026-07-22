@@ -12,6 +12,7 @@ import KnowledgeCard from "@/components/KnowledgeCard";
 import DebriefCard from "@/components/DebriefCard";
 import ProposalsCard from "@/components/ProposalsCard";
 import EngagementSpine from "@/components/EngagementSpine";
+import EventOperations from "@/components/execution/EventOperations";
 import EventLegacyCard from "@/components/EventLegacyCard";
 import {
   Booking,
@@ -842,6 +843,9 @@ export default function BookingDetail() {
       {/* v263 PL-1 — the engagement's constitutional position (value AND
           provenance, never collapsed) + its append-only history. */}
       <div className="card p-4"><EngagementSpine bookingId={b.id} actor="sales" /></div>
+      {/* v275/v276 Execution OS — Operational Release, the derived event
+          lifecycle rail, and the event-scope DailyOps, once released. */}
+      <div className="card p-4"><EventOperations bookingId={b.id} actor="ops" /></div>
       <ProposalsCard b={b} />
       <KnowledgeCard b={b} />
       <FilesPanel b={b} />

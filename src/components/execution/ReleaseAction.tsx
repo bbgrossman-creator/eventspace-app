@@ -74,7 +74,7 @@ export default function ReleaseAction({
           {refusal.replace(/^Error:\s*/, "")}
         </div>
       )}
-      <button disabled={busy} onClick={release}
+      <button disabled={busy} onClick={release} data-release-event
         className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50">
         {busy ? "Releasing…" : "Release event"}
       </button>
