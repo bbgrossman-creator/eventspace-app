@@ -23,8 +23,22 @@ const bindings: Record<string, unknown> = {
   },
 };
 
+const knowledgeByMode: Record<string, unknown> = {
+  bound: { bound: true, verification: "none", critical_count: 0, reasons: [], findings: [] },
+  redirected: {
+    bound: true, verification: "targeted_verification", critical_count: 2,
+    reasons: ["electrical_service_amps last verified 2025-01-10 — over the 180-day utility threshold",
+              "insurance_certificate expired 2026-06-01 — before the evaluation date"],
+    findings: [],
+  },
+  walkreq: {
+    bound: true, verification: "walkthrough_required", critical_count: 4,
+    reasons: ["ceiling_height predates the 2026-07-01 renovation — re-verify"], findings: [],
+  },
+};
 window.__fixture = {
-  binding: bindings[mode],
+  binding: bindings[mode === "walkreq" ? "bound" : mode],
+  knowledge: knowledgeByMode[mode] ?? null,
   venues: [
     { id: "ven-1", name: "Grand Hotel", venue_type: "fixed_facility", address: "1 Main St", redirect_to: null },
     { id: "ven-3", name: "Lakeside Manor", venue_type: "fixed_facility", address: "9 Lake Rd", redirect_to: null },

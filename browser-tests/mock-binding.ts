@@ -8,6 +8,7 @@ export const supabase = {
     rec(`rpc:${fn}`);
     const f = (window.__fixture || {}) as AnyRec;
     if (fn === "current_venue_binding") return Promise.resolve({ data: f.binding ?? null, error: null });
+    if (fn === "engagement_venue_knowledge") return Promise.resolve({ data: f.knowledge ?? { bound: false, verification: "none", findings: [] }, error: null });
     if (fn === "venue_duplicate_candidates") return Promise.resolve({ data: f.suggestions ?? [], error: null });
     if (fn === "bind_engagement_venue") {
       const hasCurrent = !!f.binding;

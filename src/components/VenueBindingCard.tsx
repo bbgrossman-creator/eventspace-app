@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { getCurrentBinding, bindVenue, suggestVenues, listBindableVenues, type CurrentBinding } from "@/lib/binding";
+import { getCurrentBinding, bindVenue, suggestVenues, listBindableVenues, getEngagementVenueKnowledge, type CurrentBinding, type EngagementVenueKnowledge } from "@/lib/binding";
 import type { Venue } from "@/lib/venues";
 
 /** v281 — Venue Registry binding for an off-premise engagement.
@@ -8,8 +8,9 @@ import type { Venue } from "@/lib/venues";
  *  with advisory suggestions), bound (snapshot provenance), redirected
  *  (original vs resolved shown distinctly). Corrections demand a reason.
  *  Nothing here ever auto-binds. */
-export default function VenueBindingCard({ bookingId, offpremAddress }: { bookingId: string; offpremAddress?: string | null }) {
+export default function VenueBindingCard({ bookingId, offpremAddress, eventDate }: { bookingId: string; offpremAddress?: string | null; eventDate?: string | null }) {
   const [binding, setBinding] = useState<CurrentBinding | null>(null);
+  const [knowledge, setKnowledge] = useState<EngagementVenueKnowledge | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [linking, setLinking] = useState(false);
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -19,10 +20,15 @@ export default function VenueBindingCard({ bookingId, offpremAddress }: { bookin
   const [err, setErr] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    try { setBinding(await getCurrentBinding(bookingId)); }
+    try {
+      const b = await getCurrentBinding(bookingId);
+      setBinding(b);
+      if (b) setKnowledge(await getEngagementVenueKnowledge(bookingId, eventDate ? `${eventDate}T12:00:00Z` : undefined));
+      else setKnowledge(null);
+    }
     catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setLoaded(true); }
-  }, [bookingId]);
+  }, [bookingId, eventDate]);
   useEffect(() => { refresh(); }, [refresh]);
 
   const openLink = async () => {
@@ -79,6 +85,31 @@ export default function VenueBindingCard({ bookingId, offpremAddress }: { bookin
           {binding.redirected && (
             <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600" data-binding-redirected>
               Originally linked to <span className="font-medium">{binding.bound_name_snapshot}</span> — that record was merged; current venue record is <span className="font-medium">{binding.resolved_name}</span>. The original binding fact is unchanged.
+            </div>
+          )}
+          {knowledge && knowledge.verification && (
+            <div className="mt-2" data-knowledge-summary data-knowledge-verdict={knowledge.verification}>
+              {knowledge.verification === "none" && (
+                <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700">
+                  ✓ Venue knowledge is current for this date — no walkthrough needed.
+                </div>
+              )}
+              {knowledge.verification === "targeted_verification" && (
+                <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                  Targeted verification required ({knowledge.critical_count}) before this event:
+                  <ul className="ml-4 list-disc" data-knowledge-reasons>
+                    {(knowledge.reasons ?? []).map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+              {knowledge.verification === "walkthrough_required" && (
+                <div className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
+                  Full walkthrough required — venue knowledge is insufficient for this date:
+                  <ul className="ml-4 list-disc" data-knowledge-reasons>
+                    {(knowledge.reasons ?? []).map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>

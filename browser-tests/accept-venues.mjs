@@ -115,6 +115,10 @@ const cer3 = await page.evaluate(() => window.__ceremonies);
 claim("V-10", supDisabled && cer3.includes("rpc:supersede_observation"),
   "supersession demands a reason before enabling and routes to supersede_observation");
 
+const fkinds = await page.$$eval("[data-finding]", (els) => els.map((e) => `${e.getAttribute("data-finding")}:${e.getAttribute("data-finding-severity")}`));
+claim("V-11", fkinds.includes("contradiction_unresolved:critical") && fkinds.includes("stale:advisory"),
+  "derived knowledge findings render on the venue page with kind and severity distinguished");
+
 await browser.close(); server.close();
 console.log(`\n=== v280 VENUE ACCEPTANCE: ${pass} PASS / ${fail} FAIL ===`);
 process.exit(fail ? 1 : 0);

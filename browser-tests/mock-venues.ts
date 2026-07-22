@@ -25,6 +25,7 @@ export const supabase = {
       return R({ supersession_id: "sup-new" });
     }
     if (fn === "venue_profile") return R(f.profile ?? []);
+    if (fn === "venue_knowledge_findings") return R(f.findings ?? []);
     return R(null);
   },
   from(table: string) {

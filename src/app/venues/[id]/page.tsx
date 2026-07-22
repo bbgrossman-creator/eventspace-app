@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { getVenueFindings, type KnowledgeFinding } from "@/lib/binding";
 import {
   getVenue, listSpaces, listWalkthroughs, getVenueProfile,
   addVenueSpace, recordWalkthrough, declareCoverage, recordObservation, recordEvidence, supersedeObservation,
@@ -26,6 +27,7 @@ export default function VenueDetailPage() {
   const [spaces, setSpaces] = useState<VenueSpace[]>([]);
   const [walks, setWalks] = useState<Walkthrough[]>([]);
   const [profile, setProfile] = useState<ProfileEntry[]>([]);
+  const [findings, setFindings] = useState<KnowledgeFinding[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [sp, setSp] = useState({ kind: "room", name: "" });
   const [ob, setOb] = useState({ attribute: "", kind: "quantity", amount: "", unit: "", boolVal: "true", scope: "", source: "measurement" as SourceClass, absent: false });
@@ -36,8 +38,8 @@ export default function VenueDetailPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [v, s, w, p] = await Promise.all([getVenue(id), listSpaces(id), listWalkthroughs(id), getVenueProfile(id)]);
-      setVenue(v); setSpaces(s); setWalks(w); setProfile(p);
+      const [v, s, w, p, kf] = await Promise.all([getVenue(id), listSpaces(id), listWalkthroughs(id), getVenueProfile(id), getVenueFindings(id)]);
+      setVenue(v); setSpaces(s); setWalks(w); setProfile(p); setFindings(kf);
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }, [id]);
   useEffect(() => { refresh(); }, [refresh]);
@@ -216,6 +218,20 @@ export default function VenueDetailPage() {
             </li>
           ))}
           {profile.length === 0 && <li className="text-sm text-slate-400" data-profile-empty>Nothing observed yet — everything is unobserved.</li>}
+        </ul>
+      </section>
+
+      {/* v282 — derived knowledge findings (staleness, expiry, renovation, contradictions) */}
+      <section className="rounded-lg border border-slate-200 p-4" data-findings-section>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Knowledge findings (derived)</div>
+        <ul className="space-y-1" data-findings-list>
+          {findings.map((fd, i) => (
+            <li key={i} className={`rounded border px-2 py-1 text-[12px] ${fd.severity === "critical" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}
+              data-finding={fd.kind} data-finding-severity={fd.severity}>
+              <span className="font-medium">{fd.kind.replace(/_/g, " ")}</span> · {fd.reason}
+            </li>
+          ))}
+          {findings.length === 0 && <li className="text-sm text-emerald-700" data-findings-none>✓ No findings — venue knowledge is current.</li>}
         </ul>
       </section>
     </div>

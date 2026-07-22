@@ -90,6 +90,27 @@ const red = await page.textContent("[data-binding-redirected]");
 claim("B-6", /Originally linked to/.test(red) && /Grand Hotel Annex/.test(red) && /Grand Hotel/.test(red) && /original binding fact is unchanged/.test(red),
   "redirected venue shows original (Annex) vs resolved (Grand Hotel) distinctly — history explicitly not rewritten");
 
+// ── v282 knowledge summary claims ──
+await page.goto("http://localhost:4286/?mode=bound", { waitUntil: "networkidle" });
+await page.waitForSelector("[data-knowledge-summary]", { timeout: 8000 });
+const kv1 = await page.$eval("[data-knowledge-summary]", (el) => el.getAttribute("data-knowledge-verdict"));
+const kt1 = await page.textContent("[data-knowledge-summary]");
+claim("K-1", kv1 === "none" && /no walkthrough needed/.test(kt1),
+  "a bound engagement with current venue knowledge shows 'no walkthrough needed'");
+
+await page.goto("http://localhost:4286/?mode=redirected", { waitUntil: "networkidle" });
+await page.waitForSelector("[data-knowledge-summary]", { timeout: 8000 });
+const kv2 = await page.$eval("[data-knowledge-summary]", (el) => el.getAttribute("data-knowledge-verdict"));
+const reasons = await page.$$eval("[data-knowledge-reasons] li", (els) => els.map((e) => e.textContent));
+claim("K-2", kv2 === "targeted_verification" && reasons.length === 2 && /180-day utility threshold/.test(reasons[0]),
+  "targeted verification renders with the specific derived reasons — knowledge vocabulary only, no feasibility language");
+
+await page.goto("http://localhost:4286/?mode=walkreq", { waitUntil: "networkidle" });
+await page.waitForSelector("[data-knowledge-summary]", { timeout: 8000 });
+const kv3 = await page.$eval("[data-knowledge-summary]", (el) => el.getAttribute("data-knowledge-verdict"));
+claim("K-3", kv3 === "walkthrough_required" && /renovation/.test(await page.textContent("[data-knowledge-summary]")),
+  "walkthrough-required renders distinctly with the renovation reason");
+
 await browser.close(); server.close();
-console.log(`\n=== v281 BINDING ACCEPTANCE: ${pass} PASS / ${fail} FAIL ===`);
+console.log(`\n=== v281+v282 BINDING & KNOWLEDGE ACCEPTANCE: ${pass} PASS / ${fail} FAIL ===`);
 process.exit(fail ? 1 : 0);

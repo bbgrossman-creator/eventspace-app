@@ -337,7 +337,7 @@ export default function BookingDetail() {
           the free-text offprem fields above remain untouched compatibility
           inputs; this card links the engagement to a registry identity. */}
       {b.location_type === "off_prem" && (
-        <VenueBindingCard bookingId={b.id} offpremAddress={b.offprem_address} />
+        <VenueBindingCard bookingId={b.id} offpremAddress={b.offprem_address} eventDate={b.event_date} />
       )}
 
       {/* Customer intelligence now lives pinned at the top of the right rail

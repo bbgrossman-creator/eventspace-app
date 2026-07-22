@@ -38,6 +38,12 @@ window.__fixture = {
   walkthroughs: [{ id: "wt-1", venue_id: "ven-1", engagement_ref: null, purpose: "initial_survey", conducted_at: "2026-07-01T09:00:00Z", participants: [], rep_involvement: "supplied", notes: null }],
   profile,
   create_venue_result: { venue_id: "ven-new", possible_duplicates: [{ id: "ven-1", name: "Grand Hotel", address: "1 Main St" }] },
+  findings: [
+    { kind: "contradiction_unresolved", severity: "critical", family: "access", attribute: "walkin_capacity_cuft", scope_space: "sp-k",
+      reason: "walkin_capacity_cuft has a newer conflicting venue rep statement — resolve or supersede" },
+    { kind: "stale", severity: "advisory", family: "structural", attribute: "ceiling_height", scope_space: "sp-b",
+      reason: "ceiling_height last verified 2021-05-01 — over the 1460-day structural threshold" },
+  ],
 };
 
 const el = document.getElementById("root")!;

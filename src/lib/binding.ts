@@ -46,3 +46,30 @@ export async function listBindableVenues(): Promise<Venue[]> {
   if (error) throw new Error(error.message);
   return (data as Venue[]) ?? [];
 }
+
+/** v282 — venue knowledge findings (pure derivations; nothing stored). */
+export interface KnowledgeFinding {
+  kind: "stale" | "expired" | "renovation_reverification" | "contradiction_unresolved" | "unobserved";
+  severity: "advisory" | "critical";
+  family: string; attribute: string | null; scope_space: string | null; reason: string;
+}
+export interface EngagementVenueKnowledge {
+  bound: boolean;
+  binding?: CurrentBinding;
+  verification?: "none" | "targeted_verification" | "walkthrough_required";
+  critical_count?: number; reasons?: string[]; findings?: KnowledgeFinding[];
+}
+export async function getEngagementVenueKnowledge(bookingId: string, eventDate?: string): Promise<EngagementVenueKnowledge | null> {
+  const { data, error } = await supabase.rpc("engagement_venue_knowledge", {
+    p_booking: bookingId, p_event_date: eventDate ?? new Date().toISOString(), p_conditions: null,
+  });
+  if (error) throw new Error(error.message);
+  return (data as EngagementVenueKnowledge | null) ?? null;
+}
+export async function getVenueFindings(venueId: string): Promise<KnowledgeFinding[]> {
+  const { data, error } = await supabase.rpc("venue_knowledge_findings", {
+    p_venue: venueId, p_at: new Date().toISOString(), p_conditions: null,
+  });
+  if (error) throw new Error(error.message);
+  return (data as KnowledgeFinding[]) ?? [];
+}
