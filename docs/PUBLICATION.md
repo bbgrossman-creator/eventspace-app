@@ -1719,3 +1719,38 @@ All three are answered in the Status block: re-send re-snapshots (each send
 stamps and logs what was actually sent; approval locks the last stamp); the
 override is the **Version Override**, version-owned; and an empty
 Presentation renders the honest branded shell with no invented content.
+
+---
+
+## §6.46 — Execution OS · Spine (v275, slice 1)
+
+v275 opens the Execution OS above the frozen commitment layer (PL-1…PL-4), the
+first implementation after the v274 constitutional closeout. It builds the
+execution spine and proves it end-to-end on one operationally-enriched component
+(the staffed carving/sushi station). It reads the commitment layer and never
+writes it; no PL object, ceremony, invariant, or proof is modified.
+
+Three additive tables — `event`, `obligation`, `execution_evidence` — none
+carrying a mutable status/stage column: operational state is a **projection** of
+append-only evidence + dependencies, derived once in SQL (`obligation_state`,
+`event_readiness`) and merely rendered by the app ("one derivation, many
+renderings"). The canonical `event` is unique over the released **engagement**
+(the booking identity), so amendments attach additively and never duplicate it;
+the originating acceptance is recorded as **provenance**. `release_event` is a
+default-deny, layered ceremony (unrescinded acceptance · financial clearance or
+authorized waiver · operator sign-off; Agreement reserved as a policy slot),
+which materializes the event and licenses **deterministic, idempotent**
+obligation generation from the FROZEN accepted snapshot model — regeneration is
+additive (obsolete obligations are *invalidated* by a new fact, never mutated or
+deleted). Where operational knowledge is not yet modeled, generation emits an
+explicit **decision-debt** obligation rather than a fabricated fact.
+
+Verified against a production-faithful database: 26 proof claims (families
+RL/BY/OB/EV/PR/DO/IM/TI), rerunnable with zero residue; four race pairs
+(release×release, release×rescission, generate×generate, evidence×evidence) green
+in both launch orders with no deadlock; and the full PL regression (v265–v273,
+155 claims) green on the v275 stack. Invariants I-31…I-41 hold. DailyOps event
+scope, the release action, and obligation detail render the proven spine; the
+legacy `tasks(done)`/`OpsWorkspace` surface is untouched and superseded only for
+released events. Company/personal DailyOps scopes, the non-operational work-item
+classes, and the department domains follow in later slices.

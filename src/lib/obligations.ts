@@ -37,7 +37,16 @@ import { LensKey } from "./lenses";
 import { VersionTotals } from "./pricingEngine";
 
 /** Modules that can own obligations. Mirrors the module list in the Workspace
- *  Architecture; only `events` is implemented today. */
+ *  Architecture; only `events` is implemented today.
+ *
+ *  v275 EXECUTION BRIDGE: the OPERATIONAL obligations (production/operations →
+ *  culinary/equipment/staffing/venue) are no longer projected here from proposal
+ *  state. Their authoritative derivation lives in the Execution OS spine
+ *  (`execution/spine.ts` → SQL `obligation_state` / `event_readiness`) once an
+ *  event is operationally released — "one derivation, many renderings," now
+ *  server-side. This pure module keeps deriving SALES/DESIGN debt from a version;
+ *  the operational cases below still honestly return `computed:false` here because
+ *  their truth is the released event, not the proposal. See execution/dailyOps.ts. */
 export type ObligationModule = "events" | "production" | "operations" | "photography" | "finance";
 
 export interface Obligation {
