@@ -14,6 +14,21 @@ export const supabase = {
     rec(`rpc:${fn}`);
     const f = (window.__fixture || {}) as AnyRec;
     const R = (data: unknown) => Promise.resolve({ data, error: null });
+    if (fn === "component_operational_basis") return R(f.component_operational_basis ?? { pinned: false });
+    if (fn === "attach_component_profile") {
+      f.component_operational_basis = f.pinned_after_attach ?? f.component_operational_basis;
+      return R({ profile_revision_id: "rev-1", revision_no: 3 });
+    }
+    if (fn === "refresh_component_profile") {
+      const b = (f.component_operational_basis || {}) as AnyRec; b.revision_no = 4;
+      return R({ profile_revision_id: "rev-2", revision_no: 4, orphaned_overrides: 1 });
+    }
+    if (fn === "override_component_requirement") {
+      if (args.p_kind === "suppress" && !args.p_reason)
+        return Promise.resolve({ data: null, error: { message: "OVERRIDE_REASON_REQUIRED" } });
+      rec(`override:${args.p_kind}`);
+      return R({ override_id: "ov-new", kind: args.p_kind });
+    }
     if (fn === "event_stage_detail") return R(f.event_stage_detail ?? null);
     if (fn === "event_workspace") return R(f.event_workspace ?? null);
     if (fn === "eligible_staff") return R(f.eligible_staff ?? []);
@@ -48,7 +63,8 @@ export const supabase = {
   from(table: string) {
     const f = (window.__fixture || {}) as AnyRec;
     const rows =
-      table === "event" ? ((f.event ? [f.event] : []) as unknown[])
+      table === "library_component" ? ((f.library_component as unknown[]) || [])
+      : table === "event" ? ((f.event ? [f.event] : []) as unknown[])
       : table === "obligation" ? ((f.obligations as unknown[]) || [])
       : table === "execution_evidence" ? ((f.evidence as unknown[]) || [])
       : [];
