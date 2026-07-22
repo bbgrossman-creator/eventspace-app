@@ -14,6 +14,7 @@ import ProposalsCard from "@/components/ProposalsCard";
 import EngagementSpine from "@/components/EngagementSpine";
 import EventOperations from "@/components/execution/EventOperations";
 import EventLegacyCard from "@/components/EventLegacyCard";
+import VenueBindingCard from "@/components/VenueBindingCard";
 import {
   Booking,
   Status,
@@ -331,6 +332,13 @@ export default function BookingDetail() {
           </>
         )}
       </div>
+
+      {/* v281 — Venue Registry binding (off-premise engagements only). Additive:
+          the free-text offprem fields above remain untouched compatibility
+          inputs; this card links the engagement to a registry identity. */}
+      {b.location_type === "off_prem" && (
+        <VenueBindingCard bookingId={b.id} offpremAddress={b.offprem_address} />
+      )}
 
       {/* Customer intelligence now lives pinned at the top of the right rail
           (see aside below) — persistent context while working, without
