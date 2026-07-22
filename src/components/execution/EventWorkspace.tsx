@@ -5,6 +5,7 @@ import {
   type EventWorkspace, type ObligationState, type EventStage, type WsCard,
 } from "@/lib/execution/spine";
 import StaffingSection from "@/components/execution/StaffingSection";
+import ActionPanel from "@/components/execution/ActionPanel";
 
 /** Event Operations Workspace (v277). A single first-class operational surface:
  *  header, lifecycle rail, readiness by category, the workboard, blockers,
@@ -128,6 +129,9 @@ export default function EventWorkspace({ eventId, actor = "ops" }: { eventId: st
           ))}
         </div>
       </section>
+
+      {/* 3a · Routed authoritative actions (v279) — driven by the availability projection */}
+      <ActionPanel actions={ws.actions} actor={actor} onDispatched={() => refresh()} />
 
       {/* 3b · Staffing coverage (v278) */}
       <StaffingSection eventId={eventId} actor={actor} staffing={ws.staffing}

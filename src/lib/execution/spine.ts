@@ -205,6 +205,7 @@ export interface EventWorkspace {
   header: WsHeader;
   lifecycle: EventStageDetail;
   staffing?: EventStaffing;
+  actions?: EventActions;
   readiness_by_category: WsCategory[];
   workboard: WsCard[];
   blockers: WsBlocker[];
@@ -273,4 +274,51 @@ export async function releaseStaffingAssignment(assignment: string, actor: strin
     p_assignment: assignment, p_actor: actor, p_reason: reason ?? null,
   });
   if (error) throw new Error(error.message);
+}
+
+// ─── v279 authoritative action routing (thin: the SQL projection + dispatcher own the law) ─
+
+/** One registered action's availability against a target, derived by the projection.
+ *  The UI renders from this metadata — it encodes NO lifecycle/staffing rules. */
+export interface AvailableAction {
+  action_key: string; label: string; domain: string;
+  target_type: string; target_id: string;
+  group_key: string; sort_order: number;
+  idempotency_mode: string; workspace_visible: boolean;
+  required_fields: string[];
+  available: boolean; authorized: boolean;
+  reason_code: "not_applicable" | "unauthorized" | "blocked" | "available" | "already_completed" | "stale_target" | string;
+  reason_detail: string | null;
+}
+export interface EventActions {
+  event: AvailableAction[];
+  requirements: Record<string, AvailableAction[]>;
+  assignments: Record<string, AvailableAction[]>;
+}
+/** The standardized result envelope returned by the dispatcher. */
+export interface ActionEnvelope {
+  ok: boolean; action_key: string;
+  outcome: "success" | "duplicate" | "refused" | "invalid" | "unauthorized" | "unknown" | "stale";
+  reason_code: string; message: string;
+  target_type: string | null; target_id: string;
+  result: unknown; evidence_ref: string | null; idempotency_key: string | null;
+  workspace?: EventWorkspace | null; available_actions?: EventActions | null;
+}
+
+export async function getAvailableActions(targetType: string, targetId: string): Promise<AvailableAction[]> {
+  const { data, error } = await supabase.rpc("available_actions", { p_target_type: targetType, p_target_id: targetId });
+  if (error) throw new Error(error.message);
+  return (data as AvailableAction[] | null) ?? [];
+}
+
+/** Route an authoritative action through the default-deny dispatcher. Returns the
+ *  standardized envelope; the existing domain ceremony remains the only writer. */
+export async function performEventAction(
+  actionKey: string, targetId: string, payload: Record<string, unknown> = {}, idempotencyKey?: string,
+): Promise<ActionEnvelope> {
+  const { data, error } = await supabase.rpc("perform_event_action", {
+    p_action_key: actionKey, p_target_id: targetId, p_payload: payload, p_idempotency_key: idempotencyKey ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as ActionEnvelope;
 }

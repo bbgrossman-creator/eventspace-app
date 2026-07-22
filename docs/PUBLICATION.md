@@ -1889,3 +1889,53 @@ serialized; assignment × closure → lawful). Browser acceptance against the mo
 tree: 10 staffing claims plus the v277 (13) and v276 (5) suites, all green. Full
 regression (PL v271–v273, v275, v276, v277, v278) green; no frozen Proposal Lifecycle
 object modified.
+
+---
+
+## §6.50 — Authoritative Action Routing (v279)
+
+v279 adds a general constitutional routing layer for authoritative actions while
+preserving the existing domain ceremonies as the ONLY authoritative writers. The
+router is orchestration, not authority: it discovers which registered actions are
+available against a target, evaluates whether the actor may invoke them, validates
+the request, routes to the existing ceremony, and returns a standardized result —
+without ever writing a domain table itself, reproducing ceremony logic, or creating
+a second permission system.
+
+The registry is a CLOSED SQL function (not a mutable table): the seven action keys,
+their target types, ceremony destinations, and metadata are code, so no caller can
+register an action, override a destination, or forge authority by writing a row.
+The dispatcher resolves actor and tenant server-side, rejects unknown action keys,
+rejects forbidden privileged payload fields (tenant/role/actor), validates required
+arguments, resolves the target under the tenant (cross-tenant resolves as stale with
+no existence leak), evaluates authority default-deny, enforces idempotency, and calls
+EXACTLY ONE registered ceremony through a typed CASE — never dynamic SQL. Availability
+is a derived projection with distinct reason codes (not_applicable / unauthorized /
+blocked / already_completed / available / stale_target), never stored; it is advisory,
+and the dispatcher (and the ceremony behind it) re-evaluate at execution.
+
+Idempotency is carried by a tenant-scoped invocation ledger (action_invocation) that
+is routing metadata, never domain truth: clients get SELECT only, all writes are by
+the SECURITY DEFINER dispatcher. Same key + same payload replays the original result;
+same key + different payload refuses; a different action cannot reuse another's key; a
+failed attempt persists no invocation, so the key is not burned and a retry
+re-evaluates. Lock order is explicit — action_invocation unique-index (pending insert)
+then the domain ceremony lock — and never reversed; the registry and projection take no
+locks, so no inversion and no new deadlock cycle.
+
+The Event Operations workspace now carries an 'actions' key (the availability
+projection) and a thin ActionPanel renders buttons from that metadata by stable action
+key, dispatching through the router — the client encodes no stage or staffing law.
+Existing direct ceremony callers and the v278 staffing surface are unchanged and still
+work; nothing was removed.
+
+Verified: 22 SQL proof claims (closed registry / no dynamic SQL / unknown refused;
+routes to the real ceremony with no direct domain writes; missing/forbidden/stale/
+refusal handling; availability derives with distinct codes and is not stored;
+idempotent replay, mismatch, no-burn, tenant-scoped, no cross-action reuse; default-deny
+authority; cross-tenant no leak) — rerunnable, zero residue. Genuine two-backend race
+certification, 4 pairs in both launch orders (same key → one execution; different
+payload → mismatch; two actions → serialized; assign racing close → lawful, no
+deadlock) with a paired cleanup. Browser acceptance against the mounted ActionPanel: 11
+claims, plus staffing (10), workspace (13), event-ops (5). Full regression (PL v271–
+v273, v275–v279) green; no frozen law changed; the workspace change is additive.
