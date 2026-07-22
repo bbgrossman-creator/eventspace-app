@@ -411,6 +411,67 @@ additive — run v266_hardening.sql AFTER v263 + v265. NO Phase-B transport
 and NO PL-4 acceptance were added (a unit pin proves it). VERDICT: after
 v266, PL-3 Phase A is READY FOR BOTH.
 
+**6.44 Proposal Lifecycle — PL-4 Rescission (v272).** The authority-gated
+release of an Acceptance — the only door out of the accepted state (I-23), and
+the door is default-deny (I-29). One immutable record: acceptance_rescissions
+(insert+select only; NO update/delete policy — the v269 evidence discipline),
+plain UNIQUE(acceptance_id) because EVERY row is a binding release (commentary
+and refused attempts belong to audit logs, never this table); policy_class is
+the Addendum's closed five-class contract (self_withdrawal, mutual_release,
+operator_correction, fraud_correction, compelled_reversal — CHECK, no sixth);
+republish_permission lives ON the record and is the SOURCE the projection and
+the publish gate derive from (I-30). One ceremony: rescind_acceptance —
+SECURITY DEFINER, tenant-scoped resolution (out-of-tenant = CEREMONY_NOT_FOUND,
+no existence leak), the SHARED thread-first lock (v266 order; publish/withdraw/
+accept/rescind serialize in one total order, no deadlock constructible),
+relation-checked single effective rescission (UNIQUE as race backstop only),
+then the default-deny gate: self_withdrawal demands the SAME endpoint
+capability that accepted (evidence.capability = the acceptance's
+capability_ref); mutual_release demands BOTH assents; operator_correction
+demands supervisory authority; fraud_correction demands the determination ref
+AND an explicit republish outcome (class alone cannot determine it —
+RESCIND_PERMISSION_REQUIRED); compelled_reversal admits the external basis ONLY
+as an authorized platform actor attesting the instrument; unknown class refuses
+(RESCIND_UNKNOWN_CLASS); contradicting a class-fixed permission refuses, never
+silently corrects (RESCIND_INVALID_PERMISSION); reason mandatory. The richer
+per-class authority MODEL stays the deferred seam, honored as deferred — v272
+enforces the structural default-deny shape only. Atomic write: the binding
+record + the acceptance_rescinded ledger fact whose object_ref IS the record
+(replay resolves record → republish_permission → the exact projection, I-30) +
+the derived projection — rescinded_republishable or rescinded_terminal, both
+free text (v270 C.3: status stays a projection, never a lifecycle model; two
+projections because fraud/compelled may permit OR bar republication). The
+acceptance and its selection set are NEVER touched (I-27 — rescission is
+additive, a second fact BESIDE the evidence, not an eraser); a rescinded Offer
+still refuses withdrawal (the surviving acceptance relation) and its snapshot
+can never be re-accepted (a new commitment requires a NEW Offer). publish_offer
+STEP 10/11 reworked in place: discovery widened to the full current-Offer
+vocabulary ('sent','accepted','rescinded_republishable','rescinded_terminal')
+so the structural gate — never a discovery accident — decides; the gate reads
+the acceptance JOINED to the rescission RECORD (never status text): acceptance
+without rescission → PUBLISH_BLOCKED_BY_ACCEPTANCE (the v270 law, unchanged);
+terminal release → PUBLISH_BLOCKED_TERMINAL_RESCISSION (distinct refusal);
+republishable release → the thread is open again and STEP 11 supersedes the
+prior from its TRUE state (the ledger fact records
+from_state='rescinded_republishable'). PROVEN: v272 proof RS-1..RS-16, 37
+claims rerunnable with zero residue (all five classes; the default-deny battery
+with rowless refusals and untouched projections; the rescind-then-supersede
+bypass unconstructible; ledger replay reconstructing the projection;
+immutability under role authenticated with prod-like grants; tenant isolation;
+forced-failure atomicity — record+fact+projection are one transaction);
+GENUINE two-backend races (v272_race.sql, throwaway db): rescind/rescind → one
+binding rescission, loser refused; rescind/publish-sibling run repeatedly in
+both launch orders — BOTH lawful serializations observed (publish-first barred
+by the still-unrescinded acceptance, rescission lands after; rescind-first
+opens the thread and publish supersedes from the true state), zero deadlocks.
+Standing bar green, NO regression (zero new tsc against a pristine v271
+baseline, 54 unit suites, both gates, eight Chromium suites 98/98, route 7/7,
+five variants biting — the paper persist-on-pick variant recipe updated to
+PresentationRooms, where the pick handler now lives; v265–v271 proofs pass).
+Additive + the publish_offer replace-in-place; deploy v272_rescission.sql after
+v271. Next: v273 — PL-4 close-out (integrity/concurrency hardening
+consolidation) and the constitutional acceptance/rescission model review.
+
 **6.43 Proposal Lifecycle — PL-4 Acceptance Ceremony (v271).** The first
 operational realization of Acceptance: the SQL ceremony public.accept_offer that
 converts a published Offer into an immutable Acceptance. SECURITY DEFINER,
