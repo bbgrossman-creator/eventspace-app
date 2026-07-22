@@ -174,3 +174,46 @@ export async function closeEvent(eventId: string, actor: string, closeoutOverrid
   if (error) throw new Error(error.message);
   return { eventId: data.event_id, stage: data.stage };
 }
+
+// ─── v277 Event Operations Workspace (one composed SQL projection; UI renders it) ─
+
+export interface WsHeader {
+  event_id: string; engagement_ref: string; origin_commitment_ref: string;
+  released_at: string; released_by: string; stage: EventStage;
+  readiness: { resolved: number; total: number };
+  blocker_count: number; exception_count: number; last_activity: string | null;
+}
+export interface WsCategory {
+  department: Department; resolved: number; total: number; exceptions: number;
+  blocking: string[]; state: "pending" | "in_progress" | "complete" | "exception";
+}
+export interface WsCard {
+  id: string; kind: string; department: Department; title: string;
+  state: ObligationState; decision_debt: boolean; exception: boolean;
+  dependencies: string[];
+  latest_evidence: { kind: string; actor: string; moment: string } | null;
+  actions: string[];
+}
+export interface WsBlocker { what: string; cause_ref: string | null; why: string; next_action: string; }
+export interface WsNextAction { action: string; label: string; available: boolean; reason: string | null; }
+export interface WsActivity {
+  kind: EvidenceKind; obligation_ref: string | null; actor: string; moment: string;
+  note: Record<string, unknown>; correction_of: string | null;
+}
+export interface EventWorkspace {
+  header: WsHeader;
+  lifecycle: EventStageDetail;
+  readiness_by_category: WsCategory[];
+  workboard: WsCard[];
+  blockers: WsBlocker[];
+  next_actions: WsNextAction[];
+  recent_activity: WsActivity[];
+}
+
+/** The whole workspace, derived in one SQL call (event_workspace). The UI renders
+ *  this; it computes no lifecycle/readiness/state/blockers itself. */
+export async function getEventWorkspace(eventId: string): Promise<EventWorkspace | null> {
+  const { data, error } = await supabase.rpc("event_workspace", { p_event: eventId });
+  if (error) throw new Error(error.message);
+  return (data as EventWorkspace | null) ?? null;
+}

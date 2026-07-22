@@ -1793,3 +1793,45 @@ untouched. The app renders the SQL derivation; no second lifecycle calculation
 exists in React. Scheduling, production, warehouse, transportation, breakdown/
 return, financial settlement, and company/personal DailyOps scopes remain
 explicit seams for later slices.
+
+---
+
+## §6.48 — Event Operations Workspace (v277)
+
+v277 turns the v275/v276 database capabilities into one first-class, user-visible
+operational surface. It adds a single compositional read projection —
+`event_workspace(event)` — and no durable state, no new write ceremony (so no
+v277 race is constitutionally necessary): the workspace is derived entirely from
+the certified relations (event, obligation, execution_evidence) and functions
+(obligation_state, event_stage, event_stage_detail). "One derivation, many
+renderings": the UI renders this projection and computes no lifecycle, readiness,
+obligation state, or blockers itself.
+
+The mounted `EventOperations` surface (booking detail page) now renders the
+`EventWorkspace` once released, with seven sections from the one projection: an
+operational header (identity, engagement ref, projected stage, readiness fraction,
+blocker and exception counts, last activity); the v276 lifecycle rail with its
+explanation and authorized actions; readiness by department (resolved/total,
+state, blockers, exceptions — all from the obligation model, no hard-coded
+percentages); the operational workboard (obligations grouped by real department,
+each with derived state, decision-debt and exception flags, latest evidence, and
+authorized actions); a first-class blockers section that names what is blocked,
+why, which obligation caused it, and the next corrective action; a Next Actions
+area that previews only currently-available authorized ceremonies (Start Service
+appears only at ready, Close Event only when in service and unblocked); and recent
+activity rendered from the append-only evidence ledger. Every action invokes the
+existing SQL ceremony, refreshes the projection, and never optimistically
+contradicts durable truth; a rejected ceremony surfaces its failure code without
+advancing the UI.
+
+Verified: 12 SQL proof claims (WS-1…WS-12) — workspace resolves from one canonical
+event; readiness totals equal the live obligation population; blockers identify
+the actual unresolved obligations; exception counts derived; recent activity from
+the ledger; header stage and lifecycle agree with event_stage/event_stage_detail;
+cross-tenant → null; forged status cannot alter the projection; no durable summary
+table exists; empty/partial states render deterministically — rerunnable, zero
+residue. Browser acceptance against the mounted tree: 13 claims (all seven
+sections, permitted-only actions, successful-action refresh, rejected-action
+error handling, ledger activity, cross-tenant non-render, tablet width) plus the
+v276 acceptance updated for the evolved layout — all green. Full regression (PL
+v265–v273, v275, v276, v277) green; no frozen Proposal Lifecycle object touched.

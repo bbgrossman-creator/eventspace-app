@@ -2,14 +2,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { loadEventForEngagement, type EventRecord } from "@/lib/execution/spine";
 import ReleaseAction from "@/components/execution/ReleaseAction";
-import EventLifecycle from "@/components/execution/EventLifecycle";
-import DailyOpsEvent from "@/components/execution/DailyOpsEvent";
+import EventWorkspace from "@/components/execution/EventWorkspace";
 
 /** Event Operations — the mounted Execution OS surface on a booking. Before an
  *  operational event exists, it offers Operational Release; once the engagement is
- *  released, it shows the derived lifecycle rail and the event-scope DailyOps.
- *  This is the single parent that composes the v275/v276 execution components into
- *  the deployed booking page. */
+ *  released, it shows the first-class Event Operations Workspace (v277): header,
+ *  lifecycle rail, readiness, workboard, blockers, next actions, and recent
+ *  activity, all from one authoritative projection. */
 export default function EventOperations({ bookingId, actor = "ops" }: { bookingId: string; actor?: string }) {
   const [event, setEvent] = useState<EventRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,15 +25,14 @@ export default function EventOperations({ bookingId, actor = "ops" }: { bookingI
 
   return (
     <div className="space-y-4" data-event-ops>
-      <div className="text-sm font-semibold text-neutral-800">Event Operations</div>
       {!event ? (
         <div data-event-ops-release>
+          <div className="mb-2 text-sm font-semibold text-neutral-800">Event Operations</div>
           <ReleaseAction bookingId={bookingId} actor={actor} onReleased={() => void refresh()} />
         </div>
       ) : (
-        <div className="space-y-4" data-event-ops-live>
-          <EventLifecycle eventId={event.id} actor={actor} />
-          <DailyOpsEvent eventId={event.id} actor={actor} />
+        <div data-event-ops-live>
+          <EventWorkspace eventId={event.id} actor={actor} />
         </div>
       )}
     </div>
