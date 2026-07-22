@@ -411,6 +411,71 @@ additive — run v266_hardening.sql AFTER v263 + v265. NO Phase-B transport
 and NO PL-4 acceptance were added (a unit pin proves it). VERDICT: after
 v266, PL-3 Phase A is READY FOR BOTH.
 
+**6.45 Proposal Lifecycle — PL-4 Close-Out & Certification (v273).** The Phase B
+integrity close-out and the formal PL-4 certification, grounded in the four frozen
+constitutional documents and the actually-deployed v268–v272 artifacts (not
+summaries). The integrated audit found PL-4 Phase A had shipped as a reduced
+observed-path implementation: two settled invariant clauses were under-enforced
+by `accept_offer` even though the frozen data to enforce them was already sealed
+into every post-v268 Snapshot — I-22 expiry (the frozen `validUntil` was never
+read; an expired Offer stayed acceptable) and I-26 cardinality (only option
+membership and duplicate-freeness were checked; the frozen `min`/`max`/`chooseCount`
+bounds were ignored, so "choose exactly N" could be met with fewer, more, or
+none). Neither was a false certification — the v271 proof never claimed them and
+§6.43 recorded them by omission — so both are honest under-enforcement gaps, not
+contradictions. v273 closes them with ONE narrow, no-schema, no-signature
+replace-in-place of `accept_offer`: the half-open `[published_at, valid_until)`
+expiry check against the database server clock (observed acceptance governs on
+the recorded moment; the attested claimed-moment branch is a documented
+unreachable seam, not dead code), and per-frozen-group cardinality with the
+binding legacy precedence — explicit `min`/`max` → frozen `chooseCount` as
+`min=max` → refuse `ACCEPT_LEGACY_CHOICE_UNRESOLVED` (never infer a cardinality
+the artifact did not freeze; absent-mandatory and excessive both refused). No
+other object touched; v271's offers (empty model) regress green because the
+checks correctly no-op on legacy-shaped snapshots. PROVEN: v273_proof.sql, 35
+claims rerunnable with zero residue — XP-1..XP-4 (past→EXPIRED, future accepts,
+null open-ended, at-boundary refused under the half-open rule), SC-1..SC-8
+(under→INCOMPLETE, over→INVALID, exact accepts, absent-mandatory→INCOMPLETE,
+optional min-0 empty accepts, chooseCount-only derivation, legacy-unresolved
+refused, canonical immutable storage), CL/BY/LR/PX/IM/TI (accepted bar without
+rescission; unauthorized and evidence-missing rescissions refused; the
+rescind-then-supersede bypass unconstructible; **a status column forged to
+`rescinded_republishable` with no rescission record does NOT release — the gate
+reads the acceptance⋈rescission relation, never the flag**; ledger replay
+fact→record→`republish_permission`→exact projection; terminal bars republication;
+atomicity; immutability under role `authenticated`; tenant isolation with no
+existence leak). GENUINE two-backend race certification (v273_race.sql, throwaway
+db): six load-bearing pairs — rescind×rescind, rescind×publish, rescind×withdraw,
+accept×rescind, terminal×publish, unauthorized-rescind×supersede — each with both
+launch orders exercised, both lawful serializations observed for rescind×publish,
+zero deadlocks, no split state, no bypass. Standing bar green, NO regression:
+v265–v272 proofs pass, v271/v272 races regress, 54/54 unit suites, TypeScript
+diagnostic set unchanged from the v272 baseline (v273 is SQL-only), es5 gate at
+the pre-existing baseline, strict gate clean, eight Chromium suites (98) +
+production (7) + route (7), five variants biting. Deliverable: PL-4_CERTIFICATION.md
+carries the full I-15..I-30 traceability matrix, the object/ceremony/lock-order/
+authority/projection maps, and the deferred seams. VERDICT: **FREEZE THE
+IMPLEMENTED PL-4 SURFACE.** Acceptance (observed) + Rescission are complete and
+frozen — every invariant I-20..I-30 traced to enforceable SQL, a functional proof,
+and a genuine race proof where concurrency is claimed, with no reliance on mutable
+status text; nothing in the implemented surface is provisional. Attested Acceptance
+(§4.2 / plan A.5) is an explicitly RESERVED constitutional capability — recognized
+in the constitution, recorded as a later slice (§6.43), its record slots already
+provisioned — scheduled as its own future slice; it was intentionally not built,
+not left undone, and being additive rather than corrective it extends the frozen
+surface later without reopening any frozen law. CONSTITUTIONAL STABILITY: the audit
+found NO contradictions among the constitution, reconciliation addendum,
+implementation plan, reconnaissance, deployed SQL, proofs, and race behavior; every
+discrepancy was either an implementation omission corrected in v273 (expiry,
+cardinality; no schema/law change) or a documented deferred capability recognized
+before build — NO constitutional law required amendment. This closes the PL-4
+constitutional design phase: the law is stable, the implemented surface conforms
+and is frozen, and the one unbuilt capability is a reserved extension of that
+stable law. DEPLOY: additive —
+`v273_pl4_closeout.sql` after v272; the proof is optional verification, the race
+file is throwaway-database only. Next: the Attested Acceptance slice, then the
+Agreement lifecycle (PL-5), whose cardinality over accepted Offers is reserved.
+
 **6.44 Proposal Lifecycle — PL-4 Rescission (v272).** The authority-gated
 release of an Acceptance — the only door out of the accepted state (I-23), and
 the door is default-deny (I-29). One immutable record: acceptance_rescissions
