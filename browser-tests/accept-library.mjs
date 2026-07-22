@@ -126,6 +126,23 @@ await T("L-8 docked mode renders the Knowledge strip", async () => {
   await page.waitForSelector("[data-knowledge-strip='true']");
 });
 
+await T("P-35 PRESENTATION KNOWLEDGE: the template card carries COMPUTED proof; a theme_key coincidence is never evidence; nothing says best", async () => {
+  await page.goto("http://localhost:4191/");
+  await page.waitForSelector("[data-library-idle]");
+  await type("autumn");
+  await page.waitForSelector("[data-library-rail='template']");
+  const row = await page.textContent("[data-library-rail='template']");
+  // the honest line, number by number — Used 3 means the coincidence
+  // (approved, $99,000, provenance-free) was REFUSED as evidence
+  for (const piece of ["Used 3", "Sent 2", "Accepted 1", "50%", "$12,000", "Modified after 2"]) {
+    if (!row.includes(piece)) throw new Error(`proof line lacks "${piece}": ${row}`);
+  }
+  if (row.includes("Used 4") || row.includes("$99,000")) throw new Error("THE COINCIDENCE COUNTED — theme_key inference happened");
+  const dom = await page.textContent("body");
+  if (/best[ -]performing/i.test(dom)) throw new Error("something claims 'best performing'");
+  await page.keyboard.press("Escape");
+});
+
 await browser.close(); server.close();
 console.log(`\naccept-library: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

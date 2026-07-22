@@ -1,48 +1,23 @@
-// harness/landing.harness.tsx — two real surfaces under one roof:
-//
-//   ?mode=decision (default) — the REAL LandingDecision over a fixture
-//     preview, with window.__commits recording every handler fire. The
-//     constitutional claims are structural: an empty recorder after open IS
-//     "commits nothing until chosen".
-//   ?mode=drag — the REAL LibraryBrowser (docked, fixture kinds: a landable
-//     blueprint-shaped kind and an instantiable component-shaped kind) above
+// harness/landing.harness.tsx — the drag engine's surface:
+//   (v262: the decision mode retired WITH the v216 doctrine — its
+//    commitment disciplines live on in the constitutional heirs'
+//    unit pins: CopyIntoDraft problems-block, StartFromBlueprint
+//    conflicts→nothing-created.)
+//   ?mode=drag (default) — the REAL LibraryBrowser (docked, fixture kinds: a landable
+//     card-payload kind and an instantiable component-shaped kind) above
 //     a drop zone whose acceptance comes from canvasDragMimes() — the same
 //     declared-legality path the page uses. Real mouse gestures land here
 //     (v197 doctrine: no dispatchEvent), paying v215's L-6 debt.
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import LandingDecision from "@/components/studio/LandingDecision";
 import LibraryBrowser from "@/components/studio/LibraryBrowser";
 import {
   registerLibraryKind, rankPrefix, canvasDragMimes, LibraryEntry,
 } from "@/lib/libraryRegistry";
 
-const mode = new URLSearchParams(window.location.search).get("mode") ?? "decision";
+const mode = new URLSearchParams(window.location.search).get("mode") ?? "drag";
 const commits: string[] = [];
 (window as unknown as { __commits: string[] }).__commits = commits;
-
-const preview = {
-  components: [
-    { id: "src-1", title: "Sushi Station", sectionName: "Cocktail Hour", itemCount: 6 },
-    { id: "src-2", title: "Carving Board", sectionName: "Dinner", itemCount: 4 },
-    { id: "src-3", title: "Viennese Table", sectionName: "Dessert", itemCount: 9 },
-  ],
-};
-
-function DecisionHost() {
-  const [open, setOpen] = useState(true);
-  if (!open) return <p data-landing-closed>closed — nothing landed</p>;
-  return (
-    <LandingDecision
-      name="Elegant Wedding"
-      preview={preview}
-      onAdd={() => { commits.push("add"); setOpen(false); }}
-      onReplace={() => { commits.push("replace"); setOpen(false); }}
-      onChoose={(ids) => { commits.push(`choose:${ids.slice().sort().join(",")}`); setOpen(false); }}
-      onCancel={() => { commits.push("cancel"); setOpen(false); }}
-    />
-  );
-}
 
 const env = (kind: string, id: string, title: string): LibraryEntry => ({
   id, kind, title, subtitle: null, cover: null, tenant: "tenant", tags: [],
@@ -58,9 +33,9 @@ if (mode === "drag") {
       { entry: env("fx-menu", "m1", "Elegant Wedding"), weight: rankPrefix("Elegant Wedding", q) },
     ].filter((r) => r.entry.title.toLowerCase().includes(q)),
     pick: (e) => ({ type: "land", id: e.id, name: e.title }),
-    legalDestinations: ["canvas"], dragMime: "text/eventcore-blueprint",
-    drag: (e) => ({ mime: "text/eventcore-blueprint",
-      payload: JSON.stringify({ blueprintId: e.id, name: e.title }) }),
+    legalDestinations: ["canvas"], dragMime: "text/eventcore-cardpayload",
+    drag: (e) => ({ mime: "text/eventcore-cardpayload",
+      payload: JSON.stringify({ cardId: e.id, name: e.title }) }),
   });
   registerLibraryKind({
     kind: "fx-station", label: "Stations", icon: "◆",
@@ -97,8 +72,8 @@ function DragHost() {
         onDragLeave={() => setHot(false)}
         onDrop={(e) => {
           setHot(false);
-          const bp = e.dataTransfer.getData("text/eventcore-blueprint");
-          if (bp) { e.preventDefault(); setGot((g) => g.concat([`drop-blueprint:${bp}`])); return; }
+          const bp = e.dataTransfer.getData("text/eventcore-cardpayload");
+          if (bp) { e.preventDefault(); setGot((g) => g.concat([`drop-card:${bp}`])); return; }
           const id = e.dataTransfer.getData("text/eventcore-identity");
           if (id) { e.preventDefault(); setGot((g) => g.concat([`drop-identity:${id}`])); }
         }}>
@@ -112,4 +87,4 @@ function DragHost() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  mode === "drag" ? <DragHost /> : <div style={{ height: "100vh" }}><DecisionHost /></div>);
+  mode === "drag" ? <DragHost /> : <p data-mode-retired>the decision mode retired with the v216 doctrine (v262)</p>);

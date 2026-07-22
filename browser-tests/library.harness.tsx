@@ -11,6 +11,9 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import LibraryBrowser from "@/components/studio/LibraryBrowser";
 import { registerLibraryKind, rankPrefix, LibraryEntry } from "@/lib/libraryRegistry";
+import { templateProof, proofLine, ProofRow } from "@/lib/proof";
+import { portablePresentation, makeProvenance, PortablePresentation } from "@/lib/portable";
+import { ThemeDelta } from "@/lib/publication";
 
 const mode = new URLSearchParams(window.location.search).get("mode") ?? "overlay";
 
@@ -35,6 +38,42 @@ registerLibraryKind({
   drag: (e) => ({ mime: "text/eventcore-identity",
     payload: JSON.stringify({ identityId: e.id, name: e.title }) }),
   secondary: (e) => ({ label: "definition", id: e.id, title: e.title }),
+});
+
+
+// ═══ v243 — a fixture TEMPLATE kind whose subtitle is the REAL proof
+// engine's output over fixture rows. The coincidence row (matching
+// theme_key, NO provenance) is the anti-inference tooth: if the engine
+// ever reconstructs, "Used" inflates and P-35 bites.
+const tplPortable: PortablePresentation = portablePresentation({
+  themeKey: "gallery",
+  override: { colors: { accent: "#8B4513" }, treatments: { document: { cover: "banner" },
+    sections: { "role-a": { heading: "eyebrow" } } } } as ThemeDelta,
+  pins: null,
+});
+const goodProv = makeProvenance("tpl-fx", tplPortable, "midflight");
+const proofRows: ProofRow[] = [
+  { status: "approved", provenance: goodProv, themeKey: "gallery",
+    override: { colors: { accent: "#8B4513" }, treatments: { document: { cover: "banner" },
+      sections: { "role-a": { heading: "eyebrow" } } } } as ThemeDelta, pins: null, acceptedValue: 12000 },
+  { status: "sent", provenance: goodProv, themeKey: "gallery",
+    override: { colors: { accent: "#000080" }, treatments: { document: { cover: "banner" },
+      sections: { "role-a": { heading: "eyebrow" } } } } as ThemeDelta, pins: null },
+  { status: "draft", provenance: { ...goodProv, fingerprint: "00000000" }, themeKey: "gallery",
+    override: null, pins: null },
+  // THE COINCIDENCE — theme_key matches, provenance absent. Never evidence.
+  { status: "approved", provenance: null, themeKey: "gallery",
+    override: null, pins: null, acceptedValue: 99000 },
+];
+registerLibraryKind({
+  kind: "template", label: "Templates", icon: "▦",
+  search: async ({ q }) => [{
+    entry: env("template", "tpl-fx", "Autumn Gallery", {
+      subtitle: proofLine(templateProof({ id: "tpl-fx", portable: tplPortable }, proofRows),
+        (n) => "$" + Math.round(n).toLocaleString("en-US")) }),
+    weight: rankPrefix("Autumn Gallery", q),
+  }].filter((r) => r.entry.title.toLowerCase().includes(q)),
+  pick: () => ({ type: "none" }),
 });
 
 // A fixture "gala" kind — navigate-only, no drag: evidence's shape.
