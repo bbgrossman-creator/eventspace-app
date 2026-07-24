@@ -112,8 +112,9 @@ const html = readFileSync(join(here, "today.html"));
 const css = existsSync(join(here, "app.css")) ? readFileSync(join(here, "app.css")) : "";
 
 // ── the bridge: browser → runner → live Postgres ──────────────────────────
-let mode = "live";          // live | refuse | transport | signedout
+let mode = "live";          // live | refuse | transport | signedout | noviewer
 let rpcCalls = [];
+let sentSince = [];         // every p_since the CLIENT put on the wire
 
 const readBody = (req) => new Promise((ok) => {
   let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => ok(s ? JSON.parse(s) : {}));
@@ -146,6 +147,7 @@ const server = createServer(async (req, res) => {
   }
   if (u === "/rpc") {
     rpcCalls.push(body.name);
+    if (body.params && "p_since" in body.params) sentSince.push(body.params.p_since);
     if (mode === "transport") { res.writeHead(503); return res.end(); }
     try {
       let sql;
@@ -340,6 +342,25 @@ await T("UI-6b the surface reads ONE projection envelope per render — no per-b
   await go();
   const calls = rpcCalls.filter((n) => n.startsWith("projection_"));
   if (calls.length !== 1) throw new Error(`${calls.length} projection requests for one render: ${calls.join(",")}`);
+});
+
+// ══ UI-10 · the surface renders a populated Changed band WITHOUT sending since
+await T("UI-10 the Changed band populates from the SQL-owned operational window — the client sends no time at all", async () => {
+  await go();
+  const since = JSON.parse(psql(`${ctx} select public.projection_operations_today('${USER}',null)`).split("\n").pop())
+    .data.since;
+  if (!since) throw new Error("projection did not resolve a canonical window");
+  const changed = Number(await attr('[data-band="changed"]', "data-band-count"));
+  if (changed === 0) throw new Error("Changed band empty despite work created inside the window");
+  const count = Number(await attr('[data-count="changed"]', "data-count-value"));
+  if (changed !== count) throw new Error(`band ${changed} != count ${count}`);
+  // every changed row must be inside the page's single membership set
+  const membership = (await attr("[data-today]", "data-membership")).split(",").filter(Boolean);
+  for (const id of (await attr('[data-band="changed"]', "data-band-members")).split(",").filter(Boolean))
+    if (!membership.includes(id)) throw new Error(`changed band invented ${id}`);
+  // and the client must still have sent nothing: p_since absent from the wire
+  if (sentSince.some((v) => v !== null && v !== undefined))
+    throw new Error(`client sent a since value: ${JSON.stringify(sentSince)}`);
 });
 
 console.log(`\naccept-today: ${passed} passed, ${failed} failed`);

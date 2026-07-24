@@ -93,7 +93,10 @@ export default function OperationsToday({ pack }: { pack?: string }) {
     try {
       const env = await operationsToday({
         viewer: trust.viewer,
-        since: null,   // no persistence in this slice; see the Changed band note
+        // No `since` is sent. The projection owns the canonical operational
+        // window (v288a) and resolves it from the tenant's operating day and
+        // the envelope's own as_of. The client contributes no time at all.
+        since: null,
       });
       setOutcome({ kind: "ready", env });
     } catch (e) {
@@ -248,7 +251,7 @@ function Band({ band, env, risk, viewerUnresolved, viewerReason }: {
           {band === "ownerless"
             ? "Nothing is ownerless. That's the goal."
             : band === "changed"
-              ? "No change marker in this slice — persistence arrives later."
+              ? "Nothing has appeared or been withdrawn in this operating window."
               : "Nothing here."}
         </p>
       ) : (
