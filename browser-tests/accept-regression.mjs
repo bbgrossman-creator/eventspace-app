@@ -1,11 +1,39 @@
 // ═══ ACCEPTANCE — real Chromium, real mouse. Zero dispatchEvent anywhere. ════
+//
+// BUNDLE SELECTION
+//   (default)  → browser-tests/app.js, the SHIPPED bundle. This is the
+//                acceptance path: every claim below is a positive assertion
+//                about shipped code.
+//   --variant  → /tmp/app_broken.js, a DELIBERATELY BROKEN bundle, used to
+//                prove this suite detects the regression it exists to catch.
+//
+// Generating the broken bundle — node browser-tests/build-broken-bundle.mjs
+//   The convicted cause (recorded in accept-items.mjs) is that the source
+//   category's list UNMOUNTED when a destination opened, so Chromium had no
+//   node left to deliver dragend to and the Studio froze in drag state. The
+//   fix keeps the source mounted and hides it with CSS. The broken variant
+//   reverts exactly that, in src/components/studio/renderers/DesignStage.tsx:
+//     FIXED  : {(isOpen || isSource) && (<div style={!isOpen ? {display:"none"} : undefined} data-cat-list={key}>
+//     BROKEN : {isOpen && (<div data-cat-list={key}>
+//   Then: node browser-tests/accept-regression.mjs --variant
+//   MEASURED, not assumed: this suite scores IDENTICALLY on the good and the
+//   broken bundle. It does NOT detect the drag-cleanup regression — none of
+//   its claims exercise a CANCELLED drag after a destination opened, which is
+//   the failure mode. The detector is accept-items.mjs, which fails T3/T4
+//   against this same bundle exactly as its own header records. Keep --variant
+//   as the honest negative control it is, and do not read a green run here as
+//   coverage of the drag-cleanup invariant.
 import { chromium } from "playwright-core";
 import http from "http"; import { readFileSync } from "fs";
+
+// Serve the shipped bundle unless --variant explicitly asks for the broken one.
+const VARIANT = process.argv.includes("--variant");
+const APP_BUNDLE = VARIANT ? "/tmp/app_broken.js" : new URL("./app.js", import.meta.url);
 
 const srv = http.createServer((q, r) => {
   const f = q.url.split("?")[0] === "/" ? "/index.html" : q.url.split("?")[0];
   try { r.setHeader("content-type", f.endsWith(".js") ? "text/javascript" : f.endsWith(".css") ? "text/css" : "text/html; charset=utf-8");
-        r.end(readFileSync(f === "/app.js" ? "/tmp/app_broken.js" : new URL("." + f, import.meta.url))); }
+        r.end(readFileSync(f === "/app.js" ? APP_BUNDLE : new URL("." + f, import.meta.url))); }
   catch { r.statusCode = 404; r.end(); }
 });
 const PORT = 4400 + Math.floor(Math.random() * 100);
@@ -58,7 +86,17 @@ const tryUp = (page) => Promise.race([page.mouse.up().then(() => "ok"),
   await page.mouse.down();
   const m1 = await tryMove(page, hover.x + 10, hover.y + 20, 3);
   const m2 = m1 === "ok" ? await tryMove(page, hover.x + 20, hover.y + 60, 4) : m1;
-  await page.waitForTimeout(120);
+  // Bounded poll, not a fixed sample: dragover fires repeatedly once the
+  // pointer settles over a target, and a 120ms snapshot raced it (only
+  // dragenter had fired). Waits for the awaited condition; the assertion
+  // below is unchanged and still fails honestly if dragover never arrives.
+  for (let i = 0; i < 40; i++) {
+    if (await page.evaluate(() => window.__log.some((e) => e.t === "dragover"))) break;
+    // dragover fires only while the pointer MOVES over a target, so a
+    // stationary poll can never observe it. Nudge 1px in place.
+    await tryMove(page, hover.x + 20 + (i % 2 ? 1 : -1), hover.y + 60, 2);
+    await page.waitForTimeout(50);
+  }
   const dead = m1 !== "ok" || m2 !== "ok";
   const flight = await page.evaluate(() => ({
     seq: [...new Set(window.__log.map((e) => e.t))],
@@ -155,7 +193,14 @@ const tryUp = (page) => Promise.race([page.mouse.up().then(() => "ok"),
   // (9) drop BETWEEN Avocado and Cucumber → persisted category_key + position
   const between = await page.evaluate(() => {
     // the between-items guide inside the OPENED destination (Classic Rolls)
-    const bands = [...document.querySelectorAll('[data-band-label="Drop here"]')];
+    // Only LAID-OUT bands are droppable. Since v284 the source category stays
+    // MOUNTED under display:none (that is the drag-cleanup fix), so its bands
+    // still match the selector but have zero-size rects. The ancestor walk
+    // below is unbounded and would match one of those via a top-level
+    // ancestor, yielding {x:0,y:0}. Restrict to bands the operator could
+    // actually drop on. Mechanics only — the assertion is unchanged.
+    const bands = [...document.querySelectorAll('[data-band-label="Drop here"]')]
+      .filter((b) => b.offsetParent !== null && b.getBoundingClientRect().width > 0);
     const el = bands.find((b) => {
       let n = b.parentElement;
       while (n) { if ((n.textContent || "").includes("Avocado Roll")) return true; n = n.parentElement; }
@@ -169,8 +214,36 @@ const tryUp = (page) => Promise.race([page.mouse.up().then(() => "ok"),
   else {
     await tryMove(page, between.x, between.y, 6);
     await page.waitForTimeout(120);
+    // Re-aim once if the bands re-flowed while the pointer was travelling: a
+    // coordinate captured before the move can go stale as focus mode settles.
+    // Mechanics only — the drop target and the assertion are unchanged.
+    const reaim = await page.evaluate(([x, y]) => {
+      const at = document.elementFromPoint(x, y);
+      if (at && at.closest('[data-band-label="Drop here"]')) return null;
+      const bands = [...document.querySelectorAll('[data-band-label="Drop here"]')]
+        .filter((b) => b.offsetParent !== null && b.getBoundingClientRect().width > 0);
+      const el = bands.find((b) => { let n = b.parentElement;
+        while (n) { if ((n.textContent || "").includes("Avocado Roll")) return true; n = n.parentElement; }
+        return false; }) ?? bands[0];
+      if (!el) return null;
+      const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }, [between.x, between.y]);
+    if (reaim) { await tryMove(page, reaim.x, reaim.y, 4); await page.waitForTimeout(120); }
+    // Arriving in a single motion can leave only dragenter, and Chromium
+    // REFUSES a drop whose target never received a dragover. Jiggle in place
+    // so the target registers one. Mechanics only — the drop point is the
+    // same band and the assertion is unchanged.
+    const aim = reaim || between;
+    for (let i = 0; i < 6; i++) {
+      await tryMove(page, aim.x + (i % 2 ? 1 : -1), aim.y, 2);
+      await page.waitForTimeout(30);
+    }
     await tryUp(page);
-    await page.waitForTimeout(400);
+    // Bounded poll for the write to land instead of a flat 400ms.
+    for (let i = 0; i < 40; i++) {
+      if (await page.evaluate(() => (window.__persisted || []).some((w) => w.kind === "item" && w.id === "it-sweet"))) break;
+      await page.waitForTimeout(50);
+    }
     const done = await page.evaluate(() => {
       const comp = window.__state().flatMap((c) => c.components).find((c) => c.id === "comp-sushi");
       const classic = comp.categories.find((k) => k.key === "classic").items.map((i) => i.name);
@@ -192,6 +265,11 @@ const tryUp = (page) => Promise.race([page.mouse.up().then(() => "ok"),
   const page = await fresh();
   const box = await page.evaluate(() => {
     const i = [...document.querySelectorAll("input")].find((x) => x.value === "Sushi Station");
+    // The Canvas is a scroller: without recentring, the rect resolves to a
+    // point outside the scroller's clip and the press lands on <html>, so the
+    // input never focuses and no text can be selected. gripOf() already does
+    // this; claim 10 did not. Mechanics only — the assertion is unchanged.
+    i.closest("div").scrollIntoView({ block: "center" });
     const r = i.getBoundingClientRect(); return { x: r.x + 8, y: r.y + r.height / 2 };
   });
   await page.mouse.move(box.x, box.y);
@@ -248,9 +326,11 @@ const tryUp = (page) => Promise.race([page.mouse.up().then(() => "ok"),
     sc.scrollTop = 0;
     sc.scrollTop = row.getBoundingClientRect().top - sc.getBoundingClientRect().top - 70;
     const r = row.getBoundingClientRect(), c = sc.getBoundingClientRect();
-    const cock = [...document.querySelectorAll("h3")].find((h) => h.textContent.includes("Cocktail Hour"));
-    return { rowTop: r.top, canvasTop: c.top,
-             cocktailOffscreen: cock.getBoundingClientRect().bottom < c.top,
+    const cock = [...document.querySelectorAll("h3, span")].find((h) => (h.textContent || "").replace("\u25b6", "").trim() === "Cocktail Hour");
+    // Guarded: a missing chapter heading must fail its claim honestly, not
+    // crash the runner and silently drop claims 13a-13c.
+    return { rowTop: r.top, canvasTop: c.top, cocktailFound: !!cock,
+             cocktailOffscreen: cock ? cock.getBoundingClientRect().bottom < c.top : false,
              scrollTop: sc.scrollTop };
   });
   const g = await gripOf(page, "Sushi Station");
@@ -261,10 +341,11 @@ const tryUp = (page) => Promise.race([page.mouse.up().then(() => "ok"),
     sc.scrollTop += row.getBoundingClientRect().top - sc.getBoundingClientRect().top - 70;
     const grip = row.querySelector("[data-grip]").getBoundingClientRect();
     const r = row.getBoundingClientRect(), c = sc.getBoundingClientRect();
-    const cock = [...document.querySelectorAll("h3")].find((h) => h.textContent.includes("Cocktail Hour"));
+    const cock = [...document.querySelectorAll("h3, span")].find((h) => (h.textContent || "").replace("\u25b6", "").trim() === "Cocktail Hour");
     return { gx: grip.x + grip.width / 2, gy: grip.y + grip.height / 2,
              rowTop: r.top, canvasTop: c.top, canvasBottom: c.bottom,
-             cocktailOffscreen: cock.getBoundingClientRect().bottom < c.top };
+             cocktailFound: !!cock,
+             cocktailOffscreen: cock ? cock.getBoundingClientRect().bottom < c.top : false };
   });
   await page.mouse.move(start.gx + 120, start.gy); await page.waitForTimeout(80);
   await page.mouse.move(start.gx, start.gy);
@@ -279,7 +360,7 @@ const tryUp = (page) => Promise.race([page.mouse.up().then(() => "ok"),
   const drift = Math.abs(anchored.rowTop - start.rowTop);
   T("13a. source stays anchored through focus-mode collapse",
     lm === "ok" && start.cocktailOffscreen && drift < 40,
-    `pre-collapse top=${Math.round(start.rowTop)} post=${Math.round(anchored.rowTop)} drift=${Math.round(drift)}px · CocktailHour offscreen=${start.cocktailOffscreen}`);
+    `pre-collapse top=${Math.round(start.rowTop)} post=${Math.round(anchored.rowTop)} drift=${Math.round(drift)}px · CocktailHour found=${start.cocktailFound} offscreen=${start.cocktailOffscreen}`);
 
   // hold the pointer in the top edge zone until Cocktail Hour scrolls into view
   await tryMove(page, start.gx, start.canvasTop + 14, 6);

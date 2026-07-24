@@ -1,0 +1,48 @@
+--- /tmp/orig/browser-tests/app.tsx	2026-07-16 05:11:14.000000000 +0000
++++ /home/claude/app.tsx.working	2026-07-24 03:11:31.863890803 +0000
+@@ -10,9 +10,17 @@
+ import { NodePayload, DropTarget, splitCatKey } from "../src/lib/dragGrammar";
+ 
+ declare global {
+-  interface Window { __log: any[]; __persisted: any[]; __state: () => StageChapter[]; }
++  interface Window {
++    __log: any[]; __persisted: any[]; __state: () => StageChapter[];
++    // Runner-facing instrumentation (accept-items.mjs / repro-items.mjs):
++    // __lastDrop is the LAST drop reduced, in the runner's vocabulary
++    // ({id,to,before}); __added is the last add-item command dispatched.
++    __lastDrop: { id: string; to: unknown; before: unknown } | null;
++    __added: { componentId: string; categoryKey: string | null } | null;
++  }
+ }
+ window.__log = []; window.__persisted = [];
++window.__lastDrop = null; window.__added = null;
+ const L = (t: string, d?: any) => window.__log.push({ t, ...(d ?? {}), ts: performance.now() | 0 });
+ 
+ // True event path instrumentation — capture phase, so nothing can hide from it.
+@@ -86,6 +94,7 @@
+         const at = t.beforeId ? dest.components.findIndex((c) => c.id === t.beforeId) : dest.components.length;
+         dest.components.splice(at < 0 ? dest.components.length : at, 0, moved);
+         window.__persisted.push({ kind: "component", id: p.id, chapter: t.parentId, beforeId: t.beforeId });
++        window.__lastDrop = { id: p.id, to: t.parentId, before: t.beforeId };
+       } else {
+         const { componentId, category } = splitCatKey(String(t.parentId));
+         let moved: any = null;
+@@ -102,6 +111,7 @@
+           const at = t.beforeId ? cat.items.findIndex((i) => i.id === t.beforeId) : cat.items.length;
+           cat.items.splice(at < 0 ? cat.items.length : at, 0, moved);
+           window.__persisted.push({ kind: "item", id: p.id, category_key: category, component: componentId, beforeId: t.beforeId });
++          window.__lastDrop = { id: p.id, to: t.parentId, before: t.beforeId };
+         }
+       }
+       return next;
+@@ -118,6 +128,10 @@
+         onPatchItem={(id, patch) => L("app:patchItem", { id, patch })}
+         money={(n) => `$${n.toLocaleString()}`}
+         onDrop={onDrop}
++        onAddItem={(componentId, categoryKey) => {
++          L("app:addItem", { componentId, categoryKey });
++          window.__added = { componentId, categoryKey };
++        }}
+       />
+       </div>
+     </div>
