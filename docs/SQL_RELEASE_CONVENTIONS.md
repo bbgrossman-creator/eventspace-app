@@ -110,6 +110,33 @@ are structurally excluded.
 
 ---
 
+## Rule 5 · Type-check against the DEPLOYMENT build target, not only the slice configs
+
+A production Next.js build failed on `Type 'MapIterator<...>' can only be
+iterated through when using the '--downlevelIteration' flag`. Every slice
+config (`tsconfig.v281/v283/v284/strictcheck.json`) targets **es2020** and
+passed; the deployment `tsconfig.json` targets **es5**, and the repository
+does not contain it — so the entire verification set was blind to the class.
+
+**`tsconfig.deploycheck.json` now reproduces the deployment build** (es5, no
+`downlevelIteration`, `__tests__` excluded exactly as `next build` excludes
+them). It must be clean before any release.
+
+```bash
+./node_modules/.bin/tsc -p tsconfig.deploycheck.json   # must report nothing
+```
+
+Practical guidance for application code under `src/` (test files are exempt —
+Next never builds them):
+- Do **not** spread or `for…of` a `Map`/`Set`/iterator: `[...map.entries()]`,
+  `[...set]`, `[...str.matchAll(re)]` all fail at es5.
+- Use plain records plus a key array, indexed `for` loops, or `Array.from()`.
+- Arrays are always safe: `for…of` over an array compiles at any target.
+
+Fixing this by adding `downlevelIteration` to the deployment config would also
+work, but it changes emitted output for the whole application to satisfy one
+helper. Writing target-agnostic code is the narrower change.
+
 ## Quick grep gate (run before packaging any release)
 
 ```bash
@@ -117,6 +144,9 @@ are structurally excluded.
 grep -rnE "(^|[^.a-zA-Z0-9_])digest\s*\(" --include=*.sql supabase/ \
   | grep -vE "v267a_pgcrypto_compat|v287_deploy_compat" \
   | grep -vE "^[^:]+:[0-9]+:\s*--"
+
+# deployment build target must be clean (Rule 5)
+./node_modules/.bin/tsc -p tsconfig.deploycheck.json
 
 # must return nothing outside role-existence guards.
 # NOTE the spacing-tolerant pattern: guards are written both as

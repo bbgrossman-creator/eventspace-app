@@ -1,0 +1,35 @@
+{
+  "//": "Reproduces the Next.js production build (target es5, no downlevelIteration) over APPLICATION code only, excluding __tests__ exactly as next build does. A downlevel-iteration defect reached production once; this config is the permanent gate.",
+
+  "compilerOptions": {
+    "target": "es5",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": [
+    "src/**/__tests__/**",
+    "node_modules"
+  ]
+}
