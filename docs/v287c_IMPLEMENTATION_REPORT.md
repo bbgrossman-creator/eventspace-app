@@ -1,10 +1,15 @@
 # EventCore v287c — Projection Client
 ## Implementation Report · Certification
 
-**Slice.** Entirely application code. `src/lib/projection/` becomes the only
-application interface for operational reads. No product UI, no Operations Today
-screen. v287a and v287b are frozen and were not modified — **zero SQL changes
-in this slice.**
+**Slice.** Entirely application code. `src/lib/projection/` is the **sole
+certified client interface for the new Responsibility projections**
+(`responsibility_feed`, `projection_feed`, `projection_operations_today`,
+`projection_event_command`, `projection_department_queue`,
+`projection_day_sheet`, `risk_findings`). It is **not yet** the only
+application interface for operational reads: the existing v275/v277 consumers
+remain temporarily on `execution/spine.ts` pending equivalence certification
+(see §11a). No product UI, no Operations Today screen. v287a and v287b are
+frozen and were not modified — **zero SQL changes in this slice.**
 
 **Verdict: v287c — DEPLOYABLE.** Stopping before Operations Today UI.
 
@@ -23,7 +28,10 @@ src/lib/projection/
 
 Following the established pure/data split: `state.ts` and `labels.ts` are pure
 and DB-free (unit-testable with no database); `client.ts` and `feed.ts` are the
-data half. Components never call `.rpc()` — they import `feed.ts`.
+data half. No component calls `.rpc()` directly (audited: zero call sites in
+`src/components`). Components that consume the NEW Responsibility projections
+import `feed.ts`; as of this slice there are none, because no production
+surface has been built on it yet.
 
 Plus verification:
 
@@ -102,6 +110,15 @@ manufactured** (P-6).
 
 ### Browser — `accept-projection.mjs`: **18 PASS / 0 FAIL**
 Renders fixtures through the real client modules in Chromium, no SQL.
+
+**Scope of what this proves — stated precisely.** These harnesses certify the
+**client modules themselves** (`state.ts`, `labels.ts`, `client.ts`, and the
+band/column resolvers in `feed.ts`) against projection fixtures. They do **not**
+certify a mounted production consumer, because none exists: no screen imports
+`src/lib/projection`. Nor do they exercise the live SQL projections end to end —
+fixtures mirror the certified v287a/v287b contracts rather than calling them.
+End-to-end certification (real projection → real client → real mounted surface)
+belongs to the first consuming slice.
 
 | Claim | Proves |
 |---|---|
@@ -228,6 +245,69 @@ not a neutral stand-in for the real one.
 
 ---
 
+## 11a · ADOPTION STATUS AND MIGRATION DEBT (registered)
+
+### Adoption, precisely
+| Interface | Status |
+|---|---|
+| `src/lib/projection/*` | **Certified** client for the new Responsibility projections. **Zero production consumers.** |
+| `execution/spine.ts` | Still reads v275/v277 operational projections directly (`event_workspace`, `event_readiness`, `event_stage_detail`, `event_stage`, `obligation_state`, `available_actions`). **Sanctioned** until equivalence is certified. |
+| `src/components` | **Zero** direct `.rpc()` call sites (audited). |
+| `src/app` routes | 3 `.rpc()` calls — `accept_offer` (ceremony), `next_invoice_num` ×2 (utility). **None are operational projections.** |
+
+The projection discipline holds *within* the projection layer. It does not yet
+hold *across* the application, and this report does not claim otherwise.
+
+### DEBT-1 · `EventWorkspace.tsx` infers evidence kind from state
+`src/components/execution/EventWorkspace.tsx:50`
+
+```ts
+kind: c.state === "ready" ? "assignment" : "completion"
+```
+
+A component is choosing **which evidence kind to record** by inspecting a
+projected state. This is not state derivation — the state is carried, not
+computed — but it is a component inferring **command intent**, which is not its
+to infer. Under the constitution, what may be recorded against a
+responsibility comes from the **projected available action** (v279 action
+registry / dispatch) or from the **ceremony contract**, never from a
+component's reading of a state word.
+
+Registered as migration debt, not repaired here: changing it now would alter a
+certified surface (`accept-workspace` 13/13, `accept-event-ops` 5/5) ahead of
+the equivalence work that will replace the surrounding code anyway. It must be
+resolved **as part of** that migration, not after it.
+
+### DEBT-2 · v275 vocabulary still reaches the client
+`ObligationDetail` reads `obligation_state()`; `EventWorkspace` and
+`DailyOpsEvent` style on `ObligationState` (`ready · blocked · complete ·
+exception · invalidated`). State is carried from SQL — correct — but from the
+**pre-constitutional resolver**. Resolved by the same migration.
+
+### BOUNDARY-1 · Authored tasks are not derived responsibilities
+`OpsWorkspace` and `TodoPanel` read `tasks`, `progress_updates`,
+`communications` — a **legacy authored-work model that predates the
+constitution**. They filter heavily, but they filter *tasks*, not
+responsibilities, so they do not violate projection discipline; they sit
+outside it.
+
+**This separation is binding.** `OpsWorkspace` and `TodoPanel`:
+- **must not** become storage for projected responsibilities;
+- **must not** become completion surfaces for them — discharge derives from
+  evidence appended through a ceremony (R-7), never from toggling a legacy
+  task row;
+- **must not** mix authored task rows and projected responsibilities in one
+  list such that a user cannot tell which is which.
+
+An authored task is something a person wrote down. A responsibility is
+something truth implies. Conflating them would recreate the task table that
+R-5 forbids, wearing a legacy UI. If these surfaces should eventually show
+derived work, they consume `feed.ts` as a **read-only projection alongside**
+their own rows, clearly distinguished — a decision for a later slice, not an
+accident of migration.
+
+---
+
 ## 9 · Deployment
 
 No migration. Application code only.
@@ -255,6 +335,15 @@ constitutional seven states are representable.
 
 **Change review.** No SQL was altered. v287a and v287b remain frozen. No
 existing component, library module, proof or browser runner was modified.
+
+**Adoption review (corrected).** `src/lib/projection/` is the sole certified
+client interface for the new Responsibility projections. It is **not** yet the
+only application interface for operational reads: `execution/spine.ts` still
+reads the v275/v277 projections directly, by standing ruling, until
+`projection_event_command` equivalence is certified. The harnesses certify the
+client modules, **not** a mounted production consumer — there is none. Migration
+debt DEBT-1 and DEBT-2 and the authored-task boundary BOUNDARY-1 are registered
+in §11a.
 
 **Explicit statements.**
 - No constitutional invariant was weakened.

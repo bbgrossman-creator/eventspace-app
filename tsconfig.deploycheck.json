@@ -1,5 +1,5 @@
 {
-  "//": "Reproduces the Next.js production build (target es5, no downlevelIteration) over APPLICATION code only, excluding __tests__ exactly as next build does. A downlevel-iteration defect reached production once; this config is the permanent gate.",
+  "//": "Reproduces the Next.js production build (target es5, no downlevelIteration) over ALL application code, excluding __tests__ exactly as next build does. Permanent release gate.",
 
   "compilerOptions": {
     "target": "es5",
