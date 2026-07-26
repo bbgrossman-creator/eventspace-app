@@ -44,10 +44,19 @@ const ctx = `select set_config('app.user_id','${USER}',false), set_config('reque
 const seed = `
 ${ctx}
 do $$
-declare v_t uuid := '${TENANT}'; v_e uuid; v_r uuid;
+declare v_t uuid := '${TENANT}'; v_e uuid; v_r uuid; hb1 uuid; ho1 uuid;
 begin
-  insert into public.event (tenant_id, engagement_ref, origin_commitment_ref, released_by)
-  values (v_t, gen_random_uuid(), gen_random_uuid(), 'v288') returning id into v_e;
+  -- v292a1 HARNESS MIGRATION (fixture construction only; no claim changed):
+  -- an event now requires a real engagement and a DECLARED occurrence (I-31').
+  insert into public.bookings (tenant_id, contact_name, invoice_num, status)
+    values (v_t, 'harness', 'HB-'||substr(gen_random_uuid()::text,1,12), 'active')
+    returning id into hb1;
+  insert into public.engagement_occurrence (tenant_id, booking_id, ordinal, opened_by)
+    values (v_t, hb1, 1, 'harness') returning id into ho1;
+  insert into public.event (tenant_id, engagement_ref, occurrence_ref,
+                           origin_commitment_ref, released_by)
+    values (v_t, hb1, ho1, gen_random_uuid(), 'v288')
+    returning id into v_e;
   insert into public.execution_evidence (tenant_id, event_ref, kind, actor, payload)
   values (v_t, v_e, 'released', 'v288', '{}'::jsonb);
   perform public.derive_responsibilities(v_e);

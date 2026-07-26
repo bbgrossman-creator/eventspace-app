@@ -45,14 +45,32 @@ const ctxB = `select set_config('app.user_id','${USER_B}',false), set_config('re
 // ── seed real truth: two events, several departments, mixed states ──────────
 psql(`${ctx}
 do $$
-declare v_t uuid := '${TENANT}'; v_e1 uuid; v_e2 uuid; v_r uuid;
+declare v_t uuid := '${TENANT}'; v_e1 uuid; v_e2 uuid; v_r uuid; hb1 uuid; ho1 uuid; hb2 uuid; ho2 uuid;
 begin
-  insert into public.event (tenant_id, engagement_ref, origin_commitment_ref, released_by)
-  values (v_t, gen_random_uuid(), gen_random_uuid(), 'v290') returning id into v_e1;
+  -- v292a1 HARNESS MIGRATION (fixture construction only; no claim changed):
+  -- an event now requires a real engagement and a DECLARED occurrence (I-31').
+  insert into public.bookings (tenant_id, contact_name, invoice_num, status)
+    values (v_t, 'harness', 'HB-'||substr(gen_random_uuid()::text,1,12), 'active')
+    returning id into hb1;
+  insert into public.engagement_occurrence (tenant_id, booking_id, ordinal, opened_by)
+    values (v_t, hb1, 1, 'harness') returning id into ho1;
+  insert into public.event (tenant_id, engagement_ref, occurrence_ref,
+                           origin_commitment_ref, released_by)
+    values (v_t, hb1, ho1, gen_random_uuid(), 'v290')
+    returning id into v_e1;
   insert into public.execution_evidence (tenant_id, event_ref, kind, actor)
   values (v_t, v_e1, 'released', 'v290');
-  insert into public.event (tenant_id, engagement_ref, origin_commitment_ref, released_by)
-  values (v_t, gen_random_uuid(), gen_random_uuid(), 'v290') returning id into v_e2;
+  -- v292a1 HARNESS MIGRATION (fixture construction only; no claim changed):
+  -- an event now requires a real engagement and a DECLARED occurrence (I-31').
+  insert into public.bookings (tenant_id, contact_name, invoice_num, status)
+    values (v_t, 'harness', 'HB-'||substr(gen_random_uuid()::text,1,12), 'active')
+    returning id into hb2;
+  insert into public.engagement_occurrence (tenant_id, booking_id, ordinal, opened_by)
+    values (v_t, hb2, 1, 'harness') returning id into ho2;
+  insert into public.event (tenant_id, engagement_ref, occurrence_ref,
+                           origin_commitment_ref, released_by)
+    values (v_t, hb2, ho2, gen_random_uuid(), 'v290')
+    returning id into v_e2;
   insert into public.execution_evidence (tenant_id, event_ref, kind, actor)
   values (v_t, v_e2, 'released', 'v290');
 
@@ -107,10 +125,19 @@ end $$;`);
 // foreign-tenant culinary work, for DQ-18
 psql(`${ctxB}
 do $$
-declare v_t uuid := '${TENANT_B}'; v_e uuid;
+declare v_t uuid := '${TENANT_B}'; v_e uuid; hb3 uuid; ho3 uuid;
 begin
-  insert into public.event (tenant_id, engagement_ref, origin_commitment_ref, released_by)
-  values (v_t, gen_random_uuid(), gen_random_uuid(), 'v290b') returning id into v_e;
+  -- v292a1 HARNESS MIGRATION (fixture construction only; no claim changed):
+  -- an event now requires a real engagement and a DECLARED occurrence (I-31').
+  insert into public.bookings (tenant_id, contact_name, invoice_num, status)
+    values (v_t, 'harness', 'HB-'||substr(gen_random_uuid()::text,1,12), 'active')
+    returning id into hb3;
+  insert into public.engagement_occurrence (tenant_id, booking_id, ordinal, opened_by)
+    values (v_t, hb3, 1, 'harness') returning id into ho3;
+  insert into public.event (tenant_id, engagement_ref, occurrence_ref,
+                           origin_commitment_ref, released_by)
+    values (v_t, hb3, ho3, gen_random_uuid(), 'v290b')
+    returning id into v_e;
   insert into public.execution_evidence (tenant_id, event_ref, kind, actor)
   values (v_t, v_e, 'released', 'v290b');
   insert into public.obligation (tenant_id, event_ref, scope, origin_ref, origin_kind,
