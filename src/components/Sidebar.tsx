@@ -6,6 +6,8 @@ import { BRAND } from "@/lib/brand";
 import { usePathname } from "next/navigation";
 import { loadCapabilities, Capabilities, CAPS_CHANGED_EVENT } from "@/lib/capabilities";
 import { loadSession, Session, Permission, can } from "@/lib/permissions";
+import { DEPARTMENT_KEYS } from "@/lib/projection/types";
+import { departmentLabel } from "@/lib/projection/labels";
 
 // Nav is DATA. Each item may declare:
 //   cap  — a TENANT capability (does this business have the module?)
@@ -27,8 +29,42 @@ const NAV: NavItem[] = [
   // { href: "/production", label: "Production", icon: "👨‍🍳", cap: "production", perm: "kitchen.view" }
 ];
 
+type NavGroup = { title: string; icon: string; items: NavItem[] };
+
+// v290 · OPERATIONS — the lens group over certified truth. Every entry here is
+// a projection consumer, not a table browser.
+//
+// NO `cap`. Operations is a CONSTITUTIONAL surface, not an optional tenant
+// module: R-1…R-13 guarantee every tenant has responsibilities, so there is no
+// coherent business configuration in which Operations is absent. `cap` gates
+// modules a business may genuinely lack (proposals, rolodex); adding an
+// `operations` capability would encode a state the constitution forbids.
+// `perm: "ops.view"` alone — already in the closed Permission union and already
+// granted to the roles that hold it.
+//
+// The department entries are generated from DEPARTMENT_KEYS, so the shell can
+// never drift from the closed vocabulary that validate_projection_filter()
+// enforces, and their words come from the active label pack — keys are law,
+// labels are configuration (Application Shell §10).
+const OPERATIONS_GROUP: NavGroup[] = [
+  {
+    title: "Operations", icon: "🧭",
+    items: [
+      { href: "/operations/today", label: "Today", icon: "📆", perm: "ops.view" },
+      ...DEPARTMENT_KEYS.map((key) => ({
+        href: `/operations/departments/${key}`,
+        label: departmentLabel(key),
+        icon: "📥",
+        perm: "ops.view" as Permission,
+      })),
+      // v294 · { href: "/operations/day-sheet", label: "Day Sheet", ... }
+      // v295 · Event Command mounts per event, not as a standing rail entry.
+    ],
+  },
+];
+
 // Back office groups — no section title; the divider tells the story.
-const BACKOFFICE_GROUPS: { title: string; icon: string; items: NavItem[] }[] = [
+const BACKOFFICE_GROUPS: NavGroup[] = [
   {
     title: "Content", icon: "🍽️",
     items: [
@@ -65,7 +101,11 @@ export default function Sidebar() {
   const path = usePathname();
   const initialOpen = () => {
     const o: Record<string, boolean> = {};
-    for (const g of BACKOFFICE_GROUPS) o[g.title] = g.items.some((i) => path.startsWith(i.href));
+    for (const g of [...OPERATIONS_GROUP, ...BACKOFFICE_GROUPS])
+      o[g.title] = g.items.some((i) => path.startsWith(i.href));
+    // Operations is the working rail: open by default, not only when already
+    // inside it. A collapsed Operations group is how /today stayed invisible.
+    for (const g of OPERATIONS_GROUP) o[g.title] = true;
     return o;
   };
   const [open, setOpen] = useState<Record<string, boolean>>(initialOpen);
@@ -96,9 +136,11 @@ export default function Sidebar() {
   };
   const navItems = NAV.filter(allowed);
   // Groups filter their items, then empty groups drop their header entirely.
-  const groups = BACKOFFICE_GROUPS
+  const filterGroups = (gs: NavGroup[]) => gs
     .map((g) => ({ ...g, items: g.items.filter(allowed) }))
     .filter((g) => g.items.length > 0);
+  const opsGroups = filterGroups(OPERATIONS_GROUP);
+  const groups = filterGroups(BACKOFFICE_GROUPS);
   const toggleCollapsed = () => {
     setCollapsed((c) => {
       try { localStorage.setItem("sidebar_collapsed", c ? "0" : "1"); } catch {}
@@ -150,7 +192,7 @@ export default function Sidebar() {
         {navItems.map((n) => {
           const active = n.href === "/" ? path === "/" : path.startsWith(n.href) && (n.href !== "/bookings" || path === "/bookings" || path.match(/^\/bookings\/(?!new)/));
           return (
-            <Link key={n.href} href={n.href} title={collapsed ? n.label : undefined}
+            <Link key={n.href} href={n.href} data-nav-item={n.href} title={collapsed ? n.label : undefined}
               className={`${pillBase} ${pillPad} ${
                 active
                   ? "bg-white/10 text-white shadow-[0_0_14px_rgba(255,255,255,0.07)]"
@@ -165,57 +207,13 @@ export default function Sidebar() {
           );
         })}
 
+        {/* v290 · Operations — the lens rail, above the back-office divider */}
+        {opsGroups.map(renderGroup)}
+
         {/* Divider alone marks the back office — no label needed */}
         <div className="!my-4 border-t border-white/10" />
 
-        {groups.map((g) => {
-          const isOpen = !!open[g.title];
-          const hasActive = g.items.some((i) => path.startsWith(i.href));
-          if (collapsed) {
-            return (
-              <button key={g.title} title={g.title}
-                onClick={() => { toggleCollapsed(); setOpen((p) => ({ ...p, [g.title]: true })); }}
-                className={`${pillBase} ${pillPad} w-full ${hasActive ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}>
-                <span className="w-5 text-center text-[15px] opacity-80">{g.icon}</span>
-              </button>
-            );
-          }
-          return (
-            <div key={g.title}>
-              <button
-                onClick={() => setOpen((p) => ({ ...p, [g.title]: !p[g.title] }))}
-                className={`group w-full flex items-center justify-between gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
-                  hasActive ? "text-white" : "text-slate-300 hover:bg-white/5 hover:text-white hover:translate-x-[1px]"
-                }`}>
-                <span className="flex items-center gap-3">
-                  <span className="w-5 text-center text-[15px] opacity-80 transition-transform duration-150 group-hover:translate-x-[2px]">{g.icon}</span>
-                  {g.title}
-                </span>
-                <span className={`text-[10px] text-slate-500 transition-transform duration-[180ms] ${isOpen ? "rotate-90" : ""}`}>▸</span>
-              </button>
-              {/* 180ms grid-rows expand — smooth height + fade, no jump */}
-              <div className={`grid transition-[grid-template-rows,opacity] duration-[180ms] ease-out ${isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
-                <div className="overflow-hidden">
-                  <div className="ml-3 border-l border-white/10 pl-2 space-y-0.5 mb-1 pt-0.5">
-                    {g.items.map((n) => {
-                      const active = path.startsWith(n.href);
-                      return (
-                        <Link key={n.href} href={n.href}
-                          className={`group relative flex items-center gap-2.5 rounded-full pl-8 pr-3 py-2 text-[13px] transition-all duration-150 ${
-                            active ? "bg-white/10 text-white font-medium" : "text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-[1px]"
-                          }`}>
-                          {active && <span className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-[3px] rounded-full bg-[#4A9EFF]" />}
-                          <span className="w-4 text-center text-xs opacity-70 transition-transform duration-150 group-hover:translate-x-[2px]">{n.icon}</span>
-                          {n.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {groups.map(renderGroup)}
       </nav>
 
       {/* Profile card footer */}
@@ -240,4 +238,56 @@ export default function Sidebar() {
       </div>
     </aside>
   );
+
+  // One renderer for every titled group — Operations and back office alike, so
+  // v294's Day Sheet entry is a one-line addition rather than new markup.
+  function renderGroup(g: NavGroup) {
+          const isOpen = !!open[g.title];
+          const hasActive = g.items.some((i) => path.startsWith(i.href));
+          if (collapsed) {
+            return (
+              <button key={g.title} title={g.title} data-nav-group={g.title}
+                onClick={() => { toggleCollapsed(); setOpen((p) => ({ ...p, [g.title]: true })); }}
+                className={`${pillBase} ${pillPad} w-full ${hasActive ? "bg-white/10 text-white" : "text-slate-300 hover:bg-white/5 hover:text-white"}`}>
+                <span className="w-5 text-center text-[15px] opacity-80">{g.icon}</span>
+              </button>
+            );
+          }
+          return (
+            <div key={g.title} data-nav-group={g.title}>
+              <button
+                data-nav-group-toggle={g.title}
+                onClick={() => setOpen((p) => ({ ...p, [g.title]: !p[g.title] }))}
+                className={`group w-full flex items-center justify-between gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
+                  hasActive ? "text-white" : "text-slate-300 hover:bg-white/5 hover:text-white hover:translate-x-[1px]"
+                }`}>
+                <span className="flex items-center gap-3">
+                  <span className="w-5 text-center text-[15px] opacity-80 transition-transform duration-150 group-hover:translate-x-[2px]">{g.icon}</span>
+                  {g.title}
+                </span>
+                <span className={`text-[10px] text-slate-500 transition-transform duration-[180ms] ${isOpen ? "rotate-90" : ""}`}>▸</span>
+              </button>
+              {/* 180ms grid-rows expand — smooth height + fade, no jump */}
+              <div className={`grid transition-[grid-template-rows,opacity] duration-[180ms] ease-out ${isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                <div className="overflow-hidden">
+                  <div className="ml-3 border-l border-white/10 pl-2 space-y-0.5 mb-1 pt-0.5">
+                    {g.items.map((n) => {
+                      const active = path.startsWith(n.href);
+                      return (
+                        <Link key={n.href} href={n.href} data-nav-item={n.href}
+                          className={`group relative flex items-center gap-2.5 rounded-full pl-8 pr-3 py-2 text-[13px] transition-all duration-150 ${
+                            active ? "bg-white/10 text-white font-medium" : "text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-[1px]"
+                          }`}>
+                          {active && <span className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-[3px] rounded-full bg-[#4A9EFF]" />}
+                          <span className="w-4 text-center text-xs opacity-70 transition-transform duration-150 group-hover:translate-x-[2px]">{n.icon}</span>
+                          {n.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+  }
 }
