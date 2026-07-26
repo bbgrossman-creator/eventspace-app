@@ -15,6 +15,7 @@ import {
   type DepartmentQueueEnvelope, type DaySheetEnvelope,
   type Envelope, type FeedData, type RiskFinding,
   type ResponsibilityDetail,
+  type OccurrenceBriefEnvelope,
 } from "./types";
 
 /** The spine, unwrapped. Prefer a composed projection where one exists — one
@@ -85,6 +86,27 @@ export async function daySheet(
   return fetchProjection<DaySheetEnvelope["data"]>("projection_day_sheet", {
     p_day: day,
     p_group_by: groupBy,
+    ...(asOf ? { p_now: asOf } : {}),
+  });
+}
+
+/** v292b · ONE call supplies the whole occurrence brief: identity, client,
+ *  venue, covers, schedule, supervision, temporal overlaps, readiness,
+ *  exceptions, ownerless work and completeness.
+ *
+ *  Returns null when the occurrence does not exist for this tenant — a genuine
+ *  not-found, never dressed up as an empty brief.
+ *
+ *  This is the ONLY read a briefing surface needs. Do not compose it from
+ *  several projections: the envelope carries one as_of and one truth_version,
+ *  and assembling the same picture from multiple reads reintroduces exactly the
+ *  incoherence the single-snapshot rule exists to prevent. */
+export async function occurrenceBrief(
+  occurrence: string,
+  asOf?: string,
+): Promise<OccurrenceBriefEnvelope | null> {
+  return fetchObject<OccurrenceBriefEnvelope>("projection_occurrence_brief", {
+    p_occurrence: occurrence,
     ...(asOf ? { p_now: asOf } : {}),
   });
 }

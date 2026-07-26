@@ -191,6 +191,94 @@ export interface ResponsibilityDetail {
   superseded_by: string | null;
 }
 
+/** v292b · occurrence_brief. The single authoritative read model for
+ *  pre-execution operations. Shaped field-for-field by
+ *  projection_occurrence_brief(); nothing is added or renamed here.
+ *
+ *  Two properties the client must respect rather than reinterpret:
+ *   · `has_event` states the regime. Work-side arrays are empty before release
+ *     and that is NOT the same as "nothing is owed" — never infer readiness
+ *     from an empty array without checking has_event.
+ *   · `venue.source` / `supervision.source` say whether the fact is the
+ *     occurrence's own or inherited from the engagement. A surface that drops
+ *     source presents an inherited fact as a specific one. */
+export interface BriefIdentity {
+  occurrence: string; engagement: string; ordinal: number;
+  open_basis: "declared" | "release_implied"; active: boolean;
+  display_name: string | null; occasion_kind: string | null;
+  engagement_name: string | null;
+  client: string | null;
+  client_source: "engagement_profile" | "booking_contact";
+}
+export interface BriefVenue {
+  source: "occurrence" | "engagement";
+  venue: string; name: string; address: string | null;
+}
+export interface BriefAttendanceEntry {
+  head_count: number; basis: AttendanceBasis; effective_moment: string;
+}
+export type AttendanceBasis = "estimated" | "contracted" | "guaranteed" | "final";
+export interface BriefAttendance {
+  current: BriefAttendanceEntry | null;
+  contracted: number | null;
+  delta: number | null;
+  /** Future-effective commitments. NEVER render as the operative count. */
+  scheduled: BriefAttendanceEntry[];
+}
+export interface BriefMilestone {
+  key: string; label: string; at: string; window_end: string | null;
+}
+export interface BriefSchedule {
+  operating_date: string | null;   // a DATE, not a moment
+  milestones: BriefMilestone[];
+}
+export interface BriefSupervision {
+  source: "occurrence" | "engagement";
+  authority_org: string; window_start: string | null; window_end: string | null;
+  certificate_ref: string | null; contact: string | null;
+}
+/** Temporal overlap ONLY. Two windows coincide in time; this asserts nothing
+ *  about a shared resource. Never label this "conflict" or "contention". */
+export interface BriefOverlap {
+  kind: "temporal";
+  a: string; a_key: string; b: string; b_key: string;
+  overlap_start: string; overlap_end: string;
+}
+export interface BriefReadiness {
+  department: DepartmentKey;
+  total: number; settled: number; outstanding: number;
+  ownerless: number; blocked: number;
+}
+export interface BriefCompleteness {
+  display_name: boolean; client: boolean; venue: boolean;
+  operating_date: boolean; attendance: boolean; contracted: boolean;
+  supervision: boolean; milestones: boolean;
+  missing: string[];
+}
+export interface OccurrenceBriefData {
+  identity: BriefIdentity;
+  venue: BriefVenue | null;
+  attendance: BriefAttendance;
+  schedule: BriefSchedule;
+  supervision: BriefSupervision | null;
+  overlaps: BriefOverlap[];
+  has_event: boolean;
+  event: string | null;
+  readiness: BriefReadiness[];
+  exceptions: RiskFinding[];
+  ownerless: Array<{ responsibility: string; department: DepartmentKey;
+                     required_outcome: string; state: ResponsibilityState }>;
+  completeness: BriefCompleteness;
+}
+export interface OccurrenceBriefCounts {
+  total: number; outstanding: number; ownerless: number; at_risk: number;
+  exceptions: number; overlaps: number;
+  by_state: Partial<Record<ResponsibilityState, number>>;
+  missing_promise_facts: number;
+}
+export type OccurrenceBriefEnvelope =
+  Envelope<OccurrenceBriefData> & { counts: OccurrenceBriefCounts };
+
 export type OperationsTodayEnvelope = Envelope<OperationsTodayData>;
 export type EventCommandEnvelope = Envelope<EventCommandData>;
 export type DepartmentQueueEnvelope = Envelope<DepartmentQueueData>;
