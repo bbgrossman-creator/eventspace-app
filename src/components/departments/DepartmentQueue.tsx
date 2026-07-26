@@ -26,12 +26,14 @@
  *     no write path in this file.
  */
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { departmentQueue, resolveGroup } from "@/lib/projection/feed";
 import {
   ProjectionRefusal,
   type DepartmentQueueEnvelope,
   type GroupBy,
   type ResponsibilityRow,
+  DEPARTMENT_KEYS,
 } from "@/lib/projection/types";
 import {
   statePresentation, indexRisk, worstSeverity, severityClass, formatWindow,
@@ -43,6 +45,7 @@ import { loadSession } from "@/lib/permissions";
 
 /** Four constitutionally different outcomes, never collapsed into one. */
 type Outcome =
+  | { kind: "choose" }
   | { kind: "loading" }
   | { kind: "ready"; env: DepartmentQueueEnvelope }
   | { kind: "refusal"; code: string; message: string }
@@ -100,6 +103,10 @@ export default function DepartmentQueue({
   // 2 · ONE projection request. The department and group_by go to SQL exactly
   //     as received — unvalidated, because the vocabulary is not ours to police.
   const load = useCallback(async () => {
+    // v291 · The Departments surface with nothing chosen. The selector is real
+    // content; asking the projection for a department nobody named would be an
+    // invented read, so no request is made at all.
+    if (!department) { setOutcome({ kind: "choose" }); return; }
     if (trust.kind === "resolving") return;
     if (trust.kind === "untrusted") {
       setOutcome({ kind: "refusal", code: "TENANT_UNRESOLVED", message: trust.reason });
@@ -121,6 +128,17 @@ export default function DepartmentQueue({
   useEffect(() => { void load(); }, [load]);
 
   // ── outcome surfaces, kept distinct ─────────────────────────────────────
+  if (outcome.kind === "choose") {
+    return (
+      <main data-queue data-outcome="choose" data-department="" className="p-6">
+        <h1 className="text-base font-medium">Departments</h1>
+        <p className="mt-1 text-xs text-neutral-500">
+          Pick a department to see what it owes. Nothing is read until you do.
+        </p>
+        <div className="mt-4"><DepartmentPicker active="" groupBy={requestedGroupBy} /></div>
+      </main>
+    );
+  }
   if (outcome.kind === "loading") {
     return (
       <main data-queue data-outcome="loading" data-department={department}
@@ -193,6 +211,9 @@ export default function DepartmentQueue({
         <p className="text-xs text-neutral-500">
           grouped by {answeredGroupBy} · one snapshot, as of {env.as_of}
         </p>
+        <div className="mt-3">
+          <DepartmentPicker active={answeredDept} groupBy={answeredGroupBy} />
+        </div>
       </header>
 
       {/* counts come from the envelope; nothing here is recounted */}
@@ -309,7 +330,13 @@ function QueueGroup({ groupKey, members, groupBy, rows, risk }: {
                   className="flex items-center gap-2 border-b border-neutral-100 py-1 text-sm">
                 {/* STATE — its own element, state vocabulary only */}
                 <span data-state-glyph className={pres.className}>{pres.glyph}</span>
-                <span className="flex-1">{r.required_outcome}</span>
+                {/* v291 · the row opens its detail. The href carries only the
+                    responsibility reference; nothing about it is computed. */}
+                <Link href={`/operations/responsibilities/${r.responsibility}`}
+                      data-row-link={r.responsibility}
+                      className="flex-1 hover:underline">
+                  {r.required_outcome}
+                </Link>
                 <span data-state-label className="text-xs text-neutral-500">
                   {stateLabel(r.state)}
                 </span>
@@ -334,5 +361,31 @@ function QueueGroup({ groupKey, members, groupBy, rows, risk }: {
         </ol>
       )}
     </section>
+  );
+}
+
+/** v291 · The five closed-vocabulary departments, selectable inside the surface.
+ *  Keys come from DEPARTMENT_KEYS so the picker can never offer a department
+ *  validate_projection_filter() would refuse; words come from the label pack. */
+function DepartmentPicker({ active, groupBy }: { active: string; groupBy: string }) {
+  const qs = groupBy ? `?group_by=${encodeURIComponent(groupBy)}` : "";
+  return (
+    <nav data-department-picker data-active={active} className="flex flex-wrap gap-1.5">
+      {DEPARTMENT_KEYS.map((key) => (
+        <Link
+          key={key}
+          href={`/operations/departments/${key}${qs}`}
+          data-picker-option={key}
+          data-picker-active={String(key === active)}
+          className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+            key === active
+              ? "border-neutral-800 bg-neutral-800 text-white"
+              : "border-neutral-300 text-neutral-600 hover:border-neutral-500 hover:text-neutral-900"
+          }`}
+        >
+          {departmentLabel(key)}
+        </Link>
+      ))}
+    </nav>
   );
 }

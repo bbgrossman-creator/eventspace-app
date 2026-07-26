@@ -146,6 +146,51 @@ export interface DaySheetData {
   risk: RiskFinding[];
 }
 
+/** v291 · responsibility_detail() returns a BARE OBJECT, not an envelope: it
+ *  carries no counts, no scope and no as_of, because it describes one
+ *  responsibility rather than a projected set. It is shaped field-for-field by
+ *  responsibility_detail() (v287a) and is NOT extended here.
+ *
+ *  Note what is absent: there is no `risk` key and no assignment-evidence flag.
+ *  Risk is fetched separately and scoped honestly (see feed.ts); assignment
+ *  presence is not exposed by any projection and is therefore never claimed. */
+export interface OwnershipEntry {
+  action: string;
+  owner: string | null;
+  prior_owner: string | null;
+  actor: string | null;
+  moment: string;
+}
+
+export interface EvidenceEntry {
+  kind: string;
+  actor: string | null;
+  moment: string;
+  payload: Record<string, unknown> | null;
+}
+
+export interface ResponsibilityAnchors {
+  origin_kind: string | null;
+  origin_ref: string | null;
+  origin_revision: string | null;
+  declared: Record<string, unknown> | null;
+}
+
+export interface ResponsibilityDetail {
+  /** The same projected row a list surface shows — one state, one owner. */
+  row: ResponsibilityRow | null;
+  anchors: ResponsibilityAnchors;
+  /** The ownership ledger, ordered by seq. This IS the ownership history:
+   *  ownership_history() returns these same rows from the same table with the
+   *  same filter, so calling it as well would be a second request for data
+   *  already in hand. */
+  ownership: OwnershipEntry[];
+  evidence: EvidenceEntry[];
+  dependencies: string[];
+  supersedes: string | null;
+  superseded_by: string | null;
+}
+
 export type OperationsTodayEnvelope = Envelope<OperationsTodayData>;
 export type EventCommandEnvelope = Envelope<EventCommandData>;
 export type DepartmentQueueEnvelope = Envelope<DepartmentQueueData>;

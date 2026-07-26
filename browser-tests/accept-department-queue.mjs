@@ -476,6 +476,44 @@ await T("DQ-20 the surface reads ONE projection envelope per render, and reads n
   if (illegal.length > 0) throw new Error(`surface read tables directly: ${[...new Set(illegal)].join(",")}`);
 });
 
+// ══ v291 additions — clickable rows, the picker, and the chooser ══════════
+await T("DQ-21 rows link to their detail surface and the LIST makes no detail request — no N+1", async () => {
+  await go();
+  rpcCalls = [];
+  await go();
+  const ids = await page.$$eval("[data-row]", (e) => e.map((x) => x.getAttribute("data-row")));
+  if (ids.length === 0) throw new Error("no rows");
+  for (const id of ids) {
+    const link = await page.$(`[data-row-link="${id}"]`);
+    if (!link) throw new Error(`row ${id} is not clickable`);
+    const href = await link.getAttribute("href");
+    if (href !== `/operations/responsibilities/${id}`) throw new Error(`row ${id} links to ${href}`);
+  }
+  if (rpcCalls.includes("responsibility_detail"))
+    throw new Error("the list surface fetched detail per row — this is the N+1 the ruling forbids");
+  const projections = rpcCalls.filter((n) => n.startsWith("projection_"));
+  if (projections.length !== 1) throw new Error(`${projections.length} projection requests for one list render`);
+});
+
+await T("DQ-22 the in-surface picker offers exactly the five closed-vocabulary departments", async () => {
+  const opts = await page.$$eval("[data-picker-option]", (e) => e.map((x) => x.getAttribute("data-picker-option")));
+  const expected = ["culinary", "equipment", "logistics", "staffing", "venue"];
+  if ([...opts].sort().join(",") !== expected.join(",")) throw new Error(`picker offers [${opts.join(",")}]`);
+  const active = await page.$$eval('[data-picker-active="true"]', (e) => e.map((x) => x.getAttribute("data-picker-option")));
+  if (active.join(",") !== "culinary") throw new Error(`active option was [${active.join(",")}]`);
+});
+
+await T("DQ-23 the Departments surface with nothing chosen renders the picker and reads NOTHING", async () => {
+  rpcCalls = [];
+  await page.goto("http://localhost:4299/?department=");
+  await page.waitForSelector("[data-queue][data-outcome='choose']", { state: "attached", timeout: 15000 });
+  const opts = await page.$$eval("[data-picker-option]", (e) => e.length);
+  if (opts !== 5) throw new Error(`${opts} picker options on the chooser`);
+  if (await page.$("[data-row]")) throw new Error("rows rendered without a department chosen");
+  const projections = rpcCalls.filter((n) => n.startsWith("projection_"));
+  if (projections.length !== 0) throw new Error(`the chooser issued ${projections.length} projection request(s)`);
+});
+
 console.log(`\naccept-department-queue: ${passed} passed, ${failed} failed`);
 await browser.close(); server.close();
 sh(`su postgres -c "dropdb --if-exists ${DB}"`);

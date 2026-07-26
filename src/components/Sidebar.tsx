@@ -6,8 +6,6 @@ import { BRAND } from "@/lib/brand";
 import { usePathname } from "next/navigation";
 import { loadCapabilities, Capabilities, CAPS_CHANGED_EVENT } from "@/lib/capabilities";
 import { loadSession, Session, Permission, can } from "@/lib/permissions";
-import { DEPARTMENT_KEYS } from "@/lib/projection/types";
-import { departmentLabel } from "@/lib/projection/labels";
 
 // Nav is DATA. Each item may declare:
 //   cap  — a TENANT capability (does this business have the module?)
@@ -42,21 +40,21 @@ type NavGroup = { title: string; icon: string; items: NavItem[] };
 // `perm: "ops.view"` alone — already in the closed Permission union and already
 // granted to the roles that hold it.
 //
-// The department entries are generated from DEPARTMENT_KEYS, so the shell can
-// never drift from the closed vocabulary that validate_projection_filter()
-// enforces, and their words come from the active label pack — keys are law,
-// labels are configuration (Application Shell §10).
+// Departments is ONE entry. The five constitutional departments are chosen
+// inside the surface, where their words come from the active label pack and
+// their keys come from DEPARTMENT_KEYS — keys are law, labels are configuration
+// (Application Shell §10).
 const OPERATIONS_GROUP: NavGroup[] = [
   {
     title: "Operations", icon: "🧭",
     items: [
       { href: "/operations/today", label: "Today", icon: "📆", perm: "ops.view" },
-      ...DEPARTMENT_KEYS.map((key) => ({
-        href: `/operations/departments/${key}`,
-        label: departmentLabel(key),
-        icon: "📥",
-        perm: "ops.view" as Permission,
-      })),
+      // v291 · ONE rail position. The five closed-vocabulary departments are
+      // selectable INSIDE the Departments surface, not as five equal rail
+      // entries — the rail's group renderer supports a single nesting level
+      // (already spent on Operations), and adding a second would mean
+      // redesigning the navigation data model.
+      { href: "/operations/departments", label: "Departments", icon: "📥", perm: "ops.view" },
       // v294 · { href: "/operations/day-sheet", label: "Day Sheet", ... }
       // v295 · Event Command mounts per event, not as a standing rail entry.
     ],

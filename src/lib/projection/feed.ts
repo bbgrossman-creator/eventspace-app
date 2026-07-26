@@ -8,12 +8,13 @@
  *  to prevent.
  */
 "use client";
-import { fetchProjection, fetchRows, toFilter } from "./client";
+import { fetchProjection, fetchRows, fetchObject, toFilter } from "./client";
 import {
   type ProjectionFilter, type ResponsibilityRow, type GroupBy,
   type OperationsTodayEnvelope, type EventCommandEnvelope,
   type DepartmentQueueEnvelope, type DaySheetEnvelope,
   type Envelope, type FeedData, type RiskFinding,
+  type ResponsibilityDetail,
 } from "./types";
 
 /** The spine, unwrapped. Prefer a composed projection where one exists — one
@@ -86,6 +87,39 @@ export async function daySheet(
     p_group_by: groupBy,
     ...(asOf ? { p_now: asOf } : {}),
   });
+}
+
+/** v291 · One responsibility, in full. ONE request supplies anchors, current
+ *  ownership, the ownership ledger, evidence, dependencies and supersession.
+ *  Returns null when the responsibility does not exist for this tenant. */
+export async function responsibilityDetail(
+  responsibility: string,
+  asOf?: string,
+): Promise<ResponsibilityDetail | null> {
+  return fetchObject<ResponsibilityDetail>("responsibility_detail", {
+    p_responsibility: responsibility,
+    ...(asOf ? { p_now: asOf } : {}),
+  });
+}
+
+/** v291 · Risk for ONE responsibility, scoped as honestly as the closed filter
+ *  grammar permits. There is no `responsibility` key in the grammar, so:
+ *   · an event-scoped responsibility is read as {event: <its event>}
+ *   · a STANDING responsibility has no event, and is read as {scope:'standing'}
+ *  The standing read is therefore BROADER than the one row — every standing
+ *  finding for the tenant comes back and the caller indexes by responsibility.
+ *  That breadth is documented rather than narrowed client-side, because
+ *  re-filtering a projection is the drift PRJ-10 exists to prevent. Narrowing it
+ *  properly would require a grammar change, which is not v291's to make. */
+export async function riskForResponsibility(
+  detail: ResponsibilityDetail,
+  asOf?: string,
+): Promise<RiskFinding[]> {
+  const eventRef = detail.row?.event_ref ?? null;
+  const filter: ProjectionFilter = eventRef
+    ? { event: eventRef }
+    : { scope: "standing" };
+  return riskFindings(filter, asOf);
 }
 
 export async function riskFindings(

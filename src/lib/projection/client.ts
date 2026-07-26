@@ -89,6 +89,28 @@ export async function fetchRows(
   return (data ?? []) as ResponsibilityRow[];
 }
 
+/** v291 · Object-returning reads. `responsibility_detail()` returns a bare
+ *  jsonb object rather than an envelope, so assertEnvelope would reject it. It
+ *  returns SQL NULL when the responsibility does not exist for this tenant —
+ *  which is a genuine "not found", not an error, and is surfaced as null rather
+ *  than fabricated into an empty detail. */
+export async function fetchObject<T>(
+  name: string,
+  params: Record<string, unknown>,
+): Promise<T | null> {
+  const { data, error } = await supabase.rpc(name, params);
+  if (error) throw normalizeRefusal(error.message);
+  if (data === null || data === undefined) return null;
+  if (typeof data !== "object") {
+    throw new ProjectionRefusal(
+      "PROJECTION_SHAPE_INVALID",
+      `${name} did not return an object`,
+      String(data).slice(0, 200),
+    );
+  }
+  return data as T;
+}
+
 /** Serialize a filter for transport. The grammar is closed server-side; this
  *  drops undefined keys so an unset option is never sent as `null` and
  *  mistaken for a value. */

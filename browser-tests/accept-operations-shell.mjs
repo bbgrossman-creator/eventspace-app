@@ -121,20 +121,25 @@ await T("SH-2b no /today entry is advertised — the legacy path is a redirect, 
   if (all.includes("/today")) throw new Error("the rail still advertises the legacy /today path");
 });
 
-// ══ SH-3 · all five constitutional departments ════════════════════════════
-await T("SH-3 every department in the closed vocabulary has a queue entry, and no other does", async () => {
+// ══ SH-3 · Departments is ONE rail position (v291 ruling) ═════════════════
+// v290 asserted five per-department rail entries. That shape was overruled:
+// departments must not consume five equal positions as Operations expands, so
+// these two claims were rewritten to the new ruling rather than retired.
+await T("SH-3 Departments occupies exactly one rail position", async () => {
   const all = await items();
-  const dept = all.filter((h) => h.startsWith("/operations/departments/"));
-  const keys = dept.map((h) => h.split("/").pop()).sort();
-  if (keys.join(",") !== [...DEPARTMENTS].sort().join(","))
-    throw new Error(`rail advertises [${keys.join(",")}]`);
+  const ops = all.filter((h) => h.startsWith("/operations/"));
+  if (!ops.includes("/operations/departments")) throw new Error(`no Departments entry: ${ops.join(" ")}`);
+  const perDept = ops.filter((h) => h.startsWith("/operations/departments/"));
+  if (perDept.length > 0) throw new Error(`the rail still advertises per-department paths: ${perDept.join(" ")}`);
+  const label = await page.textContent('[data-nav-item="/operations/departments"]');
+  if (!label.includes("Departments")) throw new Error(`entry reads "${label.trim()}"`);
 });
 
-await T("SH-3b department words come from the label pack, not the shell", async () => {
-  const label = await page.textContent('[data-nav-item="/operations/departments/culinary"]');
-  if (!label.includes("Prep")) throw new Error(`culinary entry reads "${label.trim()}"`);
-  const eq = await page.textContent('[data-nav-item="/operations/departments/equipment"]');
-  if (!eq.includes("Pulls")) throw new Error(`equipment entry reads "${eq.trim()}"`);
+await T("SH-3b Operations advertises Today and Departments only — it does not grow by department", async () => {
+  const all = await items();
+  const ops = all.filter((h) => h.startsWith("/operations/")).sort();
+  if (ops.join(",") !== "/operations/departments,/operations/today")
+    throw new Error(`Operations advertises [${ops.join(",")}]`);
 });
 
 // ══ SH-4 · Operations is open by default ══════════════════════════════════
@@ -152,8 +157,7 @@ await T("SH-5 Operations survives a tenant with every optional module OFF — it
   if (!(await page.$('[data-nav-group="Operations"]'))) throw new Error("Operations vanished with modules off");
   const all = await items();
   if (!all.includes("/operations/today")) throw new Error("Today vanished with modules off");
-  for (const k of DEPARTMENTS)
-    if (!all.includes(`/operations/departments/${k}`)) throw new Error(`${k} queue vanished with modules off`);
+  if (!all.includes("/operations/departments")) throw new Error("Departments vanished with modules off");
   // control: a genuinely module-gated entry MUST disappear, or the claim is vacuous
   if (all.includes("/price-book")) throw new Error("cap-gated Price Book still rendered — gate is not working");
   if (all.includes("/rolodex")) throw new Error("cap-gated Library still rendered — gate is not working");
@@ -181,15 +185,15 @@ await T("SH-6b signed out, no operations entry renders", async () => {
 });
 
 // ══ SH-7 · active state resolves for nested operations routes ═════════════
-await T("SH-7 a department queue route marks its own rail entry active, not a sibling", async () => {
+await T("SH-7 a nested department route still marks the single Departments entry active, and not Today", async () => {
   await go("?path=/operations/departments/equipment");
   const active = await page.$$eval("[data-nav-item]", (els) => els
     .filter((e) => e.className.includes("bg-white/10"))
     .map((e) => e.getAttribute("data-nav-item")));
-  if (!active.includes("/operations/departments/equipment"))
+  if (!active.includes("/operations/departments"))
     throw new Error(`active entries were [${active.join(",")}]`);
-  if (active.includes("/operations/departments/culinary"))
-    throw new Error("a sibling department also rendered active");
+  if (active.includes("/operations/today"))
+    throw new Error("Today rendered active on a departments route");
 });
 
 // ══ SH-8 · /today is a server redirect (source-level claim) ═══════════════
