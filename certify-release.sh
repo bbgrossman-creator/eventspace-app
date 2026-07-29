@@ -56,7 +56,13 @@ M_MIGRATION=$(mf migration)
 M_ONESHOT=$(mf one_shot);        M_ONESHOT_P=$(mf_path "$M_ONESHOT")
 M_PERMANENT=$(mf permanent)
 M_PERM_REGRESS=$(mf permanent_regress)
-M_RACE=$(mf race_regress)
+# TWO fields, two meanings. `race` is THIS release's own new race proof;
+# `race_regress` is historical races that must keep passing. An absent `race`
+# means "this release introduces no new concurrency contract" — it must never
+# mean "skip the regressions", and reading only race_regress (as an earlier
+# revision did) silently dropped v295's RACE-RP1 from every run.
+M_RACE_OWN=$(mf race)
+M_RACE_REGRESS=$(mf race_regress)
 M_STANDING=$(mf standing_verify)
 M_BROWSER=$(mf browser);          M_BROWSER_P=$(mf_path "$M_BROWSER")
 M_BROWSER_REG=$(mf browser_regress)
@@ -75,9 +81,11 @@ echo "════════════════════════�
 
 if [ "$MODE" = "dry" ]; then
   echo; echo "PLAN (nothing will run):"
+  echo "  0. app integrity : ${M_APP_MARKER:-(not declared)}"
   [ "$MODE" != "verify" ] && { echo "  1. one-shot   : $M_ONESHOT_P"; echo "  2. migration  : $M_MIGRATION"; }
   echo "  3. permanent  : $(mf_path "$M_PERMANENT") $M_PERM_REGRESS"
-  echo "  4. race       : $M_RACE"
+  echo "  4a. release race   : ${M_RACE_OWN:-(none — this release adds no concurrency contract)}"
+  echo "  4b. race regression: ${M_RACE_REGRESS:-(none)}"
   echo "  5. standing   : ${M_STANDING:-no}"
   echo "  6. browser    : $M_BROWSER_P  |  regress: $(mf_path "$M_BROWSER_REG")"
   echo "  7. app gates  : ${EC_APP_GATES:-tsc-wsl}"
@@ -101,6 +109,13 @@ if [ "$MODE" = "browser" ]; then
   exit 0
 fi
 
+# ── APPLICATION INTEGRITY, FIRST ──────────────────────────────────────────
+# Before any expensive or MUTATING work. A half-extracted package must fail in
+# seconds, not after a clone, a migration and twenty minutes of proofs. This
+# gate only reads; it never mutates source.
+# shellcheck disable=SC2086
+[ -n "$M_APP_MARKER" ] && gate_app_integrity "$M_APP_MARKER" $M_APP_FILES
+
 if [ "$MODE" = "full" ]; then
   [ -n "$M_ONESHOT_P" ] && gate_one_shot "$M_ONESHOT_P" "$M_MIGRATION" "$(mf_expect "$M_ONESHOT")"
   [ -n "$M_MIGRATION" ] && gate_migration "$M_MIGRATION"
@@ -119,15 +134,18 @@ else
   gate_verify_deployed "$M_DEPLOYED_MARKER" $M_HARNESS_INSTALL
 fi
 
-# Integrity FIRST: refuse to start a run the package has not fully populated.
-# shellcheck disable=SC2086
-[ -n "$M_APP_MARKER" ] && gate_app_integrity "$M_APP_MARKER" $M_APP_FILES
-
 PERM_ALL="$(mf_path "$M_PERMANENT") $M_PERM_REGRESS"
 [ -n "$(printf '%s' "$PERM_ALL" | tr -d ' ')" ] && gate_permanent "$PERM_ALL"
 
+# The release's OWN race first: if this release's concurrency contract is
+# broken there is no point proving older ones still hold. gate_fail exits, so a
+# release-race failure stops before any regression runs.
+# Both modes run it: race proofs own disposable clones of ec, and in --verify the
+# release is already deployed, so the clone carries it.
 # shellcheck disable=SC2086
-[ -n "$M_RACE" ] && gate_race $M_RACE
+[ -n "$M_RACE_OWN" ]     && gate_race "release race"    $M_RACE_OWN
+# shellcheck disable=SC2086
+[ -n "$M_RACE_REGRESS" ] && gate_race "race regression" $M_RACE_REGRESS
 
 [ "$M_STANDING" = "yes" ] && gate_standing
 

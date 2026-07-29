@@ -67,16 +67,22 @@ gate_standing() {
 }
 
 # ── race regressions ───────────────────────────────────────────────────────
-gate_race() {  # $@ = race scripts
+# $1 = kind label ("release race" | "race regression"), $@ = scripts.
+# The two kinds are reported distinctly because they mean different things: a
+# release race proves THIS release's concurrency contract; a regression proves an
+# earlier one still holds. Collapsing them into one list is how v295's RACE-RP1
+# went unexecuted while the run still reported green.
+gate_race() {
+  local kind="$1"; shift
   for r in "$@"; do
     [ -z "$r" ] && continue
-    gate_begin "race regression: $(basename "$r")"
+    gate_begin "$kind: $(basename "$r")"
     local c="sudo bash $r"; gate_cmd "$c"
     local out rc
     out=$(cd "$EC_REPO" && sudo -E env "PATH=$PATH" bash "$r" 2>&1); rc=$?
     local line; line=$(printf '%s' "$out" | grep -E "RACE-[A-Z0-9]+ (PASS|FAIL|INDETERMINATE)" | tail -1)
     [ "$rc" -eq 4 ] && gate_fail "$c" "INDETERMINATE — backends did not interleave. Rerun; raise BARRIER if it recurs." "$out"
-    [ "$rc" -ne 0 ] && gate_fail "$c" "exit $rc — ${line:-no result line}" "$out"
+    [ "$rc" -ne 0 ] && gate_fail "$c" "$kind failed: exit $rc — ${line:-no result line}" "$out"
     gate_ok "$line"
   done
 }

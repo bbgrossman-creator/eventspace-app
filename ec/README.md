@@ -53,6 +53,26 @@ The shared `node_modules` is only ever **read**. Each isolated install writes a
 `package.json` first — without one, npm walks up the tree and installs into a
 parent instead, which testing caught.
 
+## race vs race_regress
+
+Two fields, two meanings, reported distinctly:
+
+- **`race`** — this release's own new race proof(s). Absent means the release
+  introduces no new concurrency contract; it never means "skip regressions".
+- **`race_regress`** — historical races that must keep passing.
+
+The release race runs first and `gate_fail` exits, so a broken new contract
+stops the run before older ones are re-proved. Both run in `--verify` too: race
+proofs own disposable clones of `ec`, and a deployed release is present in the
+clone. An earlier revision read only `race_regress`, which is how v295's
+RACE-RP1 went unexecuted while the run still reported green.
+
+## Gate order
+
+`gate_app_integrity` runs **first**, before one-shot, migration, harness install,
+proofs, races and browser. A half-extracted package must fail in seconds rather
+than after a clone and a migration. The gate only reads; it never mutates source.
+
 ## Manifests
 
 `ec/manifests/<version>.manifest` declares what a release is. No logic. The
