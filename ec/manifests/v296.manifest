@@ -1,0 +1,16 @@
+# EventCore release manifest — v296 Operations Navigation Registration
+# Phase A closure. Registry data only: no SQL object is deployed, so there is
+# no migration, no one-shot, no permanent proof, no race, no deployed marker and
+# no harness install. Empty fields are skipped by the runner.
+version            v296
+standing_verify    yes
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof
+race_regress       proofs/v292d_race.sh proofs/v293_race.sh
+browser            browser-tests/accept-navigation.mjs          expect 10
+# browser_regress carries ONE shared expect; these two suites differ (8 and 9),
+# so it is omitted rather than stated falsely. The runner prints observed counts
+# and asserts exit status.
+browser_regress    browser-tests/accept-release.mjs browser-tests/accept-preparation-queue.mjs
+app_marker         /operations/preparation
+app_files          src/components/Sidebar.tsx
+git_files          src/components/Sidebar.tsx browser-tests/accept-navigation.mjs ec/manifests/v296.manifest

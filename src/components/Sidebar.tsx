@@ -49,14 +49,23 @@ const OPERATIONS_GROUP: NavGroup[] = [
     title: "Operations", icon: "🧭",
     items: [
       { href: "/operations/today", label: "Today", icon: "📆", perm: "ops.view" },
+      // v296 · Phase A closure. The Preparation Queue (v294) and the Day Sheet
+      // (v292e) were certified and shipped but never registered, so neither was
+      // reachable without typing a URL — v294's whole mission is that an
+      // operator can FIND an unreleased promise, and the surface answering it
+      // was invisible. Two registry rows, exactly as this file's own header
+      // says: adding a door is one line, never a showX boolean.
+      { href: "/operations/preparation", label: "Preparation", icon: "🧾", perm: "ops.view" },
+      { href: "/operations/day", label: "Day Sheet", icon: "🗓️", perm: "ops.view" },
       // v291 · ONE rail position. The five closed-vocabulary departments are
       // selectable INSIDE the Departments surface, not as five equal rail
       // entries — the rail's group renderer supports a single nesting level
       // (already spent on Operations), and adding a second would mean
       // redesigning the navigation data model.
       { href: "/operations/departments", label: "Departments", icon: "📥", perm: "ops.view" },
-      // v294 · { href: "/operations/day-sheet", label: "Day Sheet", ... }
       // v295 · Event Command mounts per event, not as a standing rail entry.
+      // Occurrence Prep and Responsibility Detail mount per entity for the same
+      // reason: they need an id, so they are reached from a surface, not a rail.
     ],
   },
 ];
@@ -238,7 +247,8 @@ export default function Sidebar() {
   );
 
   // One renderer for every titled group — Operations and back office alike, so
-  // v294's Day Sheet entry is a one-line addition rather than new markup.
+  // v296's Preparation and Day Sheet entries are one-line additions rather than
+  // new markup.
   function renderGroup(g: NavGroup) {
           const isOpen = !!open[g.title];
           const hasActive = g.items.some((i) => path.startsWith(i.href));
