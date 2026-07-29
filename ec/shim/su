@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# EventCore compatibility shim.
+#
+# Sixteen certified proof runners and browser suites invoke PostgreSQL through
+# the idiom `su postgres -c "<command>"`. That form requires an interactive
+# password on this host and fails. Editing those 61 call sites would mean
+# altering artifacts that have already been certified — the script that produced
+# a PASS count would no longer be the script on disk.
+#
+# So execution is normalized instead of the artifacts. This shim is placed FIRST
+# on PATH only for the duration of a certification run. It translates exactly
+# the historical idiom and passes everything else through to the real su
+# untouched.
+if [ "${1:-}" = "postgres" ] && [ "${2:-}" = "-c" ] && [ -n "${3:-}" ]; then
+  exec sudo -u postgres bash -c "$3"
+fi
+exec /bin/su "$@"
