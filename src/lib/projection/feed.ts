@@ -18,6 +18,8 @@ import {
   type OccurrenceBriefEnvelope,
   type OccurrencesForOperationalDayEnvelope,
   type OccurrencesForOperationalDayData,
+  type PreparationQueueEnvelope,
+  type PreparationQueueData,
 } from "./types";
 
 /** The spine, unwrapped. Prefer a composed projection where one exists — one
@@ -124,6 +126,19 @@ export async function occurrencesForOperationalDay(
       ...(asOf ? { p_now: asOf } : {}),
     },
   ) as Promise<OccurrencesForOperationalDayEnvelope>;
+}
+
+/** v294 · The Preparation Queue: every active, unreleased occurrence — the
+ *  engagement-side lens of the promise lifecycle before release. Call with no
+ *  arguments; SQL owns the clock. fetchProjection, never fetchObject: this
+ *  projection always returns an envelope, so name and version guards apply. */
+export async function preparationQueue(
+  asOf?: string,
+): Promise<PreparationQueueEnvelope> {
+  return fetchProjection<PreparationQueueData>(
+    "projection_preparation_queue",
+    { ...(asOf ? { p_now: asOf } : {}) },
+  ) as Promise<PreparationQueueEnvelope>;
 }
 
 export async function occurrenceBrief(

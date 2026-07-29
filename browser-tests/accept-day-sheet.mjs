@@ -23,13 +23,13 @@ const psql = (sql, db = DB) => {
   const f = `/tmp/v292e_${Math.random().toString(36).slice(2)}.sql`;
   writeFileSync(f, sql); chmodSync(f, 0o644);
   try {
-    return execFileSync("su", ["postgres", "-c", `psql -d ${db} -tA -v ON_ERROR_STOP=1 -f ${f}`],
+    return execFileSync("sudo", ["-u", "postgres", "sh", "-c", `psql -d ${db} -tA -v ON_ERROR_STOP=1 -f ${f}`],
       { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
   } finally { try { unlinkSync(f); } catch { /* ignore */ } }
 };
 const sh = (cmd) => execFileSync("sh", ["-c", cmd], { encoding: "utf8" }).trim();
 
-sh(`su postgres -c "dropdb --if-exists ${DB}" ; su postgres -c "createdb -T ec ${DB}"`);
+sh(`sudo -u postgres sh -c "dropdb --if-exists ${DB}" ; sudo -u postgres sh -c "createdb -T ec ${DB}"`);
 
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu
@@ -388,11 +388,60 @@ await T("DS-15 the surface invokes no ceremony and performs zero writes", async 
 });
 
 // ══ DS-16 · tenant isolation ══════════════════════════════════════════════
-await T("DS-16 an anonymous read is empty at the DATABASE, independently of the client", async () => {
-  const anon = psql(`select public.projection_occurrences_for_operational_day(null)->'counts'->>'total'`).split("\n").pop();
-  if (anon !== "0") throw new Error(`anonymous read returned ${anon} occurrences`);
-  const anonWork = psql(`select public.projection_day_sheet(date '${DAY}','department')->'counts'->>'total'`).split("\n").pop();
-  if (anonWork !== "0") throw new Error(`anonymous work read returned ${anonWork} rows`);
+// AMENDED during v294 certification. The original claim asserted an EMPTY
+// ENVELOPE, generalised from v288 UI-9b's certified contract for
+// projection_operations_today. That generalisation was wrong.
+//
+// projection_occurrences_for_operational_day must RESOLVE the operational day
+// from tenant configuration — timezone, day-start hour — and echoes all three
+// in scope. With no tenant it cannot compute any of them, so an "empty
+// envelope" would require fabricating a scope it never derived. Refusing with
+// PROJECTION_SCOPE_REQUIRED is the only honest answer, and it is v292d's
+// original certified behaviour: no migration since (v292d1 touched only
+// projection_day_sheet; v293 added exactly two functions with delegates
+// byte-identical; v294 added exactly one) can have altered it.
+//
+// projection_operations_today differs structurally — its scope is {} — so an
+// empty envelope is honest there. Different requirement, different lawful
+// contract.
+//
+// The claim's PURPOSE is unchanged and is not weakened: no tenant data may be
+// exposed anonymously. Both an empty envelope and an explicit refusal satisfy
+// that; rows do not. A refusal must be TENANT-SCOPED, so an incidental error
+// cannot pass this gate by accident.
+await T("DS-16 an anonymous read exposes NO tenant data — empty envelope or explicit tenant refusal, never rows", async () => {
+  const probe = (sql) => {
+    try { return { ok: true, out: psql(sql).split("\n").pop() }; }
+    catch (e) { return { ok: false, err: String(e.stderr || e.message || e).replace(/\s+/g, " ") }; }
+  };
+
+  for (const [label, sql, rowsKey] of [
+    ["occurrences_for_operational_day",
+     `select public.projection_occurrences_for_operational_day(null)::text`, "occurrences"],
+    ["day_sheet",
+     `select public.projection_day_sheet(date '${DAY}','department')::text`, "responsibilities"],
+  ]) {
+    const r = probe(sql);
+    if (r.ok) {
+      const env = JSON.parse(r.out);
+      const total = Number(env?.counts?.total ?? -1);
+      const rows = (env?.data?.[rowsKey] ?? []).length;
+      if (total !== 0 || rows !== 0)
+        throw new Error(`${label}: anonymous read exposed data — total=${total} rows=${rows}`);
+    } else {
+      if (!/PROJECTION_SCOPE_REQUIRED|TENANT/i.test(r.err))
+        throw new Error(`${label}: refused, but not with a tenant-scope refusal — ${r.err.slice(0, 160)}`);
+    }
+  }
+
+  // The spine itself must be empty rather than refusing — certified by v288
+  // UI-9b, and the deepest guarantee here: responsibility_feed filters on
+  // tenant_id = current_tenant_id(), which is NULL anonymously, so no row can
+  // match. If this ever refuses instead, the isolation model has changed and
+  // that IS a regression.
+  const feed = probe(`select count(*) from public.responsibility_feed('{}'::jsonb)`);
+  if (!feed.ok) throw new Error(`responsibility_feed refused anonymously; v288 UI-9b certifies it returns 0 rows — ${feed.err.slice(0, 160)}`);
+  if (feed.out !== "0") throw new Error(`anonymous responsibility_feed returned ${feed.out} rows`);
 });
 
 // ══ refusal and transport remain distinguishable ══════════════════════════
@@ -409,5 +458,5 @@ await T("DS-17 a genuine SQL refusal renders honestly — no stale lens, no inve
 console.log(`\naccept-day-sheet: ${passed} passed, ${failed} failed`);
 await browser.close(); server.close();
 try { unlinkSync(join(here, "stub-link.tsx")); } catch { /* ignore */ }
-sh(`su postgres -c "dropdb --if-exists ${DB}"`);
+sh(`sudo -u postgres sh -c "dropdb --if-exists ${DB}"`);
 process.exit(failed === 0 ? 0 : 1);

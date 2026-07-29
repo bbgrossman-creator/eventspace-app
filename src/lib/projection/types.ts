@@ -306,6 +306,7 @@ export const SUPPORTED_VERSIONS: Record<string, number> = {
   department_queue: 1,
   day_sheet: 1,
   occurrences_for_operational_day: 1,
+  preparation_queue: 1,
 };
 
 /** Structural guard used by the client before trusting a payload as an
@@ -380,3 +381,16 @@ export type OccurrencesForOperationalDayEnvelope =
   Envelope<OccurrencesForOperationalDayData, OperationalDayScope> &
   { counts: OccurrencesForOperationalDayCounts };
 
+/** v294 · The Engagement Preparation Queue. Membership is the frozen ruling:
+ *  active AND NOT has_event. The operating date is presentation data — it
+ *  orders the list and is displayed; it never determines membership. Rows are
+ *  the brief's list grain, unmodified (reuses OccurrenceDayRow, whose fields
+ *  are the same certified pass-through). */
+export interface PreparationQueueScope { basis: "unreleased"; }
+export interface PreparationQueueData { occurrences: OccurrenceDayRow[]; }
+export interface PreparationQueueCounts {
+  total: number; incomplete: number; undated: number;
+}
+export type PreparationQueueEnvelope =
+  Envelope<PreparationQueueData, PreparationQueueScope> &
+  { counts: PreparationQueueCounts };
