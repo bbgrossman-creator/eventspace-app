@@ -180,6 +180,29 @@ gate_browser() {  # $1 script, $2 expected passed
   gate_ok "${line:-completed}  (expected $2 passed)"
 }
 
+# ── pre-certification integrity ───────────────────────────────────────────
+# The release package must be COMPLETE before certification starts. This gate
+# verifies that the application files the manifest names already carry the
+# release's marker, and refuses to start otherwise. It never mutates source:
+# certification that edits application code halfway through a run is not
+# certification.
+gate_app_integrity() {  # $1 = marker, $@ = files (relative to EC_REPO)
+  local marker="$1"; shift
+  [ -z "$marker" ] && return 0
+  gate_begin "pre-certification integrity: application files carry $marker"
+  local missing=""
+  for f in "$@"; do
+    [ -z "$f" ] && continue
+    [ -f "$EC_REPO/$f" ] || { missing="$missing $f(absent)"; continue; }
+    grep -q -- "$marker" "$EC_REPO/$f" || missing="$missing $f"
+  done
+  if [ -n "$missing" ]; then
+    gate_fail "grep -l '$marker' <app files>" \
+      "the release package is not fully applied — these files do not carry the marker:$missing. Re-extract the release ZIP before certifying; do not hand-edit."
+  fi
+  gate_ok "$# file(s) verified"
+}
+
 # ── application gates ──────────────────────────────────────────────────────
 # `npm run lint` deliberately absent: this repository has only dev/build/start.
 gate_app() {
@@ -207,14 +230,55 @@ gate_app() {
 }
 
 # ── install a permanent proof into the standing harness ───────────────────
+# Runs AFTER a successful migration and BEFORE the permanent-proof gate: the
+# proof cannot execute through verify.sh until it exists in the harness, and it
+# must not be installed for a release whose migration failed.
 gate_harness_install() {  # $@ = files relative to the release
   for f in "$@"; do
     [ -z "$f" ] && continue
     gate_begin "install into standing harness: $(basename "$f")"
-    local dest="$EC_HARNESS/supabase/tests/$(basename "$f")"
-    cp "$EC_REPO/$f" "$dest" || gate_fail "cp $f $dest" "copy failed"
+    local src="$EC_REPO/$f" dest="$EC_HARNESS/supabase/tests/$(basename "$f")"
+    [ -f "$src" ] || gate_fail "cp $src $dest" "the release does not contain $f — re-extract the release ZIP"
+    [ -d "$EC_HARNESS/supabase/tests" ] || gate_fail "cp $src $dest" "harness path absent: $EC_HARNESS/supabase/tests"
+    cp "$src" "$dest" || gate_fail "cp $src $dest" "copy failed"
+    [ -f "$dest" ] || gate_fail "cp $src $dest" "copy reported success but the file is absent"
     gate_ok "$dest"
     printf '     NOTE  verify.sh STANDING does not list this proof, so the standing\n'
     printf '           floor will not include it until you rule on adding it.\n'
+  done
+}
+
+# --verify completes an already-deployed release. The permanent proof can only be
+# installed once the migration is CONFIRMED live, so the deployed marker is
+# checked against the database first. Verifying a release that is not deployed
+# fails precisely rather than installing a proof for absent SQL.
+gate_verify_deployed() {  # $1 marker function name, $2.. = harness files
+  local marker="$1"; shift
+  [ -z "$marker" ] && { gate_begin "deployed check"; gate_ok "no marker declared — skipped"; return 0; }
+  gate_begin "confirm the release is deployed to $EC_DB"
+  local c="$EC_PSQL_ADMIN psql -d $EC_DB -tAc \"select count(*) ... proname='$marker'\""
+  gate_cmd "$c"
+  local n
+  n=$($EC_PSQL_ADMIN psql -X -A -t -d "$EC_DB" -c \
+        "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+          where n.nspname='public' and p.proname='$marker'" 2>&1 | tail -1)
+  [ "$n" = "0" ] && gate_fail "$c" "$marker is absent from $EC_DB — this release is NOT deployed, so --verify cannot certify it. Run a full pass on a database that predates the release."
+  case "$n" in ''|*[!0-9]*) gate_fail "$c" "could not read the catalog: [$n]";; esac
+  gate_ok "$marker present — release is live"
+
+  for f in "$@"; do
+    [ -z "$f" ] && continue
+    local dest="$EC_HARNESS/supabase/tests/$(basename "$f")"
+    if [ -f "$dest" ]; then
+      gate_begin "standing harness already carries $(basename "$f")"; gate_ok
+    else
+      gate_begin "standing harness is MISSING $(basename "$f") — completing the install"
+      printf '     The release is deployed but its permanent proof was never installed,\n'
+      printf '     so the deployment was incomplete. Installing it now from the checkout.\n'
+      [ -f "$EC_REPO/$f" ] || gate_fail "cp $EC_REPO/$f $dest" "the checkout does not contain $f — re-extract the release ZIP"
+      cp "$EC_REPO/$f" "$dest" || gate_fail "cp $EC_REPO/$f $dest" "copy failed"
+      [ -f "$dest" ] || gate_fail "cp $EC_REPO/$f $dest" "copy reported success but the file is absent"
+      gate_ok "$dest"
+    fi
   done
 }

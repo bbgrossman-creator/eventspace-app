@@ -34,7 +34,7 @@ import { loadSession } from "@/lib/permissions";
 import {
   CeremonyRefusal, MILESTONE_KEYS, listVenues,
   setOccurrenceProfile, setEngagementProfile, commitAttendance,
-  setScheduleMilestone, bindOccurrenceVenue, bindOccurrenceSupervision,
+  setScheduleMilestone, bindOccurrenceVenue, bindOccurrenceSupervision, releasePromise,
   type AttendanceBasis, type MilestoneKey,
 } from "@/lib/promise/ceremonies";
 
@@ -57,6 +57,13 @@ const FACTS = [
 ] as const;
 type FactId = (typeof FACTS)[number]["id"];
 
+/** v295 · Which disclosure panel is open. Every FACT can open one, and so can
+ *  RELEASE — but release is NOT a fact and must never join the FACTS array:
+ *  that array drives the completeness ledger, its length is rendered as
+ *  "of N facts recorded", and the eight-key vocabulary is SQL's, not the
+ *  client's. Widening the panel key here keeps the ledger honest. */
+type PanelId = FactId | "release";
+
 const BASES: AttendanceBasis[] = ["estimated", "contracted", "guaranteed", "final"];
 
 export default function OccurrencePrep({
@@ -64,7 +71,7 @@ export default function OccurrencePrep({
 }: { occurrence: string; pack?: string }) {
   const [outcome, setOutcome] = useState<Outcome>({ kind: "loading" });
   const [trusted, setTrusted] = useState<boolean | null>(null);
-  const [open, setOpen] = useState<FactId | null>(null);
+  const [open, setOpen] = useState<PanelId | null>(null);
   const [refusal, setRefusal] = useState<{ code: string; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [venues, setVenues] = useState<Array<{ id: string; name: string }>>([]);
@@ -202,6 +209,76 @@ export default function OccurrencePrep({
           )}
         </p>
       </header>
+
+      {/* ── v295 · RELEASE — the boundary between the two frozen questions ───
+          Composed into the existing run() wrapper: ceremony, clear form,
+          await reload(), verbatim refusal. No new pattern, no optimistic
+          state. The regime badge above flips to "Released — under execution"
+          on the re-read, BY DERIVATION — nothing here sets it. */}
+      {!released && d.identity.active && (
+        <section data-release className="mb-4 rounded border border-teal-200 bg-teal-50/40 p-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-medium text-teal-900">Release into execution</h2>
+            {/* Completeness INFORMS the decision. It never gates it (v292a). */}
+            <span data-release-readiness className="text-xs text-neutral-600">
+              {b.counts.missing_promise_facts === 0
+                ? "every promise fact recorded"
+                : `${b.counts.missing_promise_facts} fact(s) still missing — you may still release`}
+            </span>
+          </div>
+
+          {open !== "release" ? (
+            <button data-release-action onClick={() => { setRefusal(null); setOpen("release"); }}
+                    className="mt-2 rounded bg-teal-700 px-3 py-1.5 text-xs font-medium text-white">
+              Release…
+            </button>
+          ) : (
+            <div data-release-form className="mt-3 space-y-2">
+              <p className="text-xs text-neutral-600">
+                Release requires an operator sign-off and either a clearance or a
+                waiver. An accepted, unrescinded offer must already exist.
+              </p>
+              <input data-input="signoff_ref" value={f("signoff_ref")}
+                     onChange={(e) => set("signoff_ref", e.target.value)}
+                     placeholder="sign-off reference"
+                     className="w-full rounded border px-2 py-1 text-sm" />
+              <input data-input="clearance_ref" value={f("clearance_ref")}
+                     onChange={(e) => set("clearance_ref", e.target.value)}
+                     placeholder="clearance reference"
+                     className="w-full rounded border px-2 py-1 text-sm" />
+              <input data-input="waiver_ref" value={f("waiver_ref")}
+                     onChange={(e) => set("waiver_ref", e.target.value)}
+                     placeholder="waiver reference (instead of clearance)"
+                     className="w-full rounded border px-2 py-1 text-sm" />
+              {/* v295 §3 · the refusal IS the business rule speaking. run()
+                  catches ceremony refusals into `refusal`, but the existing
+                  ceremony-refusal markup renders only inside FACTS.map — and
+                  release is a PanelId, not a FactId. Without this the operator
+                  sees nothing at all when a release is refused. Same pattern
+                  and same hook as the fact forms; that one is not moved. */}
+              {refusal && (
+                <span data-ceremony-refusal={refusal.code} className="text-xs text-rose-700">
+                  <span className="font-mono">{refusal.code}</span>
+                  {refusal.message ? ` — ${refusal.message}` : ""}
+                </span>
+              )}
+              <div className="flex gap-2">
+                <button data-release-submit disabled={saving}
+                        onClick={() => run(() => releasePromise(d.identity.occurrence, {
+                          signoffRef:   f("signoff_ref")   || undefined,
+                          clearanceRef: f("clearance_ref") || undefined,
+                          waiverRef:    f("waiver_ref")    || undefined,
+                        }))}
+                        className="rounded bg-teal-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
+                  {saving ? "Releasing…" : "Release"}
+                </button>
+                <button onClick={() => { setOpen(null); setForm({}); }}
+                        className="rounded px-3 py-1.5 text-xs text-neutral-600">Cancel</button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── WHAT IS COMPLETE, WHAT REMAINS ───────────────────────────────── */}
       <section data-readiness className="mb-5 rounded border border-neutral-200 p-3">

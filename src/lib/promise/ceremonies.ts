@@ -41,6 +41,8 @@ export const CEREMONY_REFUSALS = [
   "VENUE_REDIRECTED",
   "OCCURRENCE_RELEASED",
   "OCCURRENCE_CANCELLED",
+  "RELEASE_PREDICATE_UNSATISFIED",
+  "RELEASE_ALREADY_RELEASED",
   "CEREMONY_NOT_FOUND",
 ] as const;
 
@@ -142,6 +144,34 @@ export const bindOccurrenceSupervision = (
   p_certificate_ref: opts.certificateRef ?? null, p_contact: opts.contact ?? null,
   p_reason: opts.reason ?? null,
 });
+
+/** v295 · Cross the release boundary — the moment a promise becomes work.
+ *
+ *  The certified predicate in release_occurrence is layered and default-deny:
+ *  commitment (an unrescinded acceptance), clearance (a clearance OR waiver
+ *  ref), and an operator sign-off. Each limb refuses by name and those refusals
+ *  reach the surface verbatim, per this module's standing contract.
+ *
+ *  COMPLETENESS IS NOT IN THAT PREDICATE. An incomplete occurrence may lawfully
+ *  be released (v292a), so this client must never pre-check one — doing so would
+ *  reimplement a rule SQL deliberately does not have.
+ *
+ *  The actor is NOT a parameter. release_promise derives it server-side via
+ *  action_actor(); the raw release_occurrence takes one, which is precisely why
+ *  the wrapper exists.
+ *
+ *  The refs are operator-supplied today. Phase B (Agreement Origin) will make
+ *  them flow from the Agreement; the typed path stays lawful forever. */
+export const releasePromise = (
+  occurrence: string,
+  refs: { signoffRef?: string; clearanceRef?: string; waiverRef?: string },
+) => invoke<{ event_id: string; occurrence_id: string; generated_count: number }>(
+  "release_promise", {
+    p_occurrence: occurrence,
+    p_signoff_ref: refs.signoffRef ?? null,
+    p_clearance_ref: refs.clearanceRef ?? null,
+    p_waiver_ref: refs.waiverRef ?? null,
+  });
 
 /** REFERENCE DATA, not operational truth. The venue catalogue is a list of
  *  places the tenant owns records for — it carries no derived state, no

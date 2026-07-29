@@ -9,5 +9,6 @@ race_regress       proofs/v292d_race.sh proofs/v293_race.sh
 standing_verify    yes
 browser            browser-tests/accept-preparation-queue.mjs   expect 9
 browser_regress    browser-tests/accept-day-sheet.mjs           expect 18
+deployed_marker    projection_preparation_queue
 harness_install    supabase/tests/v294_permanent_proof.sql
 git_files          supabase/v294_preparation_queue.sql supabase/tests/v294_permanent_proof.sql proofs/v294_proofs.sh browser-tests/accept-preparation-queue.mjs browser-tests/accept-day-sheet.mjs src/lib/projection/types.ts src/lib/projection/feed.ts src/lib/projection/labels.ts src/app/operations/preparation/page.tsx src/components/preparation/PreparationQueue.tsx

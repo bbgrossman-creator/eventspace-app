@@ -61,6 +61,9 @@ M_STANDING=$(mf standing_verify)
 M_BROWSER=$(mf browser);          M_BROWSER_P=$(mf_path "$M_BROWSER")
 M_BROWSER_REG=$(mf browser_regress)
 M_HARNESS_INSTALL=$(mf harness_install)
+M_APP_MARKER=$(mf app_marker)
+M_DEPLOYED_MARKER=$(mf deployed_marker)
+M_APP_FILES=$(mf app_files)
 M_GIT=$(mf git_files)
 
 echo "═══════════════════════════════════════════════════════════════"
@@ -101,11 +104,24 @@ fi
 if [ "$MODE" = "full" ]; then
   [ -n "$M_ONESHOT_P" ] && gate_one_shot "$M_ONESHOT_P" "$M_MIGRATION" "$(mf_expect "$M_ONESHOT")"
   [ -n "$M_MIGRATION" ] && gate_migration "$M_MIGRATION"
+  # ORDER IS LOAD-BEARING: the permanent proof executes THROUGH verify.sh, which
+  # reads it from the harness. Installing after the permanent gate — as an
+  # earlier revision did — guarantees "MISSING" on every first release. It
+  # installs only once the migration has succeeded, so a failed release never
+  # leaves its proof behind.
+  # shellcheck disable=SC2086
+  [ -n "$M_HARNESS_INSTALL" ] && gate_harness_install $M_HARNESS_INSTALL
 else
   gate_begin "one-shot + migration"
   gate_ok "SKIPPED in --verify: $VERSION is already deployed. The one-shot clones"
   printf '          a pre-release database and would abort against a migrated one.\n'
+  # shellcheck disable=SC2086
+  gate_verify_deployed "$M_DEPLOYED_MARKER" $M_HARNESS_INSTALL
 fi
+
+# Integrity FIRST: refuse to start a run the package has not fully populated.
+# shellcheck disable=SC2086
+[ -n "$M_APP_MARKER" ] && gate_app_integrity "$M_APP_MARKER" $M_APP_FILES
 
 PERM_ALL="$(mf_path "$M_PERMANENT") $M_PERM_REGRESS"
 [ -n "$(printf '%s' "$PERM_ALL" | tr -d ' ')" ] && gate_permanent "$PERM_ALL"
@@ -123,8 +139,6 @@ for b in $(mf_path "$M_BROWSER_REG"); do
   gate_browser "$b" "${BR_EXPECT:-?}"
 done
 
-[ "$MODE" = "full" ] && [ -n "$M_HARNESS_INSTALL" ] && gate_harness_install $M_HARNESS_INSTALL
-
 ELAPSED=$(( $(date +%s) - START ))
 echo
 echo "═══════════════════════════════════════════════════════════════"
@@ -135,7 +149,8 @@ if [ "${EC_MANUAL_BUILD:-0}" = "1" ] || [ "$MODE" = "full" ]; then
   echo
   echo " REMAINING — Windows / VS Code PowerShell:"
   [ "${EC_MANUAL_BUILD:-0}" = "1" ] && echo "   npm run build"
-  if [ "$MODE" = "full" ] && [ -n "$M_GIT" ]; then
+  if [ -n "$M_GIT" ]; then
+    [ "$MODE" = "verify" ] && echo "   (only if $VERSION is not yet committed)"
     echo "   git add $M_GIT"
     echo "   git diff --cached --check && git diff --cached --stat"
     echo "   git commit -m \"Deploy $VERSION\""
