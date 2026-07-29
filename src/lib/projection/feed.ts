@@ -16,6 +16,8 @@ import {
   type Envelope, type FeedData, type RiskFinding,
   type ResponsibilityDetail,
   type OccurrenceBriefEnvelope,
+  type OccurrencesForOperationalDayEnvelope,
+  type OccurrencesForOperationalDayData,
 } from "./types";
 
 /** The spine, unwrapped. Prefer a composed projection where one exists — one
@@ -101,6 +103,29 @@ export async function daySheet(
  *  several projections: the envelope carries one as_of and one truth_version,
  *  and assembling the same picture from multiple reads reintroduces exactly the
  *  incoherence the single-snapshot rule exists to prevent. */
+/** v292e · The Promise lens of the Day Sheet. Call it with NO day and NO asOf:
+ *  SQL resolves the current tenant operational day from
+ *  operational_day_of(p_now, tenant tz, tenant day-start) and reports the result
+ *  in `scope.day`, alongside the timezone and day-start hour it used.
+ *
+ *  The resolved `scope.day` and the echoed `as_of` are the certified composition
+ *  handoff to the Work lens: pass both to daySheet() so the two lenses describe
+ *  the same operational day at the same evaluation moment. The client derives
+ *  neither. Computing a day with JavaScript Date, or generating a second clock
+ *  for the second read, is exactly the drift this handoff exists to prevent. */
+export async function occurrencesForOperationalDay(
+  day?: string | null,
+  asOf?: string,
+): Promise<OccurrencesForOperationalDayEnvelope> {
+  return fetchProjection<OccurrencesForOperationalDayData>(
+    "projection_occurrences_for_operational_day",
+    {
+      p_day: day ?? null,
+      ...(asOf ? { p_now: asOf } : {}),
+    },
+  ) as Promise<OccurrencesForOperationalDayEnvelope>;
+}
+
 export async function occurrenceBrief(
   occurrence: string,
   asOf?: string,

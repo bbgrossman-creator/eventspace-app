@@ -64,12 +64,14 @@ export interface ResponsibilityRow {
 }
 
 /** The SQL-owned envelope. The client never manufactures any of these fields. */
-export interface Envelope<T> {
+export interface Envelope<T, TScope = ProjectionFilter> {
   projection: string;
   version: number;
   as_of: string;
-  /** The filter that produced these contents — makes completeness checkable. */
-  scope: ProjectionFilter;
+  /** What produced these contents — a filter for feed-shaped projections, a
+   *  resolution record for day-scoped ones. Either way it makes completeness
+   *  checkable, and either way SQL owns it. */
+  scope: TScope;
   data: T;
   counts: ProjectionCounts;
   provenance: { truth_version: string };
@@ -303,6 +305,7 @@ export const SUPPORTED_VERSIONS: Record<string, number> = {
   event_command: 1,
   department_queue: 1,
   day_sheet: 1,
+  occurrences_for_operational_day: 1,
 };
 
 /** Structural guard used by the client before trusting a payload as an
@@ -320,3 +323,60 @@ export function isEnvelopeLike(v: unknown): v is Envelope<unknown> {
     typeof o.counts === "object" && o.counts !== null
   );
 }
+
+/** v292e · The Promise lens. Shaped field-for-field by
+ *  projection_occurrences_for_operational_day(); nothing is added or renamed.
+ *
+ *  Its scope is NOT a ProjectionFilter. It is a resolution record: SQL resolved
+ *  the operational day from the tenant calendar and reports which day, in which
+ *  timezone, from which day-start hour. The client reads it; it never derives
+ *  any of the three. */
+export interface OperationalDayScope {
+  day: string;              // a DATE
+  timezone: string;         // IANA zone, tenant-owned
+  day_start_hour: number;   // tenant-owned
+}
+
+/** One occurrence at LIST grain. The detailed view remains the occurrence
+ *  brief; nothing here duplicates it. `missing` and `missing_count` are the
+ *  brief's eight-key completeness, carried unmodified — the client must not
+ *  recount them against a shorter vocabulary of its own (finding C3). */
+export interface OccurrenceDayRow {
+  occurrence: string;
+  engagement: string;
+  ordinal: number;
+  active: boolean;
+  display_name: string | null;
+  client: string | null;
+  client_source: "engagement_profile" | "booking_contact" | null;
+  operating_date: string;   // a DATE, equal to scope.day by construction
+  venue: string | null;
+  attendance: number | null;
+  contracted: number | null;
+  delta: number | null;
+  has_event: boolean;
+  event: string | null;
+  missing: string[];
+  missing_count: number;
+}
+
+export interface OccurrencesForOperationalDayData {
+  day: string;
+  occurrences: OccurrenceDayRow[];
+}
+
+/** released + preparing + cancelled partition total exactly. `incomplete` is
+ *  deliberately NOT part of that partition — it is a cross-cutting readiness
+ *  count over active rows, so the four figures do not sum to total. */
+export interface OccurrencesForOperationalDayCounts {
+  total: number;
+  released: number;
+  preparing: number;
+  cancelled: number;
+  incomplete: number;
+}
+
+export type OccurrencesForOperationalDayEnvelope =
+  Envelope<OccurrencesForOperationalDayData, OperationalDayScope> &
+  { counts: OccurrencesForOperationalDayCounts };
+
