@@ -1,0 +1,353 @@
+ROUTINE accept_offer kind=f vol=v secdef=true config=search_path=public
+ROUTINE action_actor kind=f vol=s secdef=true config=search_path=public
+ROUTINE action_authorized kind=f vol=s secdef=true config=search_path=public
+ROUTINE action_envelope kind=f vol=i secdef=false config=-
+ROUTINE action_evaluate kind=f vol=s secdef=true config=search_path=public
+ROUTINE action_reason_of kind=f vol=i secdef=false config=-
+ROUTINE action_registry kind=f vol=i secdef=true config=search_path=public
+ROUTINE action_required_fields kind=f vol=i secdef=false config=-
+ROUTINE action_target_status kind=f vol=s secdef=true config=search_path=public
+ROUTINE add_venue_space kind=f vol=v secdef=true config=search_path=public
+ROUTINE adopt_engagement kind=f vol=v secdef=true config=search_path=public
+ROUTINE amend_relationship kind=f vol=v secdef=true config=search_path=public
+ROUTINE apply_move_batch kind=f vol=v secdef=false config=search_path=""
+ROUTINE armor kind=f vol=i secdef=false config=-
+ROUTINE armor kind=f vol=i secdef=false config=-
+ROUTINE assign_component_identity kind=f vol=v secdef=true config=search_path=""
+ROUTINE assign_staff kind=f vol=v secdef=true config=search_path=public
+ROUTINE attach_component_profile kind=f vol=v secdef=true config=search_path=public
+ROUTINE attribute_family kind=f vol=i secdef=false config=-
+ROUTINE author_definition_revision kind=f vol=v secdef=false config=search_path=""
+ROUTINE author_profile_revision kind=f vol=v secdef=true config=search_path=public
+ROUTINE available_actions kind=f vol=s secdef=true config=search_path=public
+ROUTINE bind_engagement_venue kind=f vol=v secdef=true config=search_path=public
+ROUTINE bind_occurrence_supervision kind=f vol=v secdef=true config=search_path=public
+ROUTINE bind_occurrence_venue kind=f vol=v secdef=true config=search_path=public
+ROUTINE bind_supervision kind=f vol=v secdef=true config=search_path=public
+ROUTINE blueprint_barred_keys kind=f vol=i secdef=false config=-
+ROUTINE blueprint_condition_eval kind=f vol=i secdef=false config=-
+ROUTINE blueprint_condition_problems kind=f vol=i secdef=false config=-
+ROUTINE blueprint_condition_size kind=f vol=i secdef=false config=-
+ROUTINE blueprint_revision_guard kind=f vol=v secdef=false config=-
+ROUTINE bump_on_version_content kind=f vol=v secdef=false config=-
+ROUTINE bump_version_revision kind=f vol=v secdef=true config=search_path=public
+ROUTINE bump_version_revision_scoped kind=f vol=v secdef=true config=search_path=public
+ROUTINE can_bind_supervision kind=f vol=s secdef=true config=search_path=public
+ROUTINE can_commit_attendance kind=f vol=s secdef=true config=search_path=public
+ROUTINE can_edit_engagement_profile kind=f vol=s secdef=true config=search_path=public
+ROUTINE can_manage_library kind=f vol=s secdef=true config=search_path=public
+ROUTINE can_manage_staffing kind=f vol=s secdef=true config=search_path=public
+ROUTINE can_manage_venues kind=f vol=s secdef=true config=search_path=public
+ROUTINE can_open_occurrence kind=f vol=s secdef=true config=search_path=public
+ROUTINE can_set_schedule kind=f vol=s secdef=true config=search_path=public
+ROUTINE cancel_occurrence kind=f vol=v secdef=true config=search_path=public
+ROUTINE canonical_operational_window kind=f vol=s secdef=true config=search_path=public
+ROUTINE claim_responsibility kind=f vol=v secdef=true config=search_path=public
+ROUTINE clear_schedule_milestone kind=f vol=v secdef=true config=search_path=public
+ROUTINE close_event kind=f vol=v secdef=true config=search_path=public
+ROUTINE commit_attendance kind=f vol=v secdef=true config=search_path=public
+ROUTINE complete_responsibility kind=f vol=v secdef=true config=search_path=public
+ROUTINE component_operational_basis kind=f vol=s secdef=true config=search_path=public
+ROUTINE compose_into_draft kind=f vol=v secdef=true config=search_path=""
+ROUTINE correct_attendance kind=f vol=v secdef=true config=search_path=public
+ROUTINE correct_citation kind=f vol=v secdef=true config=search_path=public
+ROUTINE correct_staffing_assignment kind=f vol=v secdef=true config=search_path=public
+ROUTINE create_library_component kind=f vol=v secdef=true config=search_path=public
+ROUTINE create_venue kind=f vol=v secdef=true config=search_path=public
+ROUTINE crypt kind=f vol=i secdef=false config=-
+ROUTINE current_observation kind=f vol=s secdef=true config=search_path=public
+ROUTINE current_tenant_id kind=f vol=s secdef=true config=search_path=""
+ROUTINE current_venue_binding kind=f vol=s secdef=true config=search_path=public
+ROUTINE day_sheet kind=f vol=s secdef=true config=search_path=public
+ROUTINE dblink kind=f vol=v secdef=false config=-
+ROUTINE dblink kind=f vol=v secdef=false config=-
+ROUTINE dblink kind=f vol=v secdef=false config=-
+ROUTINE dblink kind=f vol=v secdef=false config=-
+ROUTINE dblink_build_sql_delete kind=f vol=v secdef=false config=-
+ROUTINE dblink_build_sql_insert kind=f vol=v secdef=false config=-
+ROUTINE dblink_build_sql_update kind=f vol=v secdef=false config=-
+ROUTINE dblink_cancel_query kind=f vol=v secdef=false config=-
+ROUTINE dblink_close kind=f vol=v secdef=false config=-
+ROUTINE dblink_close kind=f vol=v secdef=false config=-
+ROUTINE dblink_close kind=f vol=v secdef=false config=-
+ROUTINE dblink_close kind=f vol=v secdef=false config=-
+ROUTINE dblink_connect kind=f vol=v secdef=false config=-
+ROUTINE dblink_connect kind=f vol=v secdef=false config=-
+ROUTINE dblink_connect_u kind=f vol=v secdef=true config=-
+ROUTINE dblink_connect_u kind=f vol=v secdef=true config=-
+ROUTINE dblink_current_query kind=f vol=v secdef=false config=-
+ROUTINE dblink_disconnect kind=f vol=v secdef=false config=-
+ROUTINE dblink_disconnect kind=f vol=v secdef=false config=-
+ROUTINE dblink_error_message kind=f vol=v secdef=false config=-
+ROUTINE dblink_exec kind=f vol=v secdef=false config=-
+ROUTINE dblink_exec kind=f vol=v secdef=false config=-
+ROUTINE dblink_exec kind=f vol=v secdef=false config=-
+ROUTINE dblink_exec kind=f vol=v secdef=false config=-
+ROUTINE dblink_fdw_validator kind=f vol=v secdef=false config=-
+ROUTINE dblink_fetch kind=f vol=v secdef=false config=-
+ROUTINE dblink_fetch kind=f vol=v secdef=false config=-
+ROUTINE dblink_fetch kind=f vol=v secdef=false config=-
+ROUTINE dblink_fetch kind=f vol=v secdef=false config=-
+ROUTINE dblink_get_connections kind=f vol=v secdef=false config=-
+ROUTINE dblink_get_notify kind=f vol=v secdef=false config=-
+ROUTINE dblink_get_notify kind=f vol=v secdef=false config=-
+ROUTINE dblink_get_pkey kind=f vol=v secdef=false config=-
+ROUTINE dblink_get_result kind=f vol=v secdef=false config=-
+ROUTINE dblink_get_result kind=f vol=v secdef=false config=-
+ROUTINE dblink_is_busy kind=f vol=v secdef=false config=-
+ROUTINE dblink_open kind=f vol=v secdef=false config=-
+ROUTINE dblink_open kind=f vol=v secdef=false config=-
+ROUTINE dblink_open kind=f vol=v secdef=false config=-
+ROUTINE dblink_open kind=f vol=v secdef=false config=-
+ROUTINE dblink_send_query kind=f vol=v secdef=false config=-
+ROUTINE dearmor kind=f vol=i secdef=false config=-
+ROUTINE declare_walkthrough_coverage kind=f vol=v secdef=true config=search_path=public
+ROUTINE decline_engagement kind=f vol=v secdef=true config=search_path=public
+ROUTINE decrypt kind=f vol=i secdef=false config=-
+ROUTINE decrypt_iv kind=f vol=i secdef=false config=-
+ROUTINE department_workspace kind=f vol=s secdef=true config=search_path=public
+ROUTINE derive_from_attestation_truth kind=f vol=s secdef=true config=search_path=public
+ROUTINE derive_from_event_truth kind=f vol=s secdef=true config=search_path=public
+ROUTINE derive_from_knowledge_truth kind=f vol=s secdef=true config=search_path=public
+ROUTINE derive_responsibilities kind=f vol=v secdef=true config=search_path=public
+ROUTINE digest kind=f vol=i secdef=false config=-
+ROUTINE digest kind=f vol=i secdef=false config=-
+ROUTINE effective_staleness_policy kind=f vol=s secdef=true config=search_path=public
+ROUTINE eligible_staff kind=f vol=s secdef=true config=search_path=public
+ROUTINE embed_operational_basis kind=f vol=s secdef=true config=search_path=public
+ROUTINE encrypt kind=f vol=i secdef=false config=-
+ROUTINE encrypt_iv kind=f vol=i secdef=false config=-
+ROUTINE engagement_occurrences kind=f vol=s secdef=true config=search_path=public
+ROUTINE engagement_venue_knowledge kind=f vol=s secdef=true config=search_path=public
+ROUTINE evb_integrity_guard kind=f vol=v secdef=false config=-
+ROUTINE event_available_actions kind=f vol=s secdef=true config=search_path=public
+ROUTINE event_component_pin_guard kind=f vol=v secdef=false config=-
+ROUTINE event_readiness kind=f vol=s secdef=true config=search_path=public
+ROUTINE event_staffing_ready kind=f vol=s secdef=true config=search_path=public
+ROUTINE event_staffing_summary kind=f vol=s secdef=true config=search_path=public
+ROUTINE event_stage kind=f vol=s secdef=true config=search_path=public
+ROUTINE event_stage_detail kind=f vol=s secdef=true config=search_path=public
+ROUTINE event_workspace kind=f vol=s secdef=true config=search_path=public
+ROUTINE fips_mode kind=f vol=v secdef=false config=-
+ROUTINE gen_random_bytes kind=f vol=v secdef=false config=-
+ROUTINE gen_random_uuid kind=f vol=v secdef=false config=-
+ROUTINE gen_salt kind=f vol=v secdef=false config=-
+ROUTINE gen_salt kind=f vol=v secdef=false config=-
+ROUTINE generate_obligations kind=f vol=v secdef=true config=search_path=public
+ROUTINE generate_staffing_requirements kind=f vol=v secdef=true config=search_path=public
+ROUTINE guard_sealed_content kind=f vol=v secdef=true config=search_path=public
+ROUTINE guard_sealed_version kind=f vol=v secdef=false config=-
+ROUTINE guard_sealed_version_scoped kind=f vol=v secdef=true config=search_path=public
+ROUTINE hmac kind=f vol=i secdef=false config=-
+ROUTINE hmac kind=f vol=i secdef=false config=-
+ROUTINE instantiate_blueprint kind=f vol=v secdef=true config=search_path=""
+ROUTINE instantiate_blueprint kind=f vol=v secdef=true config=search_path=""
+ROUTINE instantiate_component kind=f vol=v secdef=false config=search_path=""
+ROUTINE is_active_member kind=f vol=s secdef=true config=search_path=public
+ROUTINE is_blackout_day kind=f vol=i secdef=false config=-
+ROUTINE library_duplicate_candidates kind=f vol=s secdef=true config=search_path=public
+ROUTINE library_profile kind=f vol=s secdef=true config=search_path=public
+ROUTINE merge_venues kind=f vol=v secdef=true config=search_path=public
+ROUTINE obligation_nk_complete kind=f vol=s secdef=true config=search_path=public
+ROUTINE obligation_state kind=f vol=s secdef=true config=search_path=public
+ROUTINE occurrence_current_supervision kind=f vol=s secdef=true config=search_path=public
+ROUTINE occurrence_current_venue kind=f vol=s secdef=true config=search_path=public
+ROUTINE occurrence_is_active kind=f vol=s secdef=true config=search_path=public
+ROUTINE open_inquiry kind=f vol=v secdef=true config=search_path=public
+ROUTINE open_inquiry_with_relationship kind=f vol=v secdef=true config=search_path=public
+ROUTINE open_occurrence kind=f vol=v secdef=true config=search_path=public
+ROUTINE open_proposing kind=f vol=v secdef=true config=search_path=public
+ROUTINE operational_day_of kind=f vol=s secdef=false config=-
+ROUTINE operational_day_start kind=f vol=s secdef=false config=-
+ROUTINE override_component_requirement kind=f vol=v secdef=true config=search_path=public
+ROUTINE ownership_history kind=f vol=s secdef=true config=search_path=public
+ROUTINE perform_event_action kind=f vol=v secdef=true config=search_path=public
+ROUTINE pgp_armor_headers kind=f vol=i secdef=false config=-
+ROUTINE pgp_key_id kind=f vol=i secdef=false config=-
+ROUTINE pgp_pub_decrypt kind=f vol=i secdef=false config=-
+ROUTINE pgp_pub_decrypt kind=f vol=i secdef=false config=-
+ROUTINE pgp_pub_decrypt kind=f vol=i secdef=false config=-
+ROUTINE pgp_pub_decrypt_bytea kind=f vol=i secdef=false config=-
+ROUTINE pgp_pub_decrypt_bytea kind=f vol=i secdef=false config=-
+ROUTINE pgp_pub_decrypt_bytea kind=f vol=i secdef=false config=-
+ROUTINE pgp_pub_encrypt kind=f vol=v secdef=false config=-
+ROUTINE pgp_pub_encrypt kind=f vol=v secdef=false config=-
+ROUTINE pgp_pub_encrypt_bytea kind=f vol=v secdef=false config=-
+ROUTINE pgp_pub_encrypt_bytea kind=f vol=v secdef=false config=-
+ROUTINE pgp_sym_decrypt kind=f vol=i secdef=false config=-
+ROUTINE pgp_sym_decrypt kind=f vol=i secdef=false config=-
+ROUTINE pgp_sym_decrypt_bytea kind=f vol=i secdef=false config=-
+ROUTINE pgp_sym_decrypt_bytea kind=f vol=i secdef=false config=-
+ROUTINE pgp_sym_encrypt kind=f vol=v secdef=false config=-
+ROUTINE pgp_sym_encrypt kind=f vol=v secdef=false config=-
+ROUTINE pgp_sym_encrypt_bytea kind=f vol=v secdef=false config=-
+ROUTINE pgp_sym_encrypt_bytea kind=f vol=v secdef=false config=-
+ROUTINE profile_current_revision kind=f vol=s secdef=true config=search_path=public
+ROUTINE profile_family_valid kind=f vol=i secdef=false config=-
+ROUTINE profile_kind_valid kind=f vol=i secdef=false config=-
+ROUTINE profile_param_valid kind=f vol=i secdef=false config=-
+ROUTINE profile_requirement_decl_valid kind=f vol=i secdef=false config=-
+ROUTINE profile_unit_valid kind=f vol=i secdef=false config=-
+ROUTINE projection_day_sheet kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_department_queue kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_envelope kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_event_command kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_feed kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_group_key kind=f vol=i secdef=false config=-
+ROUTINE projection_occurrence_brief kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_occurrences_for_operational_day kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_operations_today kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_preparation_queue kind=f vol=s secdef=true config=search_path=public
+ROUTINE projection_truth_version kind=f vol=s secdef=true config=search_path=public
+ROUTINE promise_append_only_guard kind=f vol=v secdef=false config=-
+ROUTINE promise_current_attendance kind=f vol=s secdef=true config=search_path=public
+ROUTINE promise_current_engagement_profile kind=f vol=s secdef=true config=search_path=public
+ROUTINE promise_current_milestones kind=f vol=s secdef=true config=search_path=public
+ROUTINE promise_current_occurrence_profile kind=f vol=s secdef=true config=search_path=public
+ROUTINE promise_current_supervision kind=f vol=s secdef=true config=search_path=public
+ROUTINE promise_scheduled_attendance kind=f vol=s secdef=true config=search_path=public
+ROUTINE promote_design_to_draft kind=f vol=v secdef=true config=search_path=""
+ROUTINE publish_blueprint_revision kind=f vol=v secdef=true config=-
+ROUTINE publish_offer kind=f vol=v secdef=true config=search_path=public
+ROUTINE race292_arm kind=f vol=v secdef=false config=-
+ROUTINE race292_backend_a kind=f vol=v secdef=false config=-
+ROUTINE race292_backend_b kind=f vol=v secdef=false config=-
+ROUTINE race292_verdict kind=f vol=v secdef=false config=-
+ROUTINE race292a1_arm kind=f vol=v secdef=false config=-
+ROUTINE race292a1_backend_a kind=f vol=v secdef=false config=-
+ROUTINE race292a1_backend_b kind=f vol=v secdef=false config=-
+ROUTINE race292a1_verdict kind=f vol=v secdef=false config=-
+ROUTINE record_evidence kind=f vol=v secdef=true config=search_path=public
+ROUTINE record_execution_evidence kind=f vol=v secdef=true config=search_path=public
+ROUTINE record_observation kind=f vol=v secdef=true config=search_path=public
+ROUTINE record_walkthrough kind=f vol=v secdef=true config=search_path=public
+ROUTINE refresh_component_profile kind=f vol=v secdef=true config=search_path=public
+ROUTINE reinstate_blueprint_identity kind=f vol=v secdef=true config=-
+ROUTINE release_event kind=f vol=v secdef=true config=search_path=public
+ROUTINE release_occurrence kind=f vol=v secdef=true config=search_path=public
+ROUTINE release_promise kind=f vol=v secdef=true config=search_path=public
+ROUTINE release_staffing_assignment kind=f vol=v secdef=true config=search_path=public
+ROUTINE render_legacy_requirements kind=f vol=i secdef=false config=-
+ROUTINE requirement_coverage kind=f vol=s secdef=true config=search_path=public
+ROUTINE rescind_acceptance kind=f vol=v secdef=true config=search_path=public
+ROUTINE resolve_quantity kind=f vol=i secdef=false config=-
+ROUTINE resolve_venue kind=f vol=s secdef=true config=search_path=public
+ROUTINE responsibility_anchor_guard kind=f vol=v secdef=false config=-
+ROUTINE responsibility_append_only kind=f vol=v secdef=false config=-
+ROUTINE responsibility_current_owner kind=f vol=s secdef=true config=search_path=public
+ROUTINE responsibility_detail kind=f vol=s secdef=true config=search_path=public
+ROUTINE responsibility_feed kind=f vol=s secdef=true config=search_path=public
+ROUTINE responsibility_natural_key kind=f vol=i secdef=false config=-
+ROUTINE responsibility_owner_append_only kind=f vol=v secdef=false config=-
+ROUTINE responsibility_state kind=f vol=s secdef=true config=search_path=public
+ROUTINE retire_blueprint_identity kind=f vol=v secdef=true config=-
+ROUTINE risk_findings kind=f vol=s secdef=true config=search_path=public
+ROUTINE set_engagement_profile kind=f vol=v secdef=true config=search_path=public
+ROUTINE set_occurrence_profile kind=f vol=v secdef=true config=search_path=public
+ROUTINE set_schedule_milestone kind=f vol=v secdef=true config=search_path=public
+ROUTINE set_staleness_policy kind=f vol=v secdef=true config=search_path=public
+ROUTINE source_class_rank kind=f vol=i secdef=false config=-
+ROUTINE space_within kind=f vol=s secdef=true config=search_path=public
+ROUTINE staff_overlap_count kind=f vol=s secdef=true config=search_path=public
+ROUTINE staffing_assignment_active kind=f vol=s secdef=true config=search_path=public
+ROUTINE staleness_defaults kind=f vol=i secdef=false config=-
+ROUTINE start_service kind=f vol=v secdef=true config=search_path=public
+ROUTINE supersede_observation kind=f vol=v secdef=true config=search_path=public
+ROUTINE supersession_tenant_guard kind=f vol=v secdef=false config=-
+ROUTINE tenant_operational_day_start_hour kind=f vol=s secdef=true config=search_path=public
+ROUTINE tenant_operational_timezone kind=f vol=s secdef=true config=search_path=public
+ROUTINE tenants_operational_config_guard kind=f vol=v secdef=false config=-
+ROUTINE transfer_responsibility_ownership kind=f vol=v secdef=true config=search_path=public
+ROUTINE update_library_component_details kind=f vol=v secdef=true config=search_path=public
+ROUTINE update_venue_details kind=f vol=v secdef=true config=search_path=public
+ROUTINE v292d_version_mismatch kind=f vol=i secdef=false config=-
+ROUTINE validate_projection_filter kind=f vol=i secdef=false config=-
+ROUTINE validate_projection_group_by kind=f vol=i secdef=false config=-
+ROUTINE venue_contradictions kind=f vol=s secdef=true config=search_path=public
+ROUTINE venue_duplicate_candidates kind=f vol=s secdef=true config=search_path=public
+ROUTINE venue_family kind=f vol=s secdef=true config=search_path=public
+ROUTINE venue_knowledge_findings kind=f vol=s secdef=true config=search_path=public
+ROUTINE venue_observation_scope_guard kind=f vol=v secdef=false config=-
+ROUTINE venue_profile kind=f vol=s secdef=true config=search_path=public
+ROUTINE venue_profile_read kind=f vol=s secdef=true config=search_path=public
+ROUTINE venue_space_nesting_guard kind=f vol=v secdef=false config=-
+ROUTINE venue_verification_requirement kind=f vol=s secdef=true config=search_path=public
+ROUTINE withdraw_offer kind=f vol=v secdef=true config=search_path=public
+TABLE acceptance_rescissions constraints=15
+TABLE acceptance_selection_sets constraints=8
+TABLE act_produced_artifacts constraints=8
+TABLE action_invocation constraints=11
+TABLE attendance_commitment constraints=14
+TABLE blueprint_compositions constraints=13
+TABLE blueprint_identities constraints=9
+TABLE blueprint_instantiations constraints=20
+TABLE blueprint_revisions constraints=12
+TABLE blueprint_shelf_acts constraints=10
+TABLE blueprints constraints=7
+TABLE bookings constraints=10
+TABLE choice_groups constraints=8
+TABLE component_definition_config constraints=8
+TABLE component_definitions constraints=10
+TABLE component_instance_layers constraints=11
+TABLE component_items constraints=12
+TABLE component_layers constraints=10
+TABLE component_profile_override constraints=13
+TABLE component_profile_revision constraints=11
+TABLE component_requirements constraints=6
+TABLE configuration_moves constraints=11
+TABLE definition_revision_acts constraints=10
+TABLE engagement_ledger constraints=8
+TABLE engagement_occurrence constraints=12
+TABLE engagement_profile constraints=10
+TABLE engagement_supervision constraints=12
+TABLE engagement_venue_binding constraints=12
+TABLE event constraints=11
+TABLE event_component_config constraints=10
+TABLE event_components constraints=22
+TABLE event_debriefs constraints=6
+TABLE execution_evidence constraints=13
+TABLE guest_categories constraints=3
+TABLE library_component constraints=8
+TABLE obligation constraints=20
+TABLE occurrence_profile constraints=10
+TABLE occurrence_schedule_milestone constraints=17
+TABLE occurrence_status constraints=11
+TABLE occurrence_supervision constraints=12
+TABLE occurrence_venue_binding constraints=12
+TABLE offer_acceptances constraints=11
+TABLE offer_endpoints constraints=9
+TABLE offer_snapshots constraints=13
+TABLE photo_library constraints=7
+TABLE profile_requirement constraints=31
+TABLE promotion_citations constraints=9
+TABLE proposal_versions constraints=11
+TABLE proposals constraints=7
+TABLE publication_themes constraints=9
+TABLE race292_barrier constraints=1
+TABLE race292_result constraints=2
+TABLE race292_setup constraints=0
+TABLE race292a1_barrier constraints=1
+TABLE race292a1_result constraints=2
+TABLE race292a1_setup constraints=0
+TABLE relationships constraints=9
+TABLE responsibility_owner constraints=13
+TABLE review_decisions constraints=9
+TABLE section_types constraints=3
+TABLE staff constraints=6
+TABLE staffing_assignment constraints=15
+TABLE staffing_release constraints=8
+TABLE staffing_requirement constraints=14
+TABLE staged_artifact_packages constraints=11
+TABLE tenant_users constraints=10
+TABLE tenants constraints=8
+TABLE venue constraints=10
+TABLE venue_evidence constraints=14
+TABLE venue_observation constraints=19
+TABLE venue_observation_supersession constraints=9
+TABLE venue_space constraints=13
+TABLE venue_staleness_policy constraints=11
+TABLE venue_walkthrough constraints=13
+TABLE version_adjustments constraints=5
+TABLE version_guests constraints=6
+TABLE version_sections constraints=6
+TABLE walkthrough_coverage constraints=9
