@@ -1,13 +1,25 @@
-import OperationsToday from "@/components/today/OperationsToday";
+import { permanentRedirect } from "next/navigation";
 
-/** v290 · /operations/today — the canonical home of the certified Operations
- *  Today surface.
+/** v298 · /operations/today — retained as a permanent (308) server redirect to
+ *  /today, which is now canonical.
  *
- *  The component is UNCHANGED from v288a. v290 moves where it is mounted and
- *  makes it reachable from the shell; it does not alter what it renders. The
- *  old /today route remains as a server redirect so any bookmark, printed
- *  sheet or muscle-memory URL still lands here.
+ *  `permanentRedirect` rather than `redirect`: v290's redirect ran the other
+ *  way and used `redirect` (307) while its own comment called the route
+ *  permanent. v298 states the intent in the API — the move is final, and caches
+ *  and crawlers should treat it as such.
+ *
+ *  In the tested Next.js 14 production build, the page-level redirect on this
+ *  statically prerendered route was carried in the RSC payload rather than
+ *  emitted as an HTTP Location redirect: the response was 200 and the browser
+ *  did not move.
+ *
+ *  next.config.js therefore carries the AUTHORITATIVE browser redirect — its
+ *  `redirects()` entry resolves before routing and emits a real 308 with a
+ *  Location header.
+ *
+ *  The `permanentRedirect` below remains executable DEFENSE-IN-DEPTH if a
+ *  request ever reaches this route component.
  */
-export default function OperationsTodayPage() {
-  return <OperationsToday />;
+export default function OperationsTodayRedirect() {
+  permanentRedirect("/today");
 }

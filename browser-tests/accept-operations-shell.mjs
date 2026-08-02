@@ -99,6 +99,13 @@ const items = () => page.$$eval("[data-nav-item]", (e) => e.map((x) => x.getAttr
 
 const DEPARTMENTS = ["culinary", "equipment", "staffing", "venue", "logistics"];
 
+// v298 · Operations is a LENS, not a URL prefix: Today's canonical route left
+// the /operations/ namespace while staying in the group. The permission-gate
+// claims (SH-6, SH-6b) test that NOTHING in the group renders unentitled, so
+// they must name membership, not a path prefix — a prefix test would have gone
+// silently vacuous for Today the moment its route moved.
+const isOperations = (h) => h.startsWith("/operations/") || h === "/today";
+
 // ══ SH-1 · the Operations group exists ════════════════════════════════════
 await go();
 await T("SH-1 the shell renders an Operations group for a user holding ops.view", async () => {
@@ -108,17 +115,21 @@ await T("SH-1 the shell renders an Operations group for a user holding ops.view"
 });
 
 // ══ SH-2 · Today is reachable — the v288a orphan is closed ════════════════
-await T("SH-2 Operations Today is reachable from the shell at /operations/today", async () => {
+// v298 rewrote SH-2 and SH-2b to the new canonical route rather than retiring
+// them, exactly as v291 rewrote SH-3/SH-3b: the claim — Today is reachable from
+// the shell, and the redirect path is never advertised — is unchanged. Only
+// which of the two paths is canonical moved.
+await T("SH-2 Operations Today is reachable from the shell at /today", async () => {
   const all = await items();
-  if (!all.includes("/operations/today")) throw new Error(`Today not in the rail: ${all.join(" ")}`);
-  const link = await page.$('[data-nav-item="/operations/today"]');
+  if (!all.includes("/today")) throw new Error(`Today not in the rail: ${all.join(" ")}`);
+  const link = await page.$('[data-nav-item="/today"]');
   const href = await link.getAttribute("href");
-  if (href !== "/operations/today") throw new Error(`href is ${href}`);
+  if (href !== "/today") throw new Error(`href is ${href}`);
 });
 
-await T("SH-2b no /today entry is advertised — the legacy path is a redirect, not a destination", async () => {
+await T("SH-2b no /operations/today entry is advertised — the legacy path is a redirect, not a destination", async () => {
   const all = await items();
-  if (all.includes("/today")) throw new Error("the rail still advertises the legacy /today path");
+  if (all.includes("/operations/today")) throw new Error("the rail still advertises the legacy /operations/today path");
 });
 
 // ══ SH-3 · Departments is ONE rail position (v291 ruling) ═════════════════
@@ -135,17 +146,21 @@ await T("SH-3 Departments occupies exactly one rail position", async () => {
   if (!label.includes("Departments")) throw new Error(`entry reads "${label.trim()}"`);
 });
 
-await T("SH-3b Operations advertises Today and Departments only — it does not grow by department", async () => {
+await T("SH-3b Operations advertises whole surfaces only — it does not grow by department", async () => {
   const all = await items();
   const ops = all.filter((h) => h.startsWith("/operations/")).sort();
-  if (ops.join(",") !== "/operations/departments,/operations/today")
+  // v296 registered Preparation and Day Sheet; v298 moved Today to /today. The
+  // claim under test is unchanged — no per-department entry may appear — but
+  // the enumeration it compares against had gone stale at v296 and is restated
+  // here to the registry as it now stands.
+  if (ops.join(",") !== "/operations/day,/operations/departments,/operations/preparation")
     throw new Error(`Operations advertises [${ops.join(",")}]`);
 });
 
 // ══ SH-4 · Operations is open by default ══════════════════════════════════
 await T("SH-4 the Operations group is open on arrival — a collapsed rail is how /today stayed invisible", async () => {
   await go();
-  const visible = await page.$eval('[data-nav-item="/operations/today"]',
+  const visible = await page.$eval('[data-nav-item="/today"]',
     (e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.width > 0; });
   if (!visible) throw new Error("Today is present but not visible without interaction");
 });
@@ -156,7 +171,7 @@ await T("SH-5 Operations survives a tenant with every optional module OFF — it
   await go();
   if (!(await page.$('[data-nav-group="Operations"]'))) throw new Error("Operations vanished with modules off");
   const all = await items();
-  if (!all.includes("/operations/today")) throw new Error("Today vanished with modules off");
+  if (!all.includes("/today")) throw new Error("Today vanished with modules off");
   if (!all.includes("/operations/departments")) throw new Error("Departments vanished with modules off");
   // control: a genuinely module-gated entry MUST disappear, or the claim is vacuous
   if (all.includes("/price-book")) throw new Error("cap-gated Price Book still rendered — gate is not working");
@@ -170,7 +185,7 @@ await T("SH-6 a role without ops.view sees no Operations group at all", async ()
   await go();
   if (await page.$('[data-nav-group="Operations"]')) throw new Error("Operations rendered without ops.view");
   const all = await items();
-  if (all.some((h) => h.startsWith("/operations/"))) throw new Error("an operations entry leaked through");
+  if (all.some(isOperations)) throw new Error("an operations entry leaked through");
   // control: this role still sees what it is entitled to
   if (!all.includes("/dashboard")) throw new Error("gate over-applied — bookkeeper lost dashboard.view");
   role = "admin";
@@ -180,7 +195,7 @@ await T("SH-6b signed out, no operations entry renders", async () => {
   signedOut = true;
   await go();
   const all = await items();
-  if (all.some((h) => h.startsWith("/operations/"))) throw new Error("operations entry rendered while signed out");
+  if (all.some(isOperations)) throw new Error("operations entry rendered while signed out");
   signedOut = false;
 });
 
@@ -192,19 +207,36 @@ await T("SH-7 a nested department route still marks the single Departments entry
     .map((e) => e.getAttribute("data-nav-item")));
   if (!active.includes("/operations/departments"))
     throw new Error(`active entries were [${active.join(",")}]`);
-  if (active.includes("/operations/today"))
+  if (active.includes("/today"))
     throw new Error("Today rendered active on a departments route");
 });
 
-// ══ SH-8 · /today is a server redirect (source-level claim) ═══════════════
-await T("SH-8 (source) /today is a server redirect to /operations/today, adding no build config", async () => {
-  const src = readFileSync(join(root, "src/app/today/page.tsx"), "utf8");
-  if (!/from\s+"next\/navigation"/.test(src)) throw new Error("does not import next/navigation");
-  if (!/redirect\(\s*"\/operations\/today"\s*\)/.test(src)) throw new Error("does not redirect to /operations/today");
-  if (/"use client"/.test(src)) throw new Error("redirect page is a client component");
-  if (existsSync(join(root, "next.config.js")) || existsSync(join(root, "next.config.mjs")) ||
-      existsSync(join(root, "next.config.ts")))
-    throw new Error("a next.config was introduced — v290 forbids build-config change");
+// ══ SH-8 · the v298 canonical/legacy contract (source-level claim) ════════
+// v290 asserted the opposite direction AND that no next.config existed. The
+// second half was false when written — next.config.js dates from the initial
+// deployment — and it is dropped rather than carried forward. v298's ruling
+// replaces it: the redirect is CONFIGURED, because a page-level redirect on a
+// statically prerendered route ships inside the RSC payload and never moves the
+// browser. The page-level permanentRedirect stays as defense-in-depth, so this
+// claim asserts BOTH halves plus the canonical mount they point at.
+await T("SH-8 (source) /operations/today redirects permanently to /today, which mounts OperationsToday", async () => {
+  const legacy = readFileSync(join(root, "src/app/operations/today/page.tsx"), "utf8");
+  if (!/from\s+"next\/navigation"/.test(legacy)) throw new Error("does not import next/navigation");
+  if (!/permanentRedirect\(\s*"\/today"\s*\)/.test(legacy)) throw new Error("does not permanently redirect to /today");
+  if (/"use client"/.test(legacy)) throw new Error("redirect page is a client component");
+
+  const canonical = readFileSync(join(root, "src/app/today/page.tsx"), "utf8");
+  if (!/OperationsToday/.test(canonical) || /redirect\(/.test(canonical))
+    throw new Error("/today does not mount OperationsToday — the canonical route is not canonical");
+
+  // The authoritative half: only a config redirect resolves before routing and
+  // emits a real 308 + Location.
+  if (!existsSync(join(root, "next.config.js"))) throw new Error("next.config.js is absent");
+  const cfg = readFileSync(join(root, "next.config.js"), "utf8");
+  if (!/redirects\s*\(/.test(cfg)) throw new Error("next.config.js declares no redirects()");
+  if (!/source:\s*"\/operations\/today"/.test(cfg)) throw new Error("no configured redirect from /operations/today");
+  if (!/destination:\s*"\/today"/.test(cfg)) throw new Error("the configured redirect does not target /today");
+  if (!/permanent:\s*true/.test(cfg)) throw new Error("the configured redirect is not permanent");
 });
 
 console.log(`\naccept-operations-shell: ${passed} passed, ${failed} failed`);

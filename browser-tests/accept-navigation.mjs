@@ -49,8 +49,10 @@ const SESSION = {
   unassigned: false,
 };
 
+// v298 · Today's canonical route is /today; /operations/today is a permanent
+// redirect and must not appear in the rail. The row keeps its frozen position.
 const EXPECTED = [
-  { href: "/operations/today", label: "Today" },
+  { href: "/today", label: "Today" },
   { href: "/operations/preparation", label: "Preparation" },
   { href: "/operations/day", label: "Day Sheet" },
   { href: "/operations/departments", label: "Departments" },
@@ -164,7 +166,7 @@ const opsLabels = () => page.$$eval(
   '[data-nav-group="Operations"] [data-nav-item]', (els) => els.map((e) => (e.textContent || "").trim()));
 
 try {
-  await go("/operations/today");
+  await go("/today");
 
   await T("NV-1 the Operations group renders exactly four registry rows", async () => {
     const h = await opsHrefs();
@@ -219,13 +221,13 @@ try {
       if (marked.length !== 1 || marked[0] !== target)
         throw new Error(`on ${target} the rail marked [${marked.join(", ")}]`);
     }
-    await go("/operations/today");
+    await go("/today");
   });
 
   await T("NV-9 without a trusted session no Operations entry renders", async () => {
     // A null session through the REAL can(): !!session is false, so every
     // perm-gated item filters out and filterGroups drops the empty group.
-    await page.goto(url("/operations/today", "none"));
+    await page.goto(url("/today", "none"));
     await page.waitForSelector("aside", { timeout: 15000 });
     await page.waitForTimeout(400);
     const n = await page.$$eval('[data-nav-group="Operations"] [data-nav-item]', (els) => els.length);

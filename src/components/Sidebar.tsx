@@ -48,7 +48,11 @@ const OPERATIONS_GROUP: NavGroup[] = [
   {
     title: "Operations", icon: "🧭",
     items: [
-      { href: "/operations/today", label: "Today", icon: "📆", perm: "ops.view" },
+      // v298 · Today's canonical route is /today. The entry keeps its rail
+      // position inside Operations — the group is a LENS, not a URL prefix —
+      // and /operations/today survives only as a permanent server redirect,
+      // which the rail must never advertise.
+      { href: "/today", label: "Today", icon: "📆", perm: "ops.view" },
       // v296 · Phase A closure. The Preparation Queue (v294) and the Day Sheet
       // (v292e) were certified and shipped but never registered, so neither was
       // reachable without typing a URL — v294's whole mission is that an
