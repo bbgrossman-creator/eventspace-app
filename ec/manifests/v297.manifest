@@ -1,0 +1,11 @@
+version            v297
+migration          supabase/v297_venue_asof_integrity.sql
+one_shot           proofs/v297_proofs.sh                        expect 36
+permanent          v297_permanent_proof                         expect 6
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/accept-navigation.mjs browser-tests/accept-release.mjs browser-tests/accept-preparation-queue.mjs
+harness_install    supabase/tests/v297_permanent_proof.sql
+deployed_marker    venue_asof_integrity
+git_files          supabase/v297_venue_asof_integrity.sql tools/build_v297_migration.py supabase/tests/v297_permanent_proof.sql proofs/v297_proofs.sh ec/manifests/v297.manifest
