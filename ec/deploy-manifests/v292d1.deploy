@@ -1,0 +1,7 @@
+# v292d1 — WORK LENS OVER THE OPERATIONAL DAY (Day Sheet)
+release          v292d1
+migration        supabase/v292d1_work_lens_operational_day.sql
+migration_source repository
+min_release      v292d
+
+function         projection_day_sheet(p_day date, p_group_by text, p_now timestamp with time zone)

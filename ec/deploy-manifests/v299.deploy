@@ -1,0 +1,17 @@
+# v299 — DEPLOYMENT CERTIFICATION GUARD
+#
+# This release. It adds the deployment-certification layer itself: the manifest
+# format, the verifier, the negative controls, the proof, and the gate that runs
+# before any release is declared deployable.
+#
+# It creates no database object. The guard reads catalog views and writes
+# nothing — a verification layer that needed its own schema would be a
+# contradiction.
+#
+# min_release v298 makes this release's own check walk the entire chain from
+# v292a forward, so certifying v299 exercises the traversal it introduces
+# against every release that preceded it.
+release          v299
+migration
+migration_source none
+min_release      v298

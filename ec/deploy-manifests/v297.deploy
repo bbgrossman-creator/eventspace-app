@@ -1,0 +1,19 @@
+# v297 — VENUE AS-OF INTEGRITY CORRECTIVE
+# Seven STABLE readers gain temporal bounds. Six are replaced in place;
+# venue_asof_integrity is new.
+release          v297
+migration        supabase/v297_venue_asof_integrity.sql
+migration_source repository
+min_release      v296
+
+function         venue_asof_integrity()
+function         current_observation(p_venue uuid, p_scope_space uuid, p_attribute text, p_context timestamp with time zone, p_conditions text[])
+function         venue_profile_read(p_venue uuid, p_scope_space uuid, p_attribute text, p_context timestamp with time zone, p_conditions text[])
+function         venue_knowledge_findings(p_venue uuid, p_at timestamp with time zone, p_conditions text[])
+function         venue_profile(p_venue uuid, p_context timestamp with time zone, p_conditions text[])
+function         venue_contradictions(p_venue uuid, p_context timestamp with time zone, p_conditions text[])
+function         venue_verification_requirement(p_venue uuid, p_at timestamp with time zone, p_conditions text[])
+
+# occurrence_current_venue is also replaced by v297, and is required from v292a1
+# where it is first created. Its signature does not change, so it is asserted
+# once rather than twice.

@@ -1,0 +1,12 @@
+# v296 — OPERATIONS NAVIGATION REGISTRATION
+# Application-only: two registry rows in the sidebar. No SQL object.
+#
+# It still carries a manifest, and that is the point. v296 made the v294 and
+# v292e surfaces REACHABLE from the rail — turning a URL-only surface into one
+# an operator can click. A release that ships no SQL can still be the release
+# that exposes an undeployed database band to users, so its prerequisite is the
+# whole chain beneath it.
+release          v296
+migration
+migration_source none
+min_release      v295

@@ -1,0 +1,70 @@
+# v292a1 — ENGAGEMENT OCCURRENCE AND PROMISE CAPTURE RE-ANCHOR
+# The occurrence model. This is the band production was missing when the
+# Preparation Queue failed: engagement_occurrence absent, so occurrence_is_active
+# and every occurrence-anchored resolver were absent with it.
+release          v292a1
+migration        supabase/v292a1_occurrence_model.sql
+migration_source recovered:/mnt/c/Users/bbgro/Downloads/eventcore-certification-harness/supabase/v292a1_occurrence_model.sql
+min_release      v292a
+
+table            engagement_occurrence
+table            occurrence_status
+table            occurrence_profile
+table            occurrence_venue_binding
+table            occurrence_supervision
+table            occurrence_schedule_milestone
+
+function         can_open_occurrence()
+function         occurrence_is_active(p_occurrence uuid, p_now timestamp with time zone)
+function         engagement_occurrences(p_booking uuid, p_now timestamp with time zone)
+function         promise_current_occurrence_profile(p_occurrence uuid, p_now timestamp with time zone)
+function         promise_current_engagement_profile(p_booking uuid, p_now timestamp with time zone)
+function         promise_current_attendance(p_occurrence uuid, p_now timestamp with time zone)
+function         promise_scheduled_attendance(p_occurrence uuid, p_now timestamp with time zone)
+function         promise_current_milestones(p_occurrence uuid, p_now timestamp with time zone)
+function         occurrence_current_supervision(p_occurrence uuid, p_now timestamp with time zone)
+function         occurrence_current_venue(p_occurrence uuid, p_now timestamp with time zone)
+function         open_occurrence(p_booking uuid, p_display_name text, p_occasion_kind text)
+function         cancel_occurrence(p_occurrence uuid, p_reason text)
+function         set_occurrence_profile(p_occurrence uuid, p_display_name text, p_occasion_kind text, p_reason text)
+function         bind_occurrence_venue(p_occurrence uuid, p_venue uuid, p_reason text)
+function         bind_occurrence_supervision(p_occurrence uuid, p_authority_org text, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_certificate_ref text, p_contact text, p_reason text)
+function         commit_attendance(p_occurrence uuid, p_head_count integer, p_basis text, p_effective_moment timestamp with time zone, p_reason text)
+function         set_schedule_milestone(p_occurrence uuid, p_milestone_key text, p_at_date date, p_at_moment timestamp with time zone, p_window_end timestamp with time zone, p_label text, p_reason text)
+function         clear_schedule_milestone(p_occurrence uuid, p_milestone_key text, p_label text, p_reason text)
+function         set_engagement_profile(p_booking uuid, p_display_name text, p_client_display_name text, p_reason text)
+function         release_occurrence(p_occurrence uuid, p_actor text, p_signoff_ref text, p_clearance_ref text, p_waiver_ref text)
+function         release_event(p_booking uuid, p_actor text, p_signoff_ref text, p_clearance_ref text, p_waiver_ref text)
+
+index            idx_occurrence_booking
+index            idx_occ_status_occurrence
+index            idx_occ_profile_occurrence
+index            idx_attendance_occurrence
+index            idx_milestone_occurrence
+index            idx_occ_venue_occurrence
+index            idx_occ_supervision_occurrence
+
+trigger          engagement_occurrence:engagement_occurrence_append_only
+trigger          occurrence_status:occurrence_status_append_only
+trigger          occurrence_profile:occurrence_profile_append_only
+trigger          occurrence_venue_binding:occurrence_venue_binding_append_only
+trigger          occurrence_supervision:occurrence_supervision_append_only
+
+policy           engagement_occurrence:engagement_occurrence_select
+policy           engagement_occurrence:engagement_occurrence_insert
+policy           occurrence_status:occurrence_status_select
+policy           occurrence_status:occurrence_status_insert
+policy           occurrence_profile:occurrence_profile_select
+policy           occurrence_profile:occurrence_profile_insert
+policy           occurrence_venue_binding:occurrence_venue_binding_select
+policy           occurrence_venue_binding:occurrence_venue_binding_insert
+policy           occurrence_supervision:occurrence_supervision_select
+policy           occurrence_supervision:occurrence_supervision_insert
+
+# occurrence_current_venue is created here and its BODY is replaced by v297's
+# as-of corrective. The signature is unchanged, so it stays a requirement at this
+# level: a target at v292a1 and a target at v297 both verify truthfully against
+# the same line. Presence is what this manifest asserts; v297's proof asserts the
+# temporal behaviour of the replaced body.
+#
+# Nothing v292a1 creates is superseded by a later release.

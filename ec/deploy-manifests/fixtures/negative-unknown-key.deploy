@@ -1,0 +1,20 @@
+# FIXTURE — NOT A RELEASE. Never referenced by certify-release.sh.
+#
+# Negative control for Fable M-1: an unrecognised manifest key must be a HARD
+# SETUP FAILURE, not a note.
+#
+# `functoin` below is a misspelling of `function`. Before the M-1 correction the
+# verifier collected unknown keys, printed a NOTE, and carried on — so this
+# manifest would have verified GREEN while requiring nothing at all. A guard
+# that silently drops requirements when a key is mistyped is worse than no
+# guard: it produces a certified-looking pass with no coverage behind it.
+#
+# Expected: exit 2, "MANIFEST ERROR — unrecognised key(s)", and --quiet must not
+# suppress it.
+release          negative-unknown-key
+migration
+migration_source none
+min_release
+
+functoin         projection_preparation_queue(p_now timestamp with time zone)
+table            engagement_occurrence

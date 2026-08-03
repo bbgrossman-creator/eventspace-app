@@ -1,0 +1,17 @@
+# FIXTURE — NOT A RELEASE. Never referenced by certify-release.sh.
+#
+# Negative control for SIGNATURE sensitivity. projection_preparation_queue EXISTS
+# in ec, but not with this signature: the real one takes
+#   (p_now timestamp with time zone)
+# and this fixture demands a two-argument form.
+#
+# This is the exact failure mode a name-only check would miss. PostgREST reports
+# a wrong-signature function and an absent function identically — PGRST202,
+# "could not find the function ... in the schema cache" — so a guard that
+# matched on name alone would have called production healthy.
+release          negative-wrong-signature
+migration
+migration_source none
+min_release
+
+function         projection_preparation_queue(p_now timestamp with time zone, p_extra text)

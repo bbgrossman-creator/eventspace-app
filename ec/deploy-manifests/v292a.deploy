@@ -1,0 +1,38 @@
+# v292a — PROMISE CAPTURE
+# The engagement-anchored promise substrate. First release in the chain, so it
+# declares no min_release; everything below it is the v288a baseline.
+release          v292a
+migration        supabase/v292a_promise_capture.sql
+migration_source recovered:/mnt/c/Users/bbgro/Downloads/eventcore-v292a/supabase/v292a_promise_capture.sql
+min_release
+
+table            engagement_profile
+table            attendance_commitment
+table            engagement_supervision
+
+function         can_edit_engagement_profile()
+function         can_commit_attendance()
+function         can_set_schedule()
+function         can_bind_supervision()
+function         promise_append_only_guard()
+function         promise_current_supervision(p_booking uuid, p_now timestamp with time zone)
+function         bind_supervision(p_booking uuid, p_authority_org text, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_certificate_ref text, p_contact text, p_reason text)
+function         correct_attendance(p_attendance uuid, p_head_count integer, p_basis text, p_reason text)
+
+index            idx_eng_profile_booking
+index            idx_supervision_booking
+
+# Superseded by v292a1, which re-anchors the promise lens from the engagement to
+# the occurrence. These are NOT requirements — demanding them would make every
+# chain verification fail at head.
+superseded       engagement_schedule_milestone (renamed to occurrence_schedule_milestone)
+superseded       promise_current_profile(uuid, timestamptz) (dropped)
+superseded       promise_current_attendance(p_booking uuid, ...) (re-created occurrence-anchored)
+superseded       promise_scheduled_attendance(p_booking uuid, ...) (re-created occurrence-anchored)
+superseded       promise_current_milestones(p_booking uuid, ...) (re-created occurrence-anchored)
+superseded       commit_attendance(uuid, integer, text, timestamptz, text) (re-created occurrence-anchored)
+superseded       set_schedule_milestone(uuid, text, date, timestamptz, timestamptz, text, text) (re-created)
+superseded       clear_schedule_milestone(uuid, text, text, text) (re-created occurrence-anchored)
+superseded       set_engagement_profile(uuid, text, text, text, text) (re-created 4-arg)
+superseded       idx_attendance_booking (dropped with attendance_commitment.booking_id)
+superseded       idx_milestone_booking (dropped with the milestone table's booking_id)

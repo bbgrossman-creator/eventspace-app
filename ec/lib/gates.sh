@@ -295,3 +295,104 @@ gate_verify_deployed() {  # $1 marker function name, $2.. = harness files
     fi
   done
 }
+
+# ── deployment certification (v299 · post-v294-incident) ───────────────────
+# Proves the TARGET DATABASE carries every object this release's chain requires.
+#
+# Every other gate in this file asks "does the release work?" This one asks the
+# question that was never asked: "can the database we are shipping against run
+# it?" v294 answered the first question green and the second not at all — its
+# migration never reached production, and the first symptom was PGRST202 in
+# front of an operator.
+#
+# TWO HALVES, BOTH MANDATORY (v299 · Fable B-1):
+#   a. the local certification database is verified directly;
+#   b. archived PRODUCTION evidence is required and graded.
+# The first release of this gate certified only (a) and printed a NOTE about
+# (b). A note is not evidence. Production is not reachable from this host, so
+# the operator runs --emit-sql there and archives the result under
+# ec/deploy-manifests/evidence/<release>.production.grade; this gate re-grades
+# that file with the same manifests and refuses on missing, malformed,
+# incomplete, stale, wrong-release or wrong-target evidence.
+#
+# EC_DEPLOY_LOCAL_ONLY=1 skips (b) — and the caller MUST then withhold the
+# normal deployable verdict. certify-release.sh does exactly that.
+#
+# A missing manifest FAILS. It is not skipped by absence like `migration` or
+# `one_shot`: the defect this gate exists to catch was an absent check, so
+# silence here would reproduce it exactly.
+gate_deployment_certification() {  # $1 release id  $2 optional target db
+  local rel="$1" db="${2:-$EC_DB}"
+  local mf="$EC_REPO/ec/deploy-manifests/$rel.deploy"
+  local ev="$EC_REPO/ec/deploy-manifests/evidence/$rel.production.grade"
+
+  # ── (a) local ────────────────────────────────────────────────────────────
+  gate_begin "deployment certification (local) — is $db at $rel's architectural level?"
+  local c="ec/verify-deployment.sh $rel --db $db"
+  gate_cmd "$c"
+  [ -f "$mf" ] || gate_fail "$c" \
+    "no deployment manifest: ec/deploy-manifests/$rel.deploy. Every release from v292a forward must declare its database prerequisites — see ec/deploy-manifests/README.md. This gate refuses to pass a release whose prerequisites are undeclared."
+  local out rc
+  out=$(cd "$EC_REPO" && bash ec/verify-deployment.sh "$rel" --db "$db" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] && gate_fail "$c" "verifier setup error" "$out"
+  [ "$rc" -ne 0 ] && gate_fail "$c" \
+    "$db is BELOW the level $rel requires — the release is NOT deployable against it" "$out"
+  local line; line=$(printf '%s' "$out" | grep -E '^  present:' | tail -1)
+  gate_ok "local target '$db' PASSED —${line:- objects verified}"
+
+  # ── (b) production evidence ──────────────────────────────────────────────
+  if [ "${EC_DEPLOY_LOCAL_ONLY:-0}" = "1" ]; then
+    gate_begin "deployment certification (production evidence) — SKIPPED by --local-only"
+    gate_ok "the caller must NOT declare this release deployable"
+    EC_DEPLOY_EVIDENCE="LOCAL-ONLY — no production evidence graded"
+    return 0
+  fi
+
+  gate_begin "deployment certification (production) — grading archived evidence"
+  local ce="ec/verify-deployment.sh $rel --grade ec/deploy-manifests/evidence/$rel.production.grade"
+  gate_cmd "$ce"
+  [ -f "$ev" ] || gate_fail "$ce" \
+    "no production evidence for $rel at ec/deploy-manifests/evidence/$rel.production.grade.
+
+     A release is not deployable on local verification alone — that is exactly
+     how v294 shipped. Produce the evidence and archive it:
+
+       ec/verify-deployment.sh $rel --emit-sql        (run this in the Supabase SQL Editor)
+       save the COMPLETE result, provenance rows included, to the path above
+
+     To run local verification WITHOUT the deployable verdict, re-run with
+     --local-only."
+  [ -s "$ev" ] || gate_fail "$ce" "the production evidence file is empty: $ev"
+
+  local eout erc
+  eout=$(cd "$EC_REPO" && bash ec/verify-deployment.sh "$rel" \
+           --grade "ec/deploy-manifests/evidence/$rel.production.grade" 2>&1); erc=$?
+  [ "$erc" -eq 2 ] && gate_fail "$ce" "verifier setup error while grading evidence" "$eout"
+  [ "$erc" -ne 0 ] && gate_fail "$ce" \
+    "production evidence REJECTED or the production database is below $rel's level" "$eout"
+
+  local edb eat
+  edb=$(printf '%s' "$eout" | grep -oE 'database=[^ ]+' | head -1 | cut -d= -f2)
+  eat=$(printf '%s' "$eout" | grep -oE 'executed_at=.*' | head -1 | cut -d= -f2-)
+  local eline; eline=$(printf '%s' "$eout" | grep -E '^  present:' | tail -1)
+  gate_ok "production evidence PASSED —${eline:- objects verified}"
+  EC_DEPLOY_EVIDENCE="database=${edb:-?} executed_at=${eat:-?}"
+
+  # v299 · Fable M-B. An override is a human decision to accept evidence the
+  # freshness rule would refuse. It must survive into the certification record,
+  # not stop at the verifier's stdout — otherwise the ceremony's final banner
+  # reads identically whether the rule was honoured or waived.
+  #
+  # Only staleness is overridable. A digest mismatch, wrong release, local
+  # database, malformed or incomplete evidence exits before this point, so no
+  # override text can ever accompany them.
+  local ovr; ovr=$(printf '%s\n' "$eout" | grep '^EVIDENCE OVERRIDE' | head -1)
+  if [ -n "$ovr" ]; then
+    printf '     %s\n' "$ovr"
+    EC_DEPLOY_EVIDENCE="$EC_DEPLOY_EVIDENCE  [OVERRIDDEN: ${ovr#EVIDENCE OVERRIDE — }]"
+  fi
+
+  printf '     certified local  : %s\n' "$db"
+  printf '     certified evidence: %s\n' "$EC_DEPLOY_EVIDENCE"
+  printf '     evidence file    : ec/deploy-manifests/evidence/%s.production.grade\n' "$rel"
+}

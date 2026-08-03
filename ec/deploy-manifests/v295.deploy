@@ -1,0 +1,7 @@
+# v295 — RELEASE CEREMONY
+release          v295
+migration        supabase/v295_release_ceremony.sql
+migration_source repository
+min_release      v294
+
+function         release_promise(p_occurrence uuid, p_signoff_ref text, p_clearance_ref text, p_waiver_ref text)

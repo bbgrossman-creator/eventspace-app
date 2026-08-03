@@ -1,0 +1,10 @@
+# v294 — ENGAGEMENT PREPARATION QUEUE
+# The release whose production absence caused the PGRST202 outage. Its migration
+# reached ec and was certified there; it never reached production, and no gate
+# looked. This manifest is the gate that would have caught it.
+release          v294
+migration        supabase/v294_preparation_queue.sql
+migration_source repository
+min_release      v293
+
+function         projection_preparation_queue(p_now timestamp with time zone)

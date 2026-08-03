@@ -1,0 +1,15 @@
+# FIXTURE — NOT A RELEASE. Never referenced by certify-release.sh.
+#
+# Negative control for the deployment guard: it names an object that has never
+# existed in any EventCore database. Verifying it MUST fail. A guard whose FAIL
+# path is never exercised is decoration.
+release          negative-absent-object
+migration
+migration_source none
+min_release
+
+function         ec_guard_fixture_never_existed(p_x uuid)
+table            ec_guard_fixture_absent_table
+index            ec_guard_fixture_absent_index
+trigger          ec_guard_fixture_absent_table:ec_guard_fixture_absent_trigger
+policy           ec_guard_fixture_absent_table:ec_guard_fixture_absent_policy

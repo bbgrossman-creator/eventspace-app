@@ -48,10 +48,16 @@ for a in "${@:2}"; do
     --verify)  MODE="verify" ;;
     --dry-run) MODE="dry" ;;
     --browser-only) MODE="browser" ;;
+    # v299 · Fable B-1. Runs deployment certification against the LOCAL database
+    # only, without archived production evidence. Deliberately does NOT yield the
+    # deployable verdict: the final banner says LOCAL VERIFICATION ONLY. Existing
+    # invocations are unaffected — omitting it keeps the full, fail-closed path.
+    --local-only) EC_DEPLOY_LOCAL_ONLY=1 ;;
     *) echo "unknown option: $a"; exit 2 ;;
   esac
 done
-[ -z "$VERSION" ] && { echo "usage: ./certify-release.sh <version> [--verify|--dry-run|--browser-only]"; exit 2; }
+export EC_DEPLOY_LOCAL_ONLY="${EC_DEPLOY_LOCAL_ONLY:-0}"
+[ -z "$VERSION" ] && { echo "usage: ./certify-release.sh <version> [--verify|--dry-run|--browser-only] [--local-only]"; exit 2; }
 
 # ── profile ────────────────────────────────────────────────────────────────
 [ -f "$EC/host.env" ] || { echo "missing $EC/host.env — copy ec/host.env.example and edit it"; exit 2; }
@@ -184,10 +190,32 @@ for b in $(mf_path "$M_BROWSER_REG"); do
   gate_browser "$b" "${BR_EXPECT:-?}"
 done
 
+# ── deployment certification · LAST GATE BEFORE THE VERDICT ───────────────
+# v299, after the v294 production incident. Nothing may be declared CERTIFIED
+# until BOTH the local database and archived production evidence are proven to
+# be at the release's architectural level. Placed last so it guards the verdict
+# itself rather than an early step.
+gate_deployment_certification "$VERSION"
+
 ELAPSED=$(( $(date +%s) - START ))
 echo
 echo "═══════════════════════════════════════════════════════════════"
-echo " $VERSION CERTIFICATION GREEN — $GATE_N gates, ${ELAPSED}s"
+if [ "${EC_DEPLOY_LOCAL_ONLY:-0}" = "1" ]; then
+  # v299 · Fable B-1. --local-only must never yield the deployable verdict.
+  echo " $VERSION LOCAL VERIFICATION ONLY — NOT DEPLOYABLE — $GATE_N gates, ${ELAPSED}s"
+  echo " No production evidence was graded. This run does NOT certify the release."
+  echo " For the deployable verdict, archive production evidence and re-run without"
+  echo " --local-only:  ec/deploy-manifests/evidence/$VERSION.production.grade"
+else
+  echo " $VERSION CERTIFICATION GREEN — $GATE_N gates, ${ELAPSED}s"
+  echo " deployment evidence: ${EC_DEPLOY_EVIDENCE:-unrecorded}"
+  # v299 · Fable M-B. A pass that waived the freshness rule must say so on the
+  # banner line, not only inside the gate's output. Reading GREEN and stopping
+  # there is exactly how a waived rule becomes an unnoticed one.
+  case "${EC_DEPLOY_EVIDENCE:-}" in
+    *OVERRIDDEN*) echo " *** THIS PASS USED AN EVIDENCE OVERRIDE — the freshness rule was waived ***" ;;
+  esac
+fi
 [ -n "${EC_FLOOR:-}" ] && echo " standing floor observed: $EC_FLOOR unique claims"
 echo "═══════════════════════════════════════════════════════════════"
 if [ "${EC_MANUAL_BUILD:-0}" = "1" ] || [ "$MODE" = "full" ]; then

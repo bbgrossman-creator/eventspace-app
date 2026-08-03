@@ -1,0 +1,8 @@
+# v292d — OCCURRENCES FOR OPERATIONAL DAY
+release          v292d
+migration        supabase/v292d_occurrences_for_operational_day.sql
+migration_source repository
+min_release      v292b
+
+function         projection_occurrences_for_operational_day(p_day date, p_now timestamp with time zone)
+function         v292d_version_mismatch(p_name text, p_version text)

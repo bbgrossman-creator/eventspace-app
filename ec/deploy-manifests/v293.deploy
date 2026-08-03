@@ -1,0 +1,8 @@
+# v293 — WORK CEREMONIES
+release          v293
+migration        supabase/v293_work_ceremonies.sql
+migration_source repository
+min_release      v292d1
+
+function         claim_responsibility(p_responsibility uuid)
+function         complete_responsibility(p_responsibility uuid, p_payload jsonb)

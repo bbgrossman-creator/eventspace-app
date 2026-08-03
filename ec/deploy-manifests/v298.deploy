@@ -1,0 +1,19 @@
+# v298 — OPERATIONS TODAY CANONICAL ROUTE
+#
+# Determined from the deployed change set, not from description: commit 7dea636
+# "Deploy v298 Operations Today canonical route" touches six files —
+#   next.config.js, src/app/today/page.tsx, src/app/operations/today/page.tsx,
+#   src/components/Sidebar.tsx, browser-tests/accept-navigation.mjs,
+#   browser-tests/accept-operations-shell.mjs
+# and NO file under supabase/. v298 creates, alters and drops no database
+# object, so it declares none.
+#
+# It still carries a manifest, and the reason matters. v298 moved the canonical
+# Operations Today route to /today while KEEPING the surface reachable from the
+# rail. A release that ships no SQL can still be the release that puts users in
+# front of an undeployed database band — v296 did exactly that for the
+# Preparation Queue. Its prerequisite is therefore the whole chain beneath it.
+release          v298
+migration
+migration_source none
+min_release      v297

@@ -1,0 +1,9 @@
+# v292b — OCCURRENCE BRIEF PROJECTION
+# The single authoritative pre-execution read model. Composes the v292a1
+# resolvers; creates nothing but the projection itself.
+release          v292b
+migration        supabase/v292b_occurrence_brief.sql
+migration_source repository
+min_release      v292a1
+
+function         projection_occurrence_brief(p_occurrence uuid, p_now timestamp with time zone)
