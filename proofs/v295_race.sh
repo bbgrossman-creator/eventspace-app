@@ -22,35 +22,46 @@
 # twice would break I-31' and derive two independent responsibility sets.
 #
 # Disposable clone. ec is never opened directly.
-# Run: sudo bash proofs/v295_race.sh
-# Exit: 0 PASS · 1 FAIL · 2 ABORT · 3 cleanup failure · 4 INDETERMINATE · 130 signal
+# Run: bash proofs/v295_race.sh
+# Exit: 0 PASS · 1 FAIL · 2 ABORT · 3 cleanup failure · 4 INDETERMINATE ·
+#       78 PostgreSQL certification privilege unavailable (pg_require) · 130 signal
 # ============================================================================
 set -u
-DB="v295_race_$$"
+# --- privileged access: ec/lib/pg.sh is the ONLY path to PostgreSQL ----------
+. "${EC_LIB_PG:-ec/lib/pg.sh}" || exit 2
+pg_require                      # noninteractive capability gate; never prompts
+# ---------------------------------------------------------------------------
+DB="ec_v295_race_$$"
 OUT_A="/tmp/v295_a_$$.out"; OUT_B="/tmp/v295_b_$$.out"
 SEED="/tmp/v295_seed_$$.sql"
 BARRIER="${BARRIER:-3}"
 CLEAN_FAIL=0
+CLONE_CREATED=0
 say() { printf '%s\n' "$*"; }
 cleanup() {
   local rc=$?
   rm -f "$OUT_A" "$OUT_B" "$SEED" /tmp/v295_ra_$$.sql /tmp/v295_rb_$$.sql
-  local out still
-  out=$(su postgres -c "dropdb --if-exists $DB" 2>&1)
-  [ -n "$out" ] && { say "CLEANUP-FAIL: $out"; CLEAN_FAIL=1; }
-  still=$(su postgres -c "psql -X -A -t -d postgres -c \"select count(*) from pg_database where datname='$DB'\"" 2>&1 | tail -1)
-  [ "$still" != "0" ] && { say "CLEANUP-FAIL: clone remains"; CLEAN_FAIL=1; } || say "cleanup: clone removed"
+  if [ "$CLONE_CREATED" -eq 1 ]; then
+    local out still
+    out=$(pg_drop "$DB" 2>&1)
+    [ -n "$out" ] && { say "CLEANUP-FAIL: $out"; CLEAN_FAIL=1; }
+    still=$(pg_exists "$DB")
+    [ "$still" != "0" ] && { say "CLEANUP-FAIL: clone remains"; CLEAN_FAIL=1; } || say "cleanup: clone removed"
+  else
+    say "cleanup: clone was not created"
+  fi
   [ "$CLEAN_FAIL" -ne 0 ] && { [ "$rc" -eq 0 ] && rc=3; }
   exit "$rc"
 }
 trap 'say "INTERRUPTED"; exit 130' INT TERM HUP
 trap cleanup EXIT
-psq() { su postgres -c "psql -X -A -t -v ON_ERROR_STOP=1 -d $DB -c \"$1\"" 2>&1; }
-psf() { su postgres -c "psql -X -A -t -d $DB -f '$1'" 2>&1; }
+psq() { pg_q "$DB" "$1" 2>&1; }
+psf() { pg_stdin "$DB" < "$1" 2>&1; }
 abort() { say "ABORT: $*"; exit 2; }
 
-su postgres -c "dropdb --if-exists $DB" >/dev/null 2>&1
-su postgres -c "createdb -T ec $DB" || abort "cannot clone ec"
+pg_drop "$DB"
+pg_clone ec "$DB" || abort "cannot clone ec"
+CLONE_CREATED=1
 [ "$(psq "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
           where n.nspname='public' and p.proname='release_promise'" | tail -1)" = "1" ] \
   || abort "release_promise absent from the clone — apply v295 to ec first"
@@ -125,8 +136,8 @@ SQLEOF
 }
 mk > /tmp/v295_ra_$$.sql; mk > /tmp/v295_rb_$$.sql
 chmod 644 /tmp/v295_ra_$$.sql /tmp/v295_rb_$$.sql
-su postgres -c "psql -X -A -t -d $DB -f /tmp/v295_ra_$$.sql" > "$OUT_A" 2>&1 & PID_A=$!
-su postgres -c "psql -X -A -t -d $DB -f /tmp/v295_rb_$$.sql" > "$OUT_B" 2>&1 & PID_B=$!
+pg_stdin "$DB" < /tmp/v295_ra_$$.sql > "$OUT_A" 2>&1 & PID_A=$!
+pg_stdin "$DB" < /tmp/v295_rb_$$.sql > "$OUT_B" 2>&1 & PID_B=$!
 wait $PID_A; wait $PID_B
 
 OK_A=$(grep -c 'RESULT:OK' "$OUT_A" || true); OK_B=$(grep -c 'RESULT:OK' "$OUT_B" || true)

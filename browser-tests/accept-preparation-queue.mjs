@@ -5,26 +5,43 @@
 import esbuild from "esbuild";
 import { chromium } from "playwright-core";
 import { createServer } from "http";
-import { readFileSync, existsSync, writeFileSync, unlinkSync, chmodSync } from "fs";
-import { execFileSync } from "child_process";
+import { existsSync, writeFileSync, unlinkSync } from "fs";
+import { execFileSync, spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const DB = "ec_prep294";
-
+const PGADMIN = process.env.EC_PGADMIN ?? "/usr/local/sbin/ec-pgadmin";
+const pg = (verb, ...args) => execFileSync(
+  "sudo", ["-n", "-u", "postgres", PGADMIN, verb, ...args],
+  { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+).trim();
 const psql = (sql, db = DB) => {
-  const f = `/tmp/v294_${Math.random().toString(36).slice(2)}.sql`;
-  writeFileSync(f, sql); chmodSync(f, 0o644);
-  try {
-    return execFileSync("sudo", ["-u", "postgres", "sh", "-c", `psql -d ${db} -tA -v ON_ERROR_STOP=1 -f ${f}`],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
-  } finally { try { unlinkSync(f); } catch { /* ignore */ } }
+  const r = spawnSync(
+    "sudo", ["-n", "-u", "postgres", PGADMIN, "sqlstdin", db],
+    { input: sql, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (r.error) throw r.error;
+  if (r.status !== 0) {
+    const message = (r.stderr || r.stdout || `sqlstdin exited ${r.status}`).trim();
+    const error = new Error(message);
+    error.stderr = r.stderr;
+    throw error;
+  }
+  const stderr = r.stderr || "";
+  if (/(?:^|:\s)ERROR:/m.test(stderr)) {
+    const error = new Error(stderr.trim());
+    error.stderr = stderr;
+    throw error;
+  }
+  return (r.stdout || "").trim();
 };
-const sh = (cmd) => execFileSync("sh", ["-c", cmd], { encoding: "utf8" }).trim();
 
-sh(`sudo -u postgres sh -c "dropdb --if-exists ${DB}" ; sudo -u postgres sh -c "createdb -T ec ${DB}"`);
+pg("capability");
+pg("drop", DB);
+pg("clone", "ec", DB);
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu
     where tu.active order by tu.tenant_id limit 1`).split(" ");
@@ -98,20 +115,27 @@ const server = createServer(async (req,res) => {
     return res.end(JSON.stringify({data:{tenant_id:TENANT,role:"admin",active:true,tenants:{name:"Fixture"}},error:null})); }
   if (u==="/rpc") {
     rpcCalls.push({ name: body.name, params: body.params||{} });
+    let payload;
     try {
       const p = body.params||{};
       let sql;
       if (body.name==="projection_preparation_queue")
         sql = `${ctx} select public.projection_preparation_queue(${p.p_now?`${lit(p.p_now)}::timestamptz`:""})`;
       else sql = `${ctx} select public.${body.name}()`;
-      let json = JSON.parse(psql(sql).split("\n").pop());
-      if (mode==="badversion") json.version = 2;
-      res.writeHead(200,{"content-type":"application/json"});
-      return res.end(JSON.stringify({data:json,error:null}));
+      const out = psql(sql);
+      try {
+        if (/^ERROR:/m.test(out)) throw new Error(out.replace(/\s+/g, " ").trim());
+        const json = JSON.parse(out.split("\n").pop());
+        if (mode==="badversion") json.version = 2;
+        payload = JSON.stringify({data:json,error:null});
+      } catch(e) {
+        payload = JSON.stringify({data:null,error:{message:String(e.stderr||e.message||e).replace(/\s+/g," ")}});
+      }
     } catch(e) {
-      res.writeHead(200,{"content-type":"application/json"});
-      return res.end(JSON.stringify({data:null,error:{message:String(e.stderr||e.message||e).replace(/\s+/g," ")}}));
+      payload = JSON.stringify({data:null,error:{message:String(e.stderr||e.message||e).replace(/\s+/g," ")}});
     }
+    res.writeHead(200,{"content-type":"application/json"});
+    return res.end(payload);
   }
   res.writeHead(404); res.end();
 });
@@ -191,5 +215,5 @@ await T("BQ-8 the surface is read-only: no ceremony, zero writes", async ()=>{
 console.log(`\naccept-preparation-queue: ${passed} passed, ${failed} failed`);
 await browser.close(); server.close();
 try { unlinkSync(join(here,"stub-link.tsx")); unlinkSync(join(here,"prep-queue.harness.tsx")); } catch { /* ignore */ }
-sh(`sudo -u postgres sh -c "dropdb --if-exists ${DB}"`);
+pg("drop", DB);
 process.exit(failed===0?0:1);

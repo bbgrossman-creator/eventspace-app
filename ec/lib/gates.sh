@@ -21,9 +21,12 @@ gate_fail()  {
 # ── one-shot release proof (clone; runner owns migration timing) ───────────
 gate_one_shot() {  # $1 script, $2 migration, $3 expected PASS
   gate_begin "release one-shot proof"
-  local c="sudo bash $1 $2"; gate_cmd "$c"
+  # PRIVILEGE: proof scripts run as the invoking user; only PostgreSQL
+  # operations are privileged (ec/lib/pg.sh -> sudo -n -u postgres ec-pgadmin).
+  local c="bash $1 $2"; gate_cmd "$c"
   local out rc
-  out=$(cd "$EC_REPO" && sudo -E env "PATH=$PATH" bash "$1" "$2" 2>&1); rc=$?
+  out=$(cd "$EC_REPO" && bash "$1" "$2" 2>&1); rc=$?
+  [ "$rc" -eq 78 ] && gate_fail "$c" "PostgreSQL certification privilege unavailable" "$out"
   local line; line=$(printf '%s' "$out" | grep -E "PASS / .*FAIL" | tail -1)
   [ "$rc" -ne 0 ] && gate_fail "$c" "exit $rc — ${line:-no summary line}" "$out"
   gate_ok "${line:-completed}  (expected $3 PASS)"
@@ -32,9 +35,9 @@ gate_one_shot() {  # $1 script, $2 migration, $3 expected PASS
 # ── migration apply to the live database ──────────────────────────────────
 gate_migration() {  # $1 migration path
   gate_begin "apply migration to $EC_DB"
-  local c="$EC_PSQL_ADMIN psql -d $EC_DB -f $1"; gate_cmd "$c"
+  local c="pg_file $EC_DB $1"; gate_cmd "$c"
   local out rc
-  out=$($EC_PSQL_ADMIN psql -X -v ON_ERROR_STOP=1 -d "$EC_DB" -f "$EC_REPO/$1" 2>&1); rc=$?
+  out=$(pg_file "$EC_DB" "$EC_REPO/$1" 2>&1); rc=$?
   [ "$rc" -ne 0 ] && gate_fail "$c" "exit $rc" "$out"
   gate_ok "$(printf '%s' "$out" | tr '\n' ' ')"
 }
@@ -44,9 +47,9 @@ gate_migration() {  # $1 migration path
 # verification are the harness's own, not a reimplementation.
 gate_permanent() {  # $1 = space-separated proof names (no .sql)
   gate_begin "permanent proofs (via harness verify.sh)"
-  local c="PROOFS=\"$1\" PSQL=\"$EC_PSQL\" bash $EC_HARNESS/db/verify.sh $EC_DB"; gate_cmd "$c"
+  local c="PROOFS=\"$1\" EC_PG_LIB=\"$EC_PG_LIB\" bash $EC_HARNESS/db/verify.sh $EC_DB"; gate_cmd "$c"
   local out rc
-  out=$(cd "$EC_HARNESS" && PROOFS="$1" PSQL="$EC_PSQL" bash db/verify.sh "$EC_DB" 2>&1); rc=$?
+  out=$(cd "$EC_HARNESS" && PROOFS="$1" EC_PG_LIB="$EC_PG_LIB" bash db/verify.sh "$EC_DB" 2>&1); rc=$?
   [ "$rc" -ne 0 ] && gate_fail "$c" "verify.sh exit $rc" "$out"
   printf '%s\n' "$out" | grep -E "^  (v[0-9]|claims|proof residue)" | sed 's/^/     /'
   printf '%s' "$out" | grep -q "CERTIFICATION PASSED" \
@@ -57,9 +60,9 @@ gate_permanent() {  # $1 = space-separated proof names (no .sql)
 # ── standing floor ─────────────────────────────────────────────────────────
 gate_standing() {
   gate_begin "standing certification floor (harness verify.sh)"
-  local c="PSQL=\"$EC_PSQL\" bash $EC_HARNESS/db/verify.sh $EC_DB"; gate_cmd "$c"
+  local c="EC_PG_LIB=\"$EC_PG_LIB\" bash $EC_HARNESS/db/verify.sh $EC_DB"; gate_cmd "$c"
   local out rc
-  out=$(cd "$EC_HARNESS" && PSQL="$EC_PSQL" bash db/verify.sh "$EC_DB" 2>&1); rc=$?
+  out=$(cd "$EC_HARNESS" && EC_PG_LIB="$EC_PG_LIB" bash db/verify.sh "$EC_DB" 2>&1); rc=$?
   [ "$rc" -ne 0 ] && gate_fail "$c" "verify.sh exit $rc" "$out"
   printf '%s\n' "$out" | grep -E "claims|proof residue|CERTIFICATION" | sed 's/^/     /'
   EC_FLOOR=$(printf '%s' "$out" | grep -oE "claims *: *[0-9]+" | grep -oE "[0-9]+" | tail -1)
@@ -77,9 +80,11 @@ gate_race() {
   for r in "$@"; do
     [ -z "$r" ] && continue
     gate_begin "$kind: $(basename "$r")"
-    local c="sudo bash $r"; gate_cmd "$c"
+    # PRIVILEGE: as above — no root, no elevated shell.
+    local c="bash $r"; gate_cmd "$c"
     local out rc
-    out=$(cd "$EC_REPO" && sudo -E env "PATH=$PATH" bash "$r" 2>&1); rc=$?
+    out=$(cd "$EC_REPO" && bash "$r" 2>&1); rc=$?
+    [ "$rc" -eq 78 ] && gate_fail "$c" "PostgreSQL certification privilege unavailable" "$out"
     local line; line=$(printf '%s' "$out" | grep -E "RACE-[A-Z0-9]+ (PASS|FAIL|INDETERMINATE)" | tail -1)
     [ "$rc" -eq 4 ] && gate_fail "$c" "INDETERMINATE — backends did not interleave. Rerun; raise BARRIER if it recurs." "$out"
     [ "$rc" -ne 0 ] && gate_fail "$c" "$kind failed: exit $rc — ${line:-no result line}" "$out"
@@ -172,7 +177,7 @@ gate_browser() {  # $1 script, $2 expected passed
   local out rc
   # NODE_PATH is deliberately NOT set: ESM ignores it, and setting it implied an
   # isolation this mechanism does not and cannot provide.
-  out=$(cd "$EC_REPO" && sudo -E env \
+  out=$(cd "$EC_REPO" && env \
         "PATH=$PATH" \
         "ESBUILD_BINARY_PATH=$EC_ESBUILD_BIN" \
         "PLAYWRIGHT_BROWSERS_PATH=$EC_PLAYWRIGHT_BROWSERS" \
@@ -262,12 +267,14 @@ gate_verify_deployed() {  # $1 marker function name, $2.. = harness files
   local marker="$1"; shift
   [ -z "$marker" ] && { gate_begin "deployed check"; gate_ok "no marker declared — skipped"; return 0; }
   gate_begin "confirm the release is deployed to $EC_DB"
-  local c="$EC_PSQL_ADMIN psql -d $EC_DB -tAc \"select count(*) ... proname='$marker'\""
-  gate_cmd "$c"
-  local n
-  n=$($EC_PSQL_ADMIN psql -X -A -t -d "$EC_DB" -c \
-        "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-          where n.nspname='public' and p.proname='$marker'" 2>&1 | tail -1)
+    local c="pg_q $EC_DB <catalog count for $marker>"
+    gate_cmd "$c"
+    local n rc
+    n=$(pg_q "$EC_DB" \
+          "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname='public' and p.proname='$marker'"); rc=$?
+    [ "$rc" -ne 0 ] && gate_fail "$c" "catalog query failed (rc=$rc): $n"
+    n=$(printf '%s' "$n" | tail -1)
   [ "$n" = "0" ] && gate_fail "$c" "$marker is absent from $EC_DB — this release is NOT deployed, so --verify cannot certify it. Run a full pass on a database that predates the release."
   case "$n" in ''|*[!0-9]*) gate_fail "$c" "could not read the catalog: [$n]";; esac
   gate_ok "$marker present — release is live"

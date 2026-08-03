@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# ============================================================================
+# ec-pgadmin — the ONLY privileged path in EventCore certification.
+#
+# INSTALLED LOCATION : /usr/local/sbin/ec-pgadmin   (root:root 0755)
+# INVOKED AS         : sudo -n -u postgres /usr/local/sbin/ec-pgadmin <verb> ...
+# NEVER              : as root. The sudoers grant targets the postgres user only.
+#
+# This file in the repository is the SOURCE. The installed copy is authoritative;
+# ec/install-pg-admin.sh copies it into place with root ownership so that the
+# invoking user cannot rewrite the program they are permitted to run.
+#
+# CLOSED VERB VOCABULARY — anything else exits 64.
+#   capability                 self-test; prints server version; exit 0 when usable
+#   exists   <db>              1/0
+#   clone    <src> <dst>       createdb -T <src> <dst>
+#   drop     <db>              dropdb --if-exists <db>
+#   query    <db> <sql>        psql -X -A -t -v ON_ERROR_STOP=1 -c <sql>
+#   queryq   <db> <sql>        as query, but tolerates errors (ON_ERROR_STOP=0)
+#   sqlfile  <db> <path>       psql -f <path>   (path must resolve inside the repo)
+#   sqlstdin <db>              psql -f -        (SQL from stdin; no path at all)
+#   version                    prints the wrapper's own sha256, for drift checks
+#
+# ARGUMENT LAW
+#   · database names must match ^(ec|ec_[A-Za-z0-9_]{1,48})$ — the wrapper cannot
+#     be aimed DIRECTLY at a database outside the ec namespace. SQL executed as
+#     the postgres account retains the postgres account's database and operating
+#     system capabilities; see WHAT THIS DOES NOT CLAIM below.
+#   · sqlfile paths are canonicalised with realpath and must live under REPO_ROOT
+#     and be regular files
+#   · every psql/createdb/dropdb invocation is an argv array; no string is ever
+#     re-entered into a shell, so metacharacters in arguments cannot escape
+#
+# WHAT THIS DOES NOT CLAIM
+#   `query`/`sqlfile` execute SQL as a PostgreSQL superuser, and SQL is itself a
+#   powerful surface (COPY ... FROM PROGRAM reaches a shell as the postgres OS
+#   user; dblink and postgres_fdw reach other databases). That capability is
+#   inherent to running database proofs and is NOT removed here. What IS removed:
+#   any path to root, any arbitrary binary, and any DIRECT aiming of a verb at a
+#   database outside the ec namespace. See ec/PRIVILEGE.md.
+# ============================================================================
+set -uo pipefail
+
+REPO_ROOT="/mnt/c/Users/bbgro/Downloads/eventspace-deploy"
+PSQL="/usr/bin/psql"; CREATEDB="/usr/bin/createdb"; DROPDB="/usr/bin/dropdb"
+
+die()  { printf 'ec-pgadmin: %s\n' "$1" >&2; exit "${2:-64}"; }
+dbok() { [[ "$1" =~ ^(ec|ec_[A-Za-z0-9_]{1,48})$ ]] || die "refusing database name '$1' — outside the ec namespace"; }
+
+# refuse to run as root: the grant is (postgres), and a root invocation means the
+# sudoers rule was widened. Fail loudly rather than silently accepting more power.
+[ "$(id -u)" = "0" ] && die "refusing to run as root — this wrapper must run as the postgres user" 77
+
+verb="${1:-}"; shift || true
+case "$verb" in
+
+  capability)
+    v=$("$PSQL" -X -A -t -d postgres -c 'select version()' 2>&1) || die "cannot reach PostgreSQL: $v" 75
+    printf 'CAPABILITY_OK user=%s server=%s\n' "$(id -un)" "${v%% on *}"
+    ;;
+
+  version)
+    printf '%s\n' "$(sha256sum "$0" | cut -c1-16)"
+    ;;
+
+  exists)
+    [ $# -eq 1 ] || die "usage: exists <db>"; dbok "$1"
+    n=$("$PSQL" -X -A -t -d postgres -c "select count(*) from pg_database where datname='$1'") || die "query failed" 75
+    printf '%s\n' "$n"
+    ;;
+
+  clone)
+    [ $# -eq 2 ] || die "usage: clone <src> <dst>"; dbok "$1"; dbok "$2"
+    "$CREATEDB" -T "$1" "$2" || die "clone failed (active connections to $1?)" 75
+    ;;
+
+  drop)
+    [ $# -eq 1 ] || die "usage: drop <db>"; dbok "$1"
+    "$DROPDB" --if-exists "$1" || die "drop failed" 75
+    ;;
+
+  query)
+    [ $# -eq 2 ] || die "usage: query <db> <sql>"; dbok "$1"
+    "$PSQL" -X -A -t -v ON_ERROR_STOP=1 -d "$1" -c "$2"
+    ;;
+
+  queryq)
+    [ $# -eq 2 ] || die "usage: queryq <db> <sql>"; dbok "$1"
+    "$PSQL" -X -A -t -v ON_ERROR_STOP=0 -d "$1" -c "$2" 2>&1
+    ;;
+
+  sqlfile)
+    [ $# -eq 2 ] || die "usage: sqlfile <db> <path>"; dbok "$1"
+    p=$(realpath -e -- "$2" 2>/dev/null) || die "no such file: $2"
+    case "$p" in "$REPO_ROOT"/*) : ;; *) die "refusing '$p' — outside $REPO_ROOT" ;; esac
+    [ -f "$p" ] || die "not a regular file: $p"
+    "$PSQL" -X -q -v ON_ERROR_STOP=1 -d "$1" -f "$p"
+    ;;
+
+  sqlstdin)
+    # race harnesses generate ephemeral SQL outside the repo; reading from stdin
+    # keeps the file allowlist narrow instead of widening it to /tmp
+    [ $# -eq 1 ] || die "usage: sqlstdin <db>"; dbok "$1"
+    "$PSQL" -X -A -t -v ON_ERROR_STOP=0 -d "$1" -f -
+    ;;
+
+  *) die "unknown verb '${verb:-<none>}' — vocabulary: capability version exists clone drop query queryq sqlfile sqlstdin" ;;
+esac

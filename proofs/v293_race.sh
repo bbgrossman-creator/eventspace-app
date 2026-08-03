@@ -22,30 +22,40 @@
 # CAS did not protect the row and the second claim silently stole the work.
 #
 # Disposable clone. ec is never touched.
-# Run: sudo bash proofs/v293_race.sh
-# Exit: 0 PASS · 1 FAIL · 2 ABORT · 3 cleanup failure · 4 INDETERMINATE · 130 signal
+# Run: bash proofs/v293_race.sh
+# Exit: 0 PASS · 1 FAIL · 2 ABORT · 3 cleanup failure · 4 INDETERMINATE ·
+#       78 PostgreSQL certification privilege unavailable (pg_require) · 130 signal
 # ============================================================================
 set -u
-DB="v293_race_$$"
+# --- privileged access: ec/lib/pg.sh is the ONLY path to PostgreSQL ----------
+. "${EC_LIB_PG:-ec/lib/pg.sh}" || exit 2
+pg_require                      # noninteractive capability gate; never prompts
+# ---------------------------------------------------------------------------
+DB="ec_v293_race_$$"
 OUT_A="/tmp/v293_race_a_$$.out"
 OUT_B="/tmp/v293_race_b_$$.out"
 SEED="/tmp/v293_race_seed_$$.sql"
 BARRIER="${BARRIER:-3}"       # seconds each backend waits inside its transaction
 CLEAN_FAIL=0
+CLONE_CREATED=0
 
 say() { printf '%s\n' "$*"; }
 
 cleanup() {
   local rc=$?
   rm -f "$OUT_A" "$OUT_B" "$SEED" /tmp/v293_race_a_$$.sql /tmp/v293_race_b_$$.sql
-  local out still
-  out=$(su postgres -c "dropdb --if-exists $DB" 2>&1)
-  [ -n "$out" ] && { say "CLEANUP-FAIL: dropdb reported: $out"; CLEAN_FAIL=1; }
-  still=$(su postgres -c "psql -X -A -t -d postgres -c \"select count(*) from pg_database where datname='$DB'\"" 2>&1 | tail -1)
-  if [ "$still" != "0" ]; then
-    say "CLEANUP-FAIL: clone $DB still present (count=[$still])"; CLEAN_FAIL=1
+  if [ "$CLONE_CREATED" -eq 1 ]; then
+    local out still
+    out=$(pg_drop "$DB" 2>&1)
+    [ -n "$out" ] && { say "CLEANUP-FAIL: clone removal reported: $out"; CLEAN_FAIL=1; }
+    still=$(pg_exists "$DB")
+    if [ "$still" != "0" ]; then
+      say "CLEANUP-FAIL: clone $DB still present (count=[$still])"; CLEAN_FAIL=1
+    else
+      say "cleanup: clone $DB confirmed removed"
+    fi
   else
-    say "cleanup: clone $DB confirmed removed"
+    say "cleanup: clone was not created"
   fi
   if [ "$CLEAN_FAIL" -ne 0 ]; then say "CLEANUP FAILED"; [ "$rc" -eq 0 ] && rc=3; fi
   exit "$rc"
@@ -54,12 +64,13 @@ on_signal() { say ""; say "INTERRUPTED by signal — attempting cleanup"; exit 1
 trap on_signal INT TERM HUP
 trap cleanup EXIT
 
-psq() { su postgres -c "psql -X -A -t -v ON_ERROR_STOP=1 -d $DB -c \"$1\"" 2>&1; }
-psf() { su postgres -c "psql -X -A -t -d $DB -f '$1'" 2>&1; }
+psq() { pg_q "$DB" "$1" 2>&1; }
+psf() { pg_stdin "$DB" < "$1" 2>&1; }
 abort() { say "ABORT: $*"; exit 2; }
 
-su postgres -c "dropdb --if-exists $DB" >/dev/null 2>&1
-su postgres -c "createdb -T ec $DB" || abort "cannot clone ec"
+pg_drop "$DB"
+pg_clone ec "$DB" || abort "cannot clone ec"
+CLONE_CREATED=1
 
 # ── the ceremony must already exist in the clone ────────────────────────────
 [ "$(psq "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
@@ -114,9 +125,9 @@ mk > /tmp/v293_race_a_$$.sql
 mk > /tmp/v293_race_b_$$.sql
 chmod 644 /tmp/v293_race_a_$$.sql /tmp/v293_race_b_$$.sql
 
-su postgres -c "psql -X -A -t -d $DB -f /tmp/v293_race_a_$$.sql" > "$OUT_A" 2>&1 &
+pg_stdin "$DB" < /tmp/v293_race_a_$$.sql > "$OUT_A" 2>&1 &
 PID_A=$!
-su postgres -c "psql -X -A -t -d $DB -f /tmp/v293_race_b_$$.sql" > "$OUT_B" 2>&1 &
+pg_stdin "$DB" < /tmp/v293_race_b_$$.sql > "$OUT_B" 2>&1 &
 PID_B=$!
 wait $PID_A; wait $PID_B
 

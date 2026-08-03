@@ -5,47 +5,46 @@
 import esbuild from "esbuild";
 import { chromium } from "playwright-core";
 import { createServer } from "http";
-import { readFileSync, existsSync, writeFileSync, unlinkSync, chmodSync, mkdtempSync, rmSync } from "fs";
-import { execFileSync } from "child_process";
+import { existsSync, writeFileSync, mkdtempSync, rmSync } from "fs";
+import { execFileSync, spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
-// Scratch NEVER lives in the checkout (the v294 lesson). But mkdtemp creates
-// the directory 0700 owned by the invoking user, and psql runs as the POSTGRES
-// OS user — which then cannot traverse it, however permissive the file inside
-// is. The directory mode is therefore widened deliberately, once, here.
-// Files written into it are 0644 individually.
-const scratch = mkdtempSync(join(tmpdir(), "v295-"));
-chmodSync(scratch, 0o755);
-// Fail loudly and specifically if the transition is ever broken again, rather
-// than surfacing as an opaque "psql: Permission denied" mid-suite.
-try {
-  const probe = join(scratch, "probe.sql");
-  writeFileSync(probe, "select 1;"); chmodSync(probe, 0o644);
-  execFileSync("su", ["postgres", "-c", `test -r ${probe}`], { stdio: "ignore" });
-  unlinkSync(probe);
-} catch {
-  console.error(`FATAL: the postgres OS user cannot read scratch under ${scratch}.\n` +
-    `       SQL scratch must be traversable by postgres and must NOT be moved\n` +
-    `       back into the checkout. Check the mode of ${scratch} and of ${tmpdir()}.`);
-  process.exit(2);
-}
 const DB = "ec_release295";
-
+const PGADMIN = process.env.EC_PGADMIN ?? "/usr/local/sbin/ec-pgadmin";
+const pg = (verb, ...args) => execFileSync(
+  "sudo", ["-n", "-u", "postgres", PGADMIN, verb, ...args],
+  { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+).trim();
 const psql = (sql, db = DB) => {
-  const f = join(scratch, `q_${Math.random().toString(36).slice(2)}.sql`);
-  writeFileSync(f, sql); chmodSync(f, 0o644);
-  try {
-    return execFileSync("su", ["postgres", "-c", `psql -d ${db} -tA -v ON_ERROR_STOP=1 -f ${f}`],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
-  } finally { try { unlinkSync(f); } catch {} }
+  const r = spawnSync(
+    "sudo", ["-n", "-u", "postgres", PGADMIN, "sqlstdin", db],
+    { input: sql, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (r.error) throw r.error;
+  if (r.status !== 0) {
+    const message = (r.stderr || r.stdout || `sqlstdin exited ${r.status}`).trim();
+    const error = new Error(message);
+    error.stderr = r.stderr;
+    throw error;
+  }
+  const stderr = r.stderr || "";
+  if (/(?:^|:\s)ERROR:/m.test(stderr)) {
+    const error = new Error(stderr.trim());
+    error.stderr = stderr;
+    throw error;
+  }
+  return (r.stdout || "").trim();
 };
-const sh = (c) => execFileSync("sh", ["-c", c], { encoding: "utf8" }).trim();
 
-sh(`su postgres -c "dropdb --if-exists ${DB}" ; su postgres -c "createdb -T ec ${DB}"`);
+pg("capability");
+const scratch = mkdtempSync(join(tmpdir(), "v295-"));
+pg("drop", DB);
+pg("clone", "ec", DB);
+
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu
     where tu.active order by tu.tenant_id limit 1`).split(" ");
@@ -157,6 +156,7 @@ const server = createServer(async (req,res) => {
     return res.end(JSON.stringify({data:{tenant_id:TENANT,role:"admin",active:true,tenants:{name:"Fixture"}},error:null})); }
   if (u==="/rpc") {
     rpcCalls.push({ name: body.name, params: body.params || {} });
+    let payload;
     try {
       const p = body.params || {};
       let sql;
@@ -169,12 +169,17 @@ const server = createServer(async (req,res) => {
         sql = `${ctx} select public.release_promise(${lit(p.p_occurrence)}::uuid, ${sig}, ${lit(p.p_clearance_ref)}, ${lit(p.p_waiver_ref)})`;
       } else sql = `${ctx} select public.${body.name}()`;
       const out = psql(sql);
-      res.writeHead(200,{"content-type":"application/json"});
-      return res.end(JSON.stringify({data: JSON.parse(out.split("\n").pop()), error:null}));
+      try {
+        if (/^ERROR:/m.test(out)) throw new Error(out.replace(/\s+/g, " ").trim());
+        payload = JSON.stringify({data: JSON.parse(out.split("\n").pop()), error:null});
+      } catch(e) {
+        payload = JSON.stringify({data:null,error:{message:String(e.stderr||e.message||e).replace(/\s+/g," ")}});
+      }
     } catch(e) {
-      res.writeHead(200,{"content-type":"application/json"});
-      return res.end(JSON.stringify({data:null,error:{message:String(e.stderr||e.message||e).replace(/\s+/g," ")}}));
+      payload = JSON.stringify({data:null,error:{message:String(e.stderr||e.message||e).replace(/\s+/g," ")}});
     }
+    res.writeHead(200,{"content-type":"application/json"});
+    return res.end(payload);
   }
   res.writeHead(404); res.end();
 });
@@ -186,7 +191,7 @@ const cleanup = () => {
   if (cleaned) return; cleaned = true;
   try { if (browser) browser.close(); } catch {}
   try { server.close(); } catch {}
-  try { sh(`su postgres -c "dropdb --if-exists ${DB}"`); } catch {}
+  try { pg("drop", DB); } catch {}
   try { rmSync(scratch, { recursive: true, force: true }); } catch {}
 };
 process.on("exit", cleanup);

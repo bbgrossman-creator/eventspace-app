@@ -15,6 +15,30 @@
 # Exit: 0 all required gates green · 1 a gate failed · 2 setup/usage error
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
+
+# ── capability gate · runs BEFORE any expensive gate ────────────────────────
+. "$(dirname "$0")/ec/lib/pg.sh"
+if ! pg_capability; then
+  cat >&2 <<'MSG'
+
+BEN ACTION REQUIRED — PostgreSQL certification privilege is unavailable.
+
+Certification stops here rather than beginning work it cannot finish.
+No password is stored and none will be requested.
+
+  Run ONCE, in WSL:
+
+    cd /mnt/c/Users/bbgro/Downloads/eventspace-deploy && sudo bash ec/install-pg-admin.sh
+
+  Verify (must print CAPABILITY_OK and never prompt):
+
+    sudo -n -u postgres /usr/local/sbin/ec-pgadmin capability
+
+MSG
+  exit 78
+fi
+echo "capability : PostgreSQL certification privilege present (noninteractive)"
+# ---------------------------------------------------------------------------
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EC="$HERE/ec"
 
@@ -33,16 +57,19 @@ done
 [ -f "$EC/host.env" ] || { echo "missing $EC/host.env — copy ec/host.env.example and edit it"; exit 2; }
 # shellcheck disable=SC1090
 . "$EC/host.env"
-: "${EC_REPO:?}" "${EC_HARNESS:?}" "${EC_DB:?}" "${EC_PSQL:?}" "${EC_PSQL_ADMIN:?}" "${EC_NODE:?}"
+: "${EC_REPO:?}" "${EC_HARNESS:?}" "${EC_DB:?}" "${EC_NODE:?}"
+: "${EC_PG_LIB:=$EC_REPO/ec/lib/pg.sh}"
 
 MANIFEST="$EC/manifests/${VERSION}.manifest"
 [ -f "$MANIFEST" ] || { echo "no manifest: $MANIFEST"; exit 2; }
 
 # ── the su shim goes FIRST on PATH, for this process tree only ────────────
-# Historical runners invoke `su postgres -c`, which this host cannot satisfy.
+# PRIVILEGE MODEL: no gate runs as root. Repository scripts execute as the
+# invoking user; the ONLY privileged path is ec/lib/pg.sh, which calls
+#   sudo -n -u postgres /usr/local/sbin/ec-pgadmin <closed verb>
+# and can never prompt. See ec/PRIVILEGE.md.
 # Normalizing execution here preserves 16 certified artifacts byte-for-byte.
-export PATH="$EC/shim:$PATH"
-chmod +x "$EC/shim/su" 2>/dev/null
+  # (legacy $EC/shim privileged path removed — PostgreSQL now via ec/lib/pg.sh)
 
 # shellcheck disable=SC1090
 . "$EC/lib/gates.sh"
@@ -76,7 +103,7 @@ echo "════════════════════════�
 echo " EventCore certification — $VERSION   mode=$MODE"
 echo " repo    : $EC_REPO"
 echo " harness : $EC_HARNESS"
-echo " database: $EC_DB    psql: $EC_PSQL_ADMIN psql"
+echo " database: $EC_DB    pg access: ec/lib/pg.sh -> sudo -n -u postgres ec-pgadmin"
 echo "═══════════════════════════════════════════════════════════════"
 
 if [ "$MODE" = "dry" ]; then
