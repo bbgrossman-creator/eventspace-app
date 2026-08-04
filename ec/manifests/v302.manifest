@@ -1,0 +1,28 @@
+# EventCore release manifest — v302 Certification Mechanics
+#
+# Certification machinery only. No SQL object is deployed, so there is no
+# migration and no deployed marker — the v296/v301 shape. It does carry a
+# permanent proof, because the guarantee it schedules (the v292d composed
+# version guard) must keep being proved by every later release, not only by
+# this one.
+#
+# What it closes:
+#   · the --verify branch skipped a release's own one_shot whenever the mode
+#     was --verify, even for a release with no migration. v301 returned exit 0
+#     across 18 gates with all fifteen of its claims unrun.
+#   · D-3 — unit-projection.mjs (26 claims over state.ts, labels.ts and the
+#     projection client) had no scheduled execution path at all.
+#   · D-6 — the v292d composed version guard cited OD-20 twice in its source;
+#     OD-20 existed in no proof file anywhere.
+version            v302
+one_shot           proofs/v302_proofs.sh                        expect 12
+permanent          v302_permanent_proof                         expect 4
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+# unit-projection carries a fixed count and is stated; the seven transport
+# suites differ (18/9/8/18/24/20/14), so no shared expect is claimed for them.
+browser            browser-tests/unit-projection.mjs            expect 26
+browser_regress    browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+harness_install    supabase/tests/v302_permanent_proof.sql
+git_files          certify-release.sh proofs/v302_proofs.sh supabase/tests/v302_permanent_proof.sql ec/manifests/v302.manifest ec/deploy-manifests/v302.deploy

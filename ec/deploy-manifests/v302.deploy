@@ -1,0 +1,12 @@
+# v302 — CERTIFICATION MECHANICS
+# Harness correction and two scheduled proofs. No SQL object, no migration.
+#
+# Its prerequisite is the whole chain beneath it, for the reason v296 gives:
+# a release that ships no SQL is still a release. Here the point is sharper
+# than usual — v302 changes the harness that decides whether every OTHER
+# release is certified, and schedules the guard protecting every composed
+# operational-day read.
+release          v302
+migration
+migration_source none
+min_release      v301

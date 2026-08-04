@@ -160,11 +160,33 @@ if [ "$MODE" = "full" ]; then
   # shellcheck disable=SC2086
   [ -n "$M_HARNESS_INSTALL" ] && gate_harness_install $M_HARNESS_INSTALL
 else
-  gate_begin "one-shot + migration"
-  gate_ok "SKIPPED in --verify: $VERSION is already deployed. The one-shot clones"
-  printf '          a pre-release database and would abort against a migrated one.\n'
+  # v302 · the skip is MIGRATION-specific, not mode-specific.
+  #
+  # A migrating release's one-shot clones a PRE-release database and aborts
+  # against a migrated one, so skipping it under --verify is correct and is
+  # preserved below, byte-for-byte in effect.
+  #
+  # A release that ships NO migration has no such dependency: v301's one-shot
+  # clones ec and exercises transport logic, and would run perfectly well here.
+  # Keying the skip on MODE alone silently discarded it — v301 returned exit 0
+  # across 18 gates with all fifteen of its own claims unrun. Exit 0 with the
+  # release's own proof unexecuted is a green line about the wrong thing, which
+  # is the failure class this harness exists to prevent.
+  if [ -n "$M_MIGRATION" ]; then
+    gate_begin "one-shot + migration"
+    gate_ok "SKIPPED in --verify: $VERSION is already deployed. The one-shot clones"
+    printf '          a pre-release database and would abort against a migrated one.\n'
+  else
+    [ -n "$M_ONESHOT_P" ] && gate_one_shot "$M_ONESHOT_P" "" "$(mf_expect "$M_ONESHOT")"
+  fi
   # shellcheck disable=SC2086
   gate_verify_deployed "$M_DEPLOYED_MARKER" $M_HARNESS_INSTALL
+  # gate_verify_deployed RETURNS EARLY when no marker is declared, before its
+  # harness-install loop — so a marker-less release carrying a permanent proof
+  # would never have it installed under --verify, and the permanent gate would
+  # then read it as MISSING from the harness. v302 is itself such a release.
+  # shellcheck disable=SC2086
+  [ -z "$M_DEPLOYED_MARKER" ] && [ -n "$M_HARNESS_INSTALL" ] && gate_harness_install $M_HARNESS_INSTALL
 fi
 
 PERM_ALL="$(mf_path "$M_PERMANENT") $M_PERM_REGRESS"
