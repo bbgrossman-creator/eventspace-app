@@ -6,41 +6,18 @@ import esbuild from "esbuild";
 import { chromium } from "playwright-core";
 import { createServer } from "http";
 import { readFileSync, existsSync } from "fs";
-import { spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { makeFixtureDb } from "./lib/pg.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const DB = "ec_prep292c";
-// v300 · TRANSPORT ONLY. `su postgres` requires root, so this suite could never
-// run under the certification harness — it is what failed Gate 14 the moment
-// v300.manifest declared it. The v298a privilege model grants exactly one
-// non-interactive path, the closed-verb wrapper ec-pgadmin, so SQL travels on
-// stdin (`sqlstdin`) and the fixture database is built with `clone`/`drop`
-// rather than createdb/dropdb. No fixture, claim or assertion changes.
-//
-// `sqlstdin` runs psql with ON_ERROR_STOP=0, which would exit 0 on a failed
-// statement and silently turn every ceremony REFUSAL into a passing test. The
-// ON_ERROR_STOP=1 contract is therefore restored here: any ERROR: on stderr
-// throws, and the thrown Error carries .stderr — which is the exact channel the
-// /rpc handler reads to surface a refusal verbatim (PR-7, PR-8, PR-10).
-const PGADMIN = ["-n", "-u", "postgres", "/usr/local/sbin/ec-pgadmin"];
-const psql = (sql, db = DB) => {
-  const r = spawnSync("sudo", [...PGADMIN, "sqlstdin", db],
-    { input: sql, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  const out = (r.stdout || "").trim(), err = (r.stderr || "").trim();
-  if (r.status !== 0 || /^(psql:[^\n]*)?ERROR:/m.test(err)) {
-    const e = new Error(err || out || `sqlstdin exit ${r.status}`); e.stderr = err; throw e;
-  }
-  return out;
-};
-const pgadmin = (...a) => {
-  const r = spawnSync("sudo", [...PGADMIN, ...a], { encoding: "utf8" });
-  if (r.status !== 0) throw new Error(`${a[0]}: ${(r.stderr || "").trim()}`);
-  return (r.stdout || "").trim();
-};
-pgadmin("drop", DB); pgadmin("clone", "ec", DB);
+// v301 · one shared transport (browser-tests/lib/pg.mjs). v300 gave this suite
+// its own ec-pgadmin implementation; that made three copies in two variants
+// across the estate. The helper owns clone/drop/sqlstdin, the ON_ERROR_STOP=1
+// restoration that keeps ceremony refusals failing (PR-7, PR-8), and cleanup.
+const { psql } = makeFixtureDb(DB);
 
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu where tu.active order by tu.tenant_id limit 1`).split(" ");
@@ -431,5 +408,4 @@ await T("PR-18 every finding is shown, event-level ones are marked, and the at-r
 
 console.log(`\naccept-occurrence-prep: ${passed} passed, ${failed} failed`);
 await browser.close(); server.close();
-pgadmin("drop", DB);
-process.exit(failed===0?0:1);
+process.exit(failed===0?0:1);   // the fixture database is dropped by the registered cleanup

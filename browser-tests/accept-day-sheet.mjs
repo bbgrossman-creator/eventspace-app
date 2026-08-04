@@ -10,8 +10,8 @@
 import esbuild from "esbuild";
 import { chromium } from "playwright-core";
 import { createServer } from "http";
-import { readFileSync, existsSync, writeFileSync, unlinkSync, chmodSync } from "fs";
-import { execFileSync } from "child_process";
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from "fs";
+import { makeFixtureDb } from "./lib/pg.mjs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -19,17 +19,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const DB = "ec_day292e";
 
-const psql = (sql, db = DB) => {
-  const f = `/tmp/v292e_${Math.random().toString(36).slice(2)}.sql`;
-  writeFileSync(f, sql); chmodSync(f, 0o644);
-  try {
-    return execFileSync("sudo", ["-u", "postgres", "sh", "-c", `psql -d ${db} -tA -v ON_ERROR_STOP=1 -f ${f}`],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
-  } finally { try { unlinkSync(f); } catch { /* ignore */ } }
-};
-const sh = (cmd) => execFileSync("sh", ["-c", cmd], { encoding: "utf8" }).trim();
-
-sh(`sudo -u postgres sh -c "dropdb --if-exists ${DB}" ; sudo -u postgres sh -c "createdb -T ec ${DB}"`);
+// v301 · one shared transport (browser-tests/lib/pg.mjs). This suite used
+// `sudo -u postgres sh -c` — a third variant, and one the v298a privilege model
+// cannot satisfy non-interactively (`sudo -n -u postgres true` → "a password is
+// required"). It is gated by v294.manifest, so certify-release.sh v294 could
+// not pass. Transport only — no fixture, claim or assertion changes.
+const { psql } = makeFixtureDb(DB);
 
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu
@@ -458,5 +453,5 @@ await T("DS-17 a genuine SQL refusal renders honestly — no stale lens, no inve
 console.log(`\naccept-day-sheet: ${passed} passed, ${failed} failed`);
 await browser.close(); server.close();
 try { unlinkSync(join(here, "stub-link.tsx")); } catch { /* ignore */ }
-sh(`sudo -u postgres sh -c "dropdb --if-exists ${DB}"`);
+// the fixture database is dropped by the registered cleanup
 process.exit(failed === 0 ? 0 : 1);

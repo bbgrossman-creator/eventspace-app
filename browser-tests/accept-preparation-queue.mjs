@@ -6,42 +6,17 @@ import esbuild from "esbuild";
 import { chromium } from "playwright-core";
 import { createServer } from "http";
 import { existsSync, writeFileSync, unlinkSync } from "fs";
-import { execFileSync, spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { makeFixtureDb } from "./lib/pg.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const DB = "ec_prep294";
-const PGADMIN = process.env.EC_PGADMIN ?? "/usr/local/sbin/ec-pgadmin";
-const pg = (verb, ...args) => execFileSync(
-  "sudo", ["-n", "-u", "postgres", PGADMIN, verb, ...args],
-  { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-).trim();
-const psql = (sql, db = DB) => {
-  const r = spawnSync(
-    "sudo", ["-n", "-u", "postgres", PGADMIN, "sqlstdin", db],
-    { input: sql, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
-  if (r.error) throw r.error;
-  if (r.status !== 0) {
-    const message = (r.stderr || r.stdout || `sqlstdin exited ${r.status}`).trim();
-    const error = new Error(message);
-    error.stderr = r.stderr;
-    throw error;
-  }
-  const stderr = r.stderr || "";
-  if (/(?:^|:\s)ERROR:/m.test(stderr)) {
-    const error = new Error(stderr.trim());
-    error.stderr = stderr;
-    throw error;
-  }
-  return (r.stdout || "").trim();
-};
-
-pg("capability");
-pg("drop", DB);
-pg("clone", "ec", DB);
+// v301 · one shared transport. This suite's implementation was the original;
+// it now lives in browser-tests/lib/pg.mjs, unchanged in behaviour, so no
+// second copy can drift from it.
+const { psql } = makeFixtureDb(DB);
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu
     where tu.active order by tu.tenant_id limit 1`).split(" ");
@@ -215,5 +190,4 @@ await T("BQ-8 the surface is read-only: no ceremony, zero writes", async ()=>{
 console.log(`\naccept-preparation-queue: ${passed} passed, ${failed} failed`);
 await browser.close(); server.close();
 try { unlinkSync(join(here,"stub-link.tsx")); unlinkSync(join(here,"prep-queue.harness.tsx")); } catch { /* ignore */ }
-pg("drop", DB);
-process.exit(failed===0?0:1);
+process.exit(failed===0?0:1);   // the fixture database is dropped by the registered cleanup

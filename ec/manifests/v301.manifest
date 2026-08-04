@@ -1,0 +1,22 @@
+# EventCore release manifest — v301 Shared Browser Transport
+#
+# Test infrastructure only. No SQL object is deployed, so there is no migration,
+# no permanent proof, no deployed marker and no harness install — the v296
+# precedent. Empty fields are skipped by the runner.
+#
+# What it closes: four browser suites reached PostgreSQL through `su postgres`
+# or `sudo -u postgres sh -c`, neither of which the v298a privilege model can
+# satisfy non-interactively. One of them, accept-day-sheet, is declared by
+# v294.manifest, so certify-release.sh v294 could not pass. All seven
+# database-touching suites now share browser-tests/lib/pg.mjs.
+version            v301
+one_shot           proofs/v301_proofs.sh                        expect 15
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+# Every suite the shared transport touches, so a regression in the helper is
+# caught by this release rather than by whichever release runs next. They carry
+# different counts (18/9/8/14/24/20/18), so no single expect is stated —
+# the runner prints observed counts and asserts exit status.
+browser_regress    browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+git_files          browser-tests/lib/pg.mjs proofs/v301_proofs.sh ec/manifests/v301.manifest ec/deploy-manifests/v301.deploy browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs

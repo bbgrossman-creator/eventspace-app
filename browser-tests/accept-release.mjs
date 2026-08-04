@@ -6,44 +6,20 @@ import esbuild from "esbuild";
 import { chromium } from "playwright-core";
 import { createServer } from "http";
 import { existsSync, writeFileSync, mkdtempSync, rmSync } from "fs";
-import { execFileSync, spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
+import { makeFixtureDb } from "./lib/pg.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const DB = "ec_release295";
-const PGADMIN = process.env.EC_PGADMIN ?? "/usr/local/sbin/ec-pgadmin";
-const pg = (verb, ...args) => execFileSync(
-  "sudo", ["-n", "-u", "postgres", PGADMIN, verb, ...args],
-  { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-).trim();
-const psql = (sql, db = DB) => {
-  const r = spawnSync(
-    "sudo", ["-n", "-u", "postgres", PGADMIN, "sqlstdin", db],
-    { input: sql, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
-  if (r.error) throw r.error;
-  if (r.status !== 0) {
-    const message = (r.stderr || r.stdout || `sqlstdin exited ${r.status}`).trim();
-    const error = new Error(message);
-    error.stderr = r.stderr;
-    throw error;
-  }
-  const stderr = r.stderr || "";
-  if (/(?:^|:\s)ERROR:/m.test(stderr)) {
-    const error = new Error(stderr.trim());
-    error.stderr = stderr;
-    throw error;
-  }
-  return (r.stdout || "").trim();
-};
-
-pg("capability");
+// v301 · one shared transport. The helper generalises THIS suite's cleanup
+// discipline — registered on exit and SIGINT rather than appended to the last
+// line — to every suite; the local cleanup() below still owns the browser, the
+// server and the scratch directory.
+const { psql, drop: dropDb } = makeFixtureDb(DB);
 const scratch = mkdtempSync(join(tmpdir(), "v295-"));
-pg("drop", DB);
-pg("clone", "ec", DB);
 
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu
@@ -191,7 +167,7 @@ const cleanup = () => {
   if (cleaned) return; cleaned = true;
   try { if (browser) browser.close(); } catch {}
   try { server.close(); } catch {}
-  try { pg("drop", DB); } catch {}
+  dropDb();                                   // idempotent; also registered by the helper
   try { rmSync(scratch, { recursive: true, force: true }); } catch {}
 };
 process.on("exit", cleanup);

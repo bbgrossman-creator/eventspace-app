@@ -8,8 +8,8 @@
 import esbuild from "esbuild";
 import { chromium } from "playwright-core";
 import { createServer } from "http";
-import { readFileSync, existsSync, writeFileSync, unlinkSync, chmodSync } from "fs";
-import { execFileSync } from "child_process";
+import { readFileSync, existsSync } from "fs";
+import { makeFixtureDb } from "./lib/pg.mjs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -17,17 +17,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const DB = "ec_rd291";
 
-const psql = (sql, db = DB) => {
-  const f = `/tmp/v291_${Math.random().toString(36).slice(2)}.sql`;
-  writeFileSync(f, sql); chmodSync(f, 0o644);
-  try {
-    return execFileSync("su", ["postgres", "-c", `psql -d ${db} -tA -v ON_ERROR_STOP=1 -f ${f}`],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
-  } finally { try { unlinkSync(f); } catch { /* ignore */ } }
-};
-const sh = (cmd) => execFileSync("sh", ["-c", cmd], { encoding: "utf8" }).trim();
-
-sh(`su postgres -c "dropdb --if-exists ${DB}" ; su postgres -c "createdb -T ec ${DB}"`);
+// v301 · one shared transport (browser-tests/lib/pg.mjs). This suite used
+// `su postgres -c psql -f <tmpfile>`, which needs root and so could never run
+// under the certification harness. Transport only — no fixture, claim or
+// assertion changes.
+const { psql } = makeFixtureDb(DB);
 
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu where tu.active order by tu.tenant_id limit 1`
@@ -449,5 +443,4 @@ await T("RD-18 the entire detail sweep performed zero writes — ledger fingerpr
 
 console.log(`\naccept-responsibility-detail: ${passed} passed, ${failed} failed`);
 await browser.close(); server.close();
-sh(`su postgres -c "dropdb --if-exists ${DB}"`);
-process.exit(failed === 0 ? 0 : 1);
+process.exit(failed === 0 ? 0 : 1);   // the fixture database is dropped by the registered cleanup

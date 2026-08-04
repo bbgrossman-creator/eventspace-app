@@ -1,0 +1,12 @@
+# v301 — SHARED BROWSER TRANSPORT
+# Test infrastructure only: one PostgreSQL transport helper, consumed by the
+# seven browser suites that need a database. No SQL object, no migration.
+#
+# It still carries a manifest, for the reason v296 states: a release that ships
+# no SQL is still a release, and the chain must not break at it. Its prerequisite
+# is the whole chain beneath it — and in this release's case that is more than a
+# formality, because the suites it repairs are the ones that PROVE the chain.
+release          v301
+migration
+migration_source none
+min_release      v300
