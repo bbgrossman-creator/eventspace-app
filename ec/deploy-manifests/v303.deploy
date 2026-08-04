@@ -1,0 +1,18 @@
+# v303 — OCCURRENCE READINESS (ATL-1)
+# Three new resolvers compose the canonical readiness verdict bottom-up from
+# responsibility_state; projection_occurrence_brief is REPLACED to carry it.
+#
+# The brief's identity signature does not change and it remains occurrence_brief
+# v1, so projection_occurrences_for_operational_day's composed version guard is
+# untouched and never fires. projection_occurrence_brief is NOT re-declared here:
+# v292b declares it where it is first created, and the chain covers it — the same
+# rule v297 applied to occurrence_current_venue.
+release          v303
+migration        supabase/v303_readiness.sql
+migration_source repository
+min_release      v302
+
+function         occurrence_phase(p_occurrence uuid, p_now timestamp with time zone)
+function         occurrence_department_readiness(p_occurrence uuid, p_now timestamp with time zone)
+function         occurrence_readiness(p_occurrence uuid, p_now timestamp with time zone)
+function         v303_readiness()

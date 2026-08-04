@@ -29,7 +29,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { occurrenceBrief } from "@/lib/projection/feed";
 import { ProjectionRefusal, type OccurrenceBriefEnvelope } from "@/lib/projection/types";
-import { departmentLabel, findingLabel, setLabelPack } from "@/lib/projection/labels";
+import {
+  departmentLabel, findingLabel, setLabelPack,
+  phaseLabel, verdictLabel, blockerLabel,
+} from "@/lib/projection/labels";
 import { indexRisk, severityClass } from "@/lib/projection/state";
 import { loadSession } from "@/lib/permissions";
 import {
@@ -310,6 +313,99 @@ export default function OccurrencePrep({
           </p>
         )}
       </section>
+
+      {/* ── IS ANYTHING IN THE WAY? ──────────────────────────────────────────
+          v303 · ATL-1. The canonical readiness verdict, authored in SQL and
+          composed bottom-up from responsibility_state. Nothing here derives it:
+          the phase, the gate, the verdict, every ground and the blocker count
+          are read verbatim from data.readiness_state. Under R-13 a readiness
+          verdict is truth, and truth is SQL's.
+
+          `ready` means UNIMPEDED — a department can be ready with outstanding
+          work. Completion is the lifecycle phase `settled`, rendered separately
+          beside the verdict so the two axes never collapse into one. */}
+      {d.readiness_state && (
+        <section
+          data-readiness-state
+          data-phase={d.readiness_state.phase}
+          data-gate={d.readiness_state.gate ?? ""}
+          data-verdict={d.readiness_state.verdict}
+          data-blocker-count={String(d.readiness_state.blocker_count)}
+          className={`mb-5 rounded border p-3 ${
+            d.readiness_state.verdict === "blocked"
+              ? "border-rose-200 bg-rose-50/40"
+              : "border-neutral-200"}`}
+        >
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-medium">
+              {verdictLabel(d.readiness_state.verdict)}
+            </h2>
+            <span data-readiness-phase className="text-xs text-neutral-500">
+              {phaseLabel(d.readiness_state.phase)}
+              {d.readiness_state.gate && ` · ${d.readiness_state.gate} gate`}
+            </span>
+          </div>
+
+          {/* occurrence-grain grounds — the release gate lives here */}
+          {d.readiness_state.blockers.length > 0 && (
+            <ul data-readiness-blockers className="mt-2 space-y-1">
+              {d.readiness_state.blockers.map((g, i) => (
+                <li key={i} data-blocker={g.code} data-blocker-impedes={String(g.impedes)}
+                    className="rounded bg-rose-100 px-2 py-1 text-xs text-rose-800">
+                  {blockerLabel(g.code)}{g.fact ? ` — ${g.fact}` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* department verdicts — the execution gate decomposes here */}
+          {d.readiness_state.by_department.length > 0 && (
+            <ul data-readiness-departments className="mt-2 space-y-1.5">
+              {d.readiness_state.by_department.map((dep) => (
+                <li key={dep.subject} data-dept-verdict={dep.subject}
+                    data-dept-outcome={dep.verdict}
+                    data-dept-outstanding={String(dep.outstanding)}
+                    className="text-xs">
+                  <span className="font-medium">{departmentLabel(dep.subject)}</span>
+                  <span className={dep.verdict === "blocked" ? "ml-1.5 text-rose-700" : "ml-1.5 text-neutral-500"}>
+                    {verdictLabel(dep.verdict)}
+                  </span>
+                  <span className="ml-1.5 text-neutral-400">
+                    {dep.outstanding} outstanding
+                  </span>
+                  {dep.blockers.length > 0 && (
+                    <ul className="ml-3 mt-0.5 space-y-0.5">
+                      {dep.blockers.map((g, i) => (
+                        <li key={i} data-ground={g.code}
+                            data-ground-impedes={String(g.impedes)}
+                            data-ground-subject={g.subject}
+                            className={g.impedes ? "text-rose-700" : "text-neutral-500"}>
+                          {blockerLabel(g.code)}
+                          {g.required_outcome ? ` — ${g.required_outcome}` : ""}
+                          {(g.notes ?? []).map((nt) => (
+                            <span key={nt} data-ground-note={nt} className="ml-1 opacity-70">
+                              ({blockerLabel(nt)})
+                            </span>
+                          ))}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* non-impeding grounds — informational, never gating */}
+          {d.readiness_state.reasons.length > 0 && (
+            <p data-readiness-reasons
+               data-reason-count={String(d.readiness_state.reasons.length)}
+               className="mt-2 text-xs text-neutral-500">
+              {d.readiness_state.reasons.length} not yet recorded — informs, does not gate
+            </p>
+          )}
+        </section>
+      )}
 
       {/* ── WHAT IS WRONG ────────────────────────────────────────────────────
           v300 · EX-02. Before this, the console showed `counts.exceptions` and

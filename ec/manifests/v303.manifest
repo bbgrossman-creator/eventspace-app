@@ -1,0 +1,29 @@
+# EventCore release manifest — v303 Occurrence Readiness (ATL-1)
+#
+# The canonical, SQL-owned readiness model for the Occurrence band. Under R-13 a
+# readiness verdict is TRUTH, so it is authored in SQL and the client renders it.
+#
+# Two orthogonal axes: LIFECYCLE (preparing · released · settled · cancelled) and
+# READINESS (ready · blocked · not_applicable), where `ready` means UNIMPEDED and
+# completion is the phase `settled`. Composed bottom-up — responsibility_state
+# remains the sole authority at its grain, department verdicts compose from it,
+# and the occurrence verdict composes from departments — so an upper-grain verdict
+# has no independent rule and cannot disagree with the grounds it carries.
+#
+# The brief STAYS at occurrence_brief v1: readiness_state is a NEW key, and the
+# envelope version protects reader compatibility, not authorship location. Both
+# composed projections are proved byte-identical.
+version            v303
+one_shot           proofs/v303_proofs.sh                        expect 14
+migration          supabase/v303_readiness.sql
+permanent          v303_permanent_proof                         expect 20
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser            browser-tests/accept-occurrence-prep.mjs     expect 20
+# unit-projection carries a fixed count and is stated; the six transport suites
+# differ (28/9/8/18/24/20/14), so no shared expect is claimed for them.
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+harness_install    supabase/tests/v303_permanent_proof.sql
+deployed_marker    v303_readiness
+git_files          supabase/v303_readiness.sql supabase/tests/v303_permanent_proof.sql proofs/v303_proofs.sh ec/manifests/v303.manifest ec/deploy-manifests/v303.deploy src/lib/projection/types.ts src/lib/projection/labels.ts src/components/occurrence/OccurrencePrep.tsx browser-tests/accept-occurrence-prep.mjs browser-tests/unit-projection.mjs

@@ -25,6 +25,73 @@ export const GROUP_BY_KEYS = [
 ] as const;
 export type GroupBy = (typeof GROUP_BY_KEYS)[number];
 
+/** v303 · ATL-1 · LIFECYCLE — where an occurrence is in its arc.
+ *  Kept strictly separate from the readiness verdict below: an occurrence in
+ *  execution was once ready, and a model that makes those mutually exclusive
+ *  (as the legacy event_stage does) cannot say so. Completion is `settled`. */
+export const LIFECYCLE_PHASES = [
+  "preparing", "released", "settled", "cancelled",
+] as const;
+export type LifecyclePhase = (typeof LIFECYCLE_PHASES)[number];
+
+/** v303 · the readiness verdict. `ready` means UNIMPEDED — never complete.
+ *  `not_applicable` is emitted only where no gate is open (settled, cancelled),
+ *  and is therefore occurrence-grain only: a department that has no work does
+ *  not appear at all rather than appearing as not_applicable. */
+export const READINESS_VERDICTS = ["ready", "blocked", "not_applicable"] as const;
+export type ReadinessVerdict = (typeof READINESS_VERDICTS)[number];
+
+/** v303 · the CLOSED blocker/reason taxonomy. Only `impedes` moves a verdict;
+ *  everything else is grounds. `owner_required` and `risk_noted` are RESERVED
+ *  and not emitted — no ceremony requires ownership, and risk rides in
+ *  data.risk beside the verdict. */
+export const BLOCKER_CODES = [
+  "overdue", "dependency_unmet", "release_fact_missing", "owner_required",
+  "workable", "not_due", "ownerless", "fact_missing", "exception_open",
+] as const;
+export type BlockerCode = (typeof BLOCKER_CODES)[number];
+
+/** One ground beneath a verdict. Carries everything needed to identify and act
+ *  on the work without a second query — the property that lets a future
+ *  next-action model be a pure selection over this payload. */
+export interface ReadinessGround {
+  code: BlockerCode;
+  grain: "responsibility" | "occurrence";
+  subject: string;
+  impedes: boolean;
+  notes?: string[];
+  department?: DepartmentKey;
+  required_outcome?: string;
+  owner?: string | null;
+  ordering_key?: string;
+  timing?: Record<string, unknown>;
+  fact?: string;
+  detail?: Record<string, unknown>;
+}
+
+export interface DepartmentReadiness {
+  grain: "department";
+  subject: DepartmentKey;
+  verdict: Exclude<ReadinessVerdict, "not_applicable">;
+  outstanding: number;
+  blockers: ReadinessGround[];
+}
+
+/** The canonical readiness verdict, composed bottom-up in SQL. The verdict NAMES
+ *  ITS GATE, and exactly one gate is open per phase: `release` while preparing,
+ *  `execution` once released, none when settled or cancelled. */
+export interface ReadinessState {
+  grain: "occurrence";
+  subject: string;
+  phase: LifecyclePhase;
+  gate: "release" | "execution" | null;
+  verdict: ReadinessVerdict;
+  blocker_count: number;
+  blockers: ReadinessGround[];
+  reasons: ReadinessGround[];
+  by_department: DepartmentReadiness[];
+}
+
 /** Risk decorations. A finding is NEVER a state (v287b RSK-*). */
 export type RiskFindingKind =
   | "lapsed"
@@ -267,6 +334,11 @@ export interface OccurrenceBriefData {
   has_event: boolean;
   event: string | null;
   readiness: BriefReadiness[];
+  /** v303 · ATL-1. The VERDICT beside the counts above. `readiness` reports how
+   *  much; this reports whether anything stands in the way, and carries the
+   *  grounds it was computed from. Authored entirely in SQL — the client
+   *  renders it and derives nothing. */
+  readiness_state: ReadinessState;
   /** v300 · EX-02. The complete finding set for the event, all eight kinds.
    *  counts.at_risk is count(distinct responsibility) over THIS collection
    *  where responsibility is not null — so the aggregate decomposes here.
@@ -285,6 +357,9 @@ export interface OccurrenceBriefCounts {
   exceptions: number; overlaps: number;
   by_state: Partial<Record<ResponsibilityState, number>>;
   missing_promise_facts: number;
+  /** v303 · decomposes exactly to the impeding grounds in readiness_state,
+   *  across both the occurrence and department grains. */
+  readiness_blockers: number;
 }
 export type OccurrenceBriefEnvelope =
   Envelope<OccurrenceBriefData> & { counts: OccurrenceBriefCounts };

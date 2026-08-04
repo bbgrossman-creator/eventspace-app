@@ -47,6 +47,34 @@ const SHARED_FINDINGS: Record<string, string> = {
   venue_renovation_reverification: "Venue changed — needs re-check",
 };
 
+/** v303 · ATL-1. Two closed vocabularies, shared across packs because they are
+ *  LAW, not language: the keys are constitutional and only the words vary.
+ *  `ready` reads as unimpeded, never as complete — completion is `settled`. */
+const SHARED_PHASES: Record<string, string> = {
+  preparing: "Preparing",
+  released:  "In execution",
+  settled:   "Settled",
+  cancelled: "Cancelled",
+};
+
+const SHARED_VERDICTS: Record<string, string> = {
+  ready:          "Nothing in the way",
+  blocked:        "Blocked",
+  not_applicable: "—",
+};
+
+const SHARED_BLOCKERS: Record<string, string> = {
+  overdue:              "Window closed unmet",
+  dependency_unmet:     "Waiting on other work",
+  release_fact_missing: "Cannot release yet",
+  owner_required:       "Needs an owner before it can proceed",
+  workable:             "Ready to work",
+  not_due:              "Not due yet",
+  ownerless:            "Nobody owns this yet",
+  fact_missing:         "Not yet recorded",
+  exception_open:       "Exception recorded",
+};
+
 /** Default pack. EventCore's first domain deserves its own language. */
 export const CATERING_PACK: LabelPack = {
   id: "catering",
@@ -155,6 +183,20 @@ export function findingLabel(finding: RiskFindingKind | string, pack: LabelPack 
 }
 export function surfaceLabel(surface: string, pack: LabelPack = activePack): string {
   return pack.surfaces[surface] ?? surface;
+}
+
+/** v303 · ATL-1. Total over the closed vocabularies, and degrading — never
+ *  throwing — on an unknown key, exactly as findingLabel does. A surface that
+ *  crashed on a value SQL is entitled to add would make the vocabulary
+ *  un-extendable. */
+export function phaseLabel(phase: string): string {
+  return SHARED_PHASES[phase] ?? phase.replace(/_/g, " ");
+}
+export function verdictLabel(verdict: string): string {
+  return SHARED_VERDICTS[verdict] ?? verdict.replace(/_/g, " ");
+}
+export function blockerLabel(code: string): string {
+  return SHARED_BLOCKERS[code] ?? code.replace(/_/g, " ");
 }
 
 /** Grouping keys can be sentinels ("(unassigned)") or department keys; resolve

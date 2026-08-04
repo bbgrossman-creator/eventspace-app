@@ -29,7 +29,8 @@ const built = await esbuild.build({
       export * from "@/lib/projection/state";
       export * from "@/lib/projection/labels";
       export { assertEnvelope, normalizeRefusal, toFilter } from "@/lib/projection/client";
-      export { isEnvelopeLike, RESPONSIBILITY_STATES, SUPPORTED_VERSIONS } from "@/lib/projection/types";
+      export { isEnvelopeLike, RESPONSIBILITY_STATES, SUPPORTED_VERSIONS,
+               LIFECYCLE_PHASES, READINESS_VERDICTS, BLOCKER_CODES } from "@/lib/projection/types";
     `,
     resolveDir: root, sourcefile: "entry.ts", loader: "ts",
   },
@@ -242,6 +243,56 @@ T("U-25 every envelope projection the client consumes carries a registry entry",
     .filter((k) => mod.SUPPORTED_VERSIONS[k] === undefined);
   if (unregistered.length) {
     throw new Error(`unregistered projection(s) consumed by feed.ts: ${unregistered.join(", ")}`);
+  }
+});
+
+// ══ v303 · ATL-1 · the two closed readiness vocabularies ═══════════════════
+T("U-27 every phase, verdict and blocker code has a label, and the axes stay separate", () => {
+  const { LIFECYCLE_PHASES, READINESS_VERDICTS, BLOCKER_CODES } = mod;
+  eq(LIFECYCLE_PHASES.length, 4);
+  eq(READINESS_VERDICTS.length, 3);
+  eq(BLOCKER_CODES.length, 9);
+  // totality: no key may fall through to its raw form
+  for (const p of LIFECYCLE_PHASES) {
+    if (mod.phaseLabel(p) === p) throw new Error(`phase ${p} has no label`);
+  }
+  for (const v of READINESS_VERDICTS) {
+    if (mod.verdictLabel(v) === v) throw new Error(`verdict ${v} has no label`);
+  }
+  for (const c of BLOCKER_CODES) {
+    if (mod.blockerLabel(c) === c) throw new Error(`blocker ${c} has no label`);
+  }
+  // the axes are disjoint — a phase is never a verdict, and `complete` is
+  // neither: completion is the phase `settled`, not a readiness verdict
+  for (const v of READINESS_VERDICTS) {
+    if (LIFECYCLE_PHASES.includes(v)) throw new Error(`${v} appears on both axes`);
+  }
+  if (READINESS_VERDICTS.includes("complete")) throw new Error("`complete` is a lifecycle word, not a verdict");
+  if (BLOCKER_CODES.includes("risk_noted")) throw new Error("risk_noted is reserved and must not be emitted");
+});
+
+T("U-28 workable is the ninth code, and the non-impeding grounds are all labelled", () => {
+  // Without `workable`, unimpeded outstanding work would carry no ground at all
+  // and would be invisible to any consumer selecting over the payload.
+  if (!mod.BLOCKER_CODES.includes("workable")) throw new Error("workable is absent from the taxonomy");
+  eq(mod.blockerLabel("workable"), "Ready to work");
+  eq(mod.blockerLabel("exception_open"), "Exception recorded");
+  eq(mod.blockerLabel("ownerless"), "Nobody owns this yet");
+  eq(mod.blockerLabel("not_due"), "Not due yet");
+  // `owner_required` is reserved but must still be labelled, so that if a
+  // ceremony ever activates it the surface renders words rather than a key
+  eq(mod.blockerLabel("owner_required"), "Needs an owner before it can proceed");
+});
+
+T("U-29 unknown vocabulary degrades to readable text and never throws", () => {
+  // SQL is entitled to extend a closed vocabulary in a later release. A surface
+  // that threw on a value it did not recognise would make the vocabulary
+  // un-extendable, so degradation is the contract — the U-14 pattern.
+  eq(mod.blockerLabel("some_future_code"), "some future code");
+  eq(mod.phaseLabel("some_future_phase"), "some future phase");
+  eq(mod.verdictLabel("some_future_verdict"), "some future verdict");
+  for (const fn of [mod.blockerLabel, mod.phaseLabel, mod.verdictLabel]) {
+    if (fn("") !== "") throw new Error("empty key did not degrade cleanly");
   }
 });
 

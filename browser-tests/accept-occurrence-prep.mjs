@@ -81,6 +81,45 @@ const RISK = [
   { responsibility: null, event_ref: "e1",
     finding: "venue_expired", severity: "critical", detail: {} },
 ];
+// v303 · the RELEASE gate: preparing, blocked on the one pre-checkable predicate,
+// with informational facts that must not gate it.
+const RELEASE_GATE = {
+  grain: "occurrence", subject: "inject", phase: "preparing", gate: "release",
+  verdict: "blocked", blocker_count: 1,
+  blockers: [{ code: "release_fact_missing", grain: "occurrence", subject: "inject",
+               fact: "commitment", impedes: true, notes: [],
+               detail: { predicate: "commitment" } }],
+  reasons: ["venue", "attendance", "supervision"].map((f) => ({
+    code: "fact_missing", grain: "occurrence", subject: "inject",
+    fact: f, impedes: false, notes: [], detail: { fact: f } })),
+  by_department: [],
+};
+// v303 · a released occurrence whose staffing department is READY while carrying
+// outstanding non-impeding work — the case that proves `ready` means unimpeded.
+const READINESS = {
+  grain: "occurrence", subject: "inject", phase: "released", gate: "execution",
+  verdict: "blocked", blocker_count: 9, blockers: [], reasons: [],
+  by_department: [
+    { grain: "department", subject: "culinary", verdict: "blocked", outstanding: 1,
+      blockers: [{ code: "overdue", grain: "responsibility", subject: "r-cul",
+                   department: "culinary", required_outcome: "Plate the fish",
+                   ordering_key: "0|x|a", impedes: true, notes: [] }] },
+    { grain: "department", subject: "staffing", verdict: "ready", outstanding: 3,
+      blockers: [
+        { code: "workable", grain: "responsibility", subject: "r-st1",
+          department: "staffing", required_outcome: "Roster the floor",
+          ordering_key: "2|x|b", impedes: false, notes: ["exception_open"],
+          detail: { exceptions: 1 } },
+        { code: "not_due", grain: "responsibility", subject: "r-st2",
+          department: "staffing", required_outcome: "Brief the team",
+          ordering_key: "4|x|c", impedes: false, notes: [],
+          detail: { opens_at: "2030-01-01T00:00:00Z" } },
+        { code: "workable", grain: "responsibility", subject: "r-st3",
+          department: "staffing", required_outcome: "Confirm the runner",
+          ordering_key: "2|x|d", impedes: false, notes: ["ownerless"] },
+      ] },
+  ],
+};
 const readBody = (rq) => new Promise(ok => { let s=""; rq.on("data",c=>s+=c); rq.on("end",()=>ok(s?JSON.parse(s):{})); });
 const server = createServer(async (req,res) => {
   const u = req.url.split("?")[0];
@@ -135,6 +174,17 @@ const server = createServer(async (req,res) => {
           && data && typeof data === "object") {
         data.data.risk = RISK;
         data.counts.at_risk = 7;
+      }
+      // v303 · a readiness verdict whose count the rendered grounds do NOT imply.
+      // A client that recomputed rather than read would disagree with the wire.
+      if (mode === "readinessinject" && body.name === "projection_occurrence_brief"
+          && data && typeof data === "object") {
+        data.data.readiness_state = READINESS;
+        data.counts.readiness_blockers = 9;
+      }
+      if (mode === "releasegate" && body.name === "projection_occurrence_brief"
+          && data && typeof data === "object") {
+        data.data.readiness_state = RELEASE_GATE;
       }
       return json({ data, error:null });
     } catch (e) {
@@ -404,6 +454,79 @@ await T("PR-18 every finding is shown, event-level ones are marked, and the at-r
 
   mode = "live"; await go();
   if (await page.$("[data-risk]")) throw new Error("risk section rendered with an empty finding set");
+});
+
+// ══ PR-19 / PR-20 · v303 · ATL-1 · readiness is rendered, never derived ═══
+// These are SURFACE claims, injected on the wire, exactly as PR-17/PR-18 are.
+// The readiness SEMANTICS are proved in supabase/tests/v303_permanent_proof.sql
+// (RS-1..RS-20); what a browser can add is that the console renders the verdict
+// faithfully and derives none of it. Injection also keeps the suite independent
+// of whether the release's migration has reached the fixture database yet.
+await T("PR-19 the console renders phase, gate, verdict and grounds exactly as given", async () => {
+  mode = "releasegate";
+  await page.goto(`http://localhost:4320/?id=${OCC}`);
+  await page.waitForSelector("[data-prep][data-outcome='ready']", { timeout:20000 });
+  if (!(await page.$("[data-readiness-state]"))) throw new Error("no readiness section rendered");
+
+  for (const [a, want] of [
+    ["data-phase", "preparing"], ["data-gate", "release"],
+    ["data-verdict", "blocked"], ["data-blocker-count", "1"],
+  ]) {
+    const got = await attr("[data-readiness-state]", a);
+    if (got !== want) throw new Error(`${a}: surface=${got} payload=${want}`);
+  }
+
+  // the two axes are rendered SEPARATELY — a phase beside a verdict, never merged
+  const phaseTxt = await page.textContent("[data-readiness-phase]");
+  if (!/Preparing/.test(phaseTxt ?? "")) throw new Error(`phase not shown: "${phaseTxt}"`);
+
+  // the occurrence-grain ground is on screen, labelled, not as a raw key
+  if (!(await page.$('[data-blocker="release_fact_missing"]')))
+    throw new Error("the release-gate ground was not rendered");
+  const txt = await page.textContent('[data-blocker="release_fact_missing"]');
+  if (txt.includes("release_fact_missing")) throw new Error(`raw code rendered: "${txt.trim()}"`);
+
+  // non-impeding facts are reported as informational and do NOT gate
+  if (await attr("[data-readiness-reasons]","data-reason-count") !== "3")
+    throw new Error("informational reasons not surfaced");
+  mode = "live"; await go();
+});
+
+await T("PR-20 the verdict is the projection's own, and non-impeding grounds never gate", async () => {
+  // Anti-derivation, the PR-18 pattern: the wire says `blocked` with a count the
+  // rendered grounds do not imply. A client that recomputed would disagree.
+  mode = "readinessinject";
+  await page.goto(`http://localhost:4320/?id=${OCC}`);
+  await page.waitForSelector("[data-prep][data-outcome='ready']", { timeout:20000 });
+
+  if (await attr("[data-readiness-state]","data-verdict") !== "blocked")
+    throw new Error("the injected verdict was not rendered");
+  if (await attr("[data-readiness-state]","data-blocker-count") !== "9")
+    throw new Error("the client recomputed the blocker count instead of reading it");
+
+  // `workable` and `not_due` are primary CODES and must be marked non-impeding
+  for (const code of ["workable", "not_due"]) {
+    const el = await page.$(`[data-ground="${code}"]`);
+    if (!el) throw new Error(`${code} not rendered`);
+    if (await el.getAttribute("data-ground-impedes") !== "false")
+      throw new Error(`${code} was rendered as impeding`);
+  }
+  // `ownerless` is a NOTE beside a primary code, never a code of its own —
+  // lawful unowned work must not be presented as a category of blocker
+  if (!(await page.$('[data-ground-note="ownerless"]')))
+    throw new Error("the ownerless note was not rendered");
+  if (await page.$('[data-ground="ownerless"]'))
+    throw new Error("ownerless was rendered as a primary code rather than a note");
+  // a department may be READY while carrying outstanding work — unimpeded ≠ complete
+  if (await attr('[data-dept-verdict="staffing"]',"data-dept-outcome") !== "ready")
+    throw new Error("a department with only non-impeding grounds was not ready");
+  if (await attr('[data-dept-verdict="staffing"]',"data-dept-outstanding") === "0")
+    throw new Error("the fixture is degenerate — ready-with-outstanding is untested");
+  // and the exception rides as a NOTE, visible without gating
+  if (!(await page.$('[data-ground-note="exception_open"]')))
+    throw new Error("exception_open note not rendered");
+
+  mode = "live"; await go();
 });
 
 console.log(`\naccept-occurrence-prep: ${passed} passed, ${failed} failed`);
