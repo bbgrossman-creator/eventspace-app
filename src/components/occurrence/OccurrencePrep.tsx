@@ -29,7 +29,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { occurrenceBrief } from "@/lib/projection/feed";
 import { ProjectionRefusal, type OccurrenceBriefEnvelope } from "@/lib/projection/types";
-import { departmentLabel, setLabelPack } from "@/lib/projection/labels";
+import { departmentLabel, findingLabel, setLabelPack } from "@/lib/projection/labels";
+import { indexRisk, severityClass } from "@/lib/projection/state";
 import { loadSession } from "@/lib/permissions";
 import {
   CeremonyRefusal, MILESTONE_KEYS, listVenues,
@@ -161,6 +162,12 @@ export default function OccurrencePrep({
   const comp = d.completeness;
   const recorded = FACTS.filter((x) => (comp as unknown as Record<string, boolean>)[x.key]).length;
   const released = d.has_event;
+  // v300 · EX-02. The brief now carries the whole finding set, so the console
+  // can show WHY counts.at_risk is what it is. Nothing is recomputed here:
+  // indexRisk only partitions responsibility-level from event-level findings,
+  // and the order is the projection's own.
+  const findings = d.risk ?? [];
+  const { byResponsibility, eventLevel } = indexRisk(findings);
 
   return (
     <main
@@ -303,6 +310,50 @@ export default function OccurrencePrep({
           </p>
         )}
       </section>
+
+      {/* ── WHAT IS WRONG ────────────────────────────────────────────────────
+          v300 · EX-02. Before this, the console showed `counts.exceptions` and
+          nothing else: an advisory-only integer, with lapsed work and expired
+          venue documents invisible. The brief now carries every finding, so the
+          at-risk aggregate is explainable on the surface that reports it.
+
+          Findings are DECORATIONS, never states (v287b RSK-*). The order is the
+          projection's, the labels come from the active pack, and the severity
+          class is the shared helper — nothing here decides what is wrong. */}
+      {findings.length > 0 && (
+        <section
+          data-risk
+          data-risk-findings={String(findings.length)}
+          data-risk-at-risk={String(b.counts.at_risk)}
+          data-risk-responsibilities={String(byResponsibility.size)}
+          data-risk-event-level={String(eventLevel.length)}
+          className="mb-5 rounded border border-rose-200 bg-rose-50/40 p-3"
+        >
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-medium text-rose-900">What is wrong</h2>
+            <span data-risk-summary className="text-xs text-neutral-600">
+              {b.counts.at_risk} responsibilit{b.counts.at_risk === 1 ? "y" : "ies"} at risk
+              {eventLevel.length > 0 && ` · ${eventLevel.length} event-level`}
+            </span>
+          </div>
+          <ul data-risk-list className="mt-2 space-y-1">
+            {findings.map((f, i) => (
+              <li
+                key={i}
+                data-finding={f.finding}
+                data-severity={f.severity}
+                data-finding-responsibility={f.responsibility ?? ""}
+                className={`rounded px-2 py-1 text-xs ${severityClass(f.severity)}`}
+              >
+                {findingLabel(f.finding)}
+                {f.responsibility === null && (
+                  <span data-event-level className="ml-1 opacity-70">(this event)</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* ── THE LEDGER · one row per fact, one open at a time ─────────────── */}
       <section data-ledger className="divide-y divide-neutral-100 rounded border border-neutral-200">

@@ -8,7 +8,7 @@
 // It bundles the real TypeScript modules with esbuild and executes them in
 // this process.
 import esbuild from "esbuild";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -29,7 +29,7 @@ const built = await esbuild.build({
       export * from "@/lib/projection/state";
       export * from "@/lib/projection/labels";
       export { assertEnvelope, normalizeRefusal, toFilter } from "@/lib/projection/client";
-      export { isEnvelopeLike, RESPONSIBILITY_STATES } from "@/lib/projection/types";
+      export { isEnvelopeLike, RESPONSIBILITY_STATES, SUPPORTED_VERSIONS } from "@/lib/projection/types";
     `,
     resolveDir: root, sourcefile: "entry.ts", loader: "ts",
   },
@@ -191,6 +191,76 @@ T("U-20 isEnvelopeLike inspects shape only and never opinions about data", () =>
   eq(mod.isEnvelopeLike({ ...ENV, data: undefined }), false);
   eq(mod.isEnvelopeLike(null), false);
   eq(mod.isEnvelopeLike("string"), false);
+});
+
+// ══ v300 · CT-04 · the occurrence_brief version guard ══════════════════════
+// The brief is read through fetchObject (I-40: an absent occurrence returns SQL
+// NULL, OB-3), which asserts nothing. Before this slice the brief was unchecked
+// on all three axes — shape, name and version — on its direct read path.
+const BRIEF = {
+  projection: "occurrence_brief", version: 1, as_of: "2026-01-02T00:00:00Z",
+  scope: { occurrence: "00000000-0000-0000-0000-000000000001" },
+  data: {}, counts: { total: 0 }, provenance: { truth_version: "tv" },
+};
+const codeOf = (fn) => { try { fn(); return "accepted"; } catch (e) { return e.code; } };
+
+T("U-21 occurrence_brief is registered at version 1 and a v1 envelope is accepted", () => {
+  eq(mod.SUPPORTED_VERSIONS.occurrence_brief, 1);
+  eq(mod.assertEnvelope("occurrence_brief", BRIEF).version, 1);
+});
+
+T("U-22 an occurrence_brief envelope at the wrong version REFUSES", () => {
+  eq(codeOf(() => mod.assertEnvelope("occurrence_brief", { ...BRIEF, version: 2 })),
+     "PROJECTION_VERSION_UNSUPPORTED");
+});
+
+T("U-23 the version refusal names the projection and both versions", () => {
+  let err = null;
+  try { mod.assertEnvelope("occurrence_brief", { ...BRIEF, version: 7 }); } catch (e) { err = e; }
+  if (!err) throw new Error("a v7 brief was accepted");
+  if (!err.message.includes("occurrence_brief")) throw new Error(`projection unnamed: ${err.message}`);
+  if (!err.message.includes("7")) throw new Error(`received version absent: ${err.message}`);
+  if (!err.message.includes("1")) throw new Error(`expected version absent: ${err.message}`);
+  eq(err.raw, "7");
+});
+
+T("U-24 a malformed occurrence_brief payload refuses on SHAPE before version", () => {
+  eq(codeOf(() => mod.assertEnvelope("occurrence_brief", { nope: 1 })), "PROJECTION_SHAPE_INVALID");
+  eq(codeOf(() => mod.assertEnvelope("occurrence_brief", { ...BRIEF, projection: "day_sheet" })),
+     "PROJECTION_NAME_MISMATCH");
+});
+
+T("U-25 every envelope projection the client consumes carries a registry entry", () => {
+  // Fail-closed by enumeration: assertEnvelope still skips the version check for
+  // an unregistered name (client.ts `expected !== undefined`), so this claim is
+  // what prevents a new projection from silently becoming unversioned. It reads
+  // the wrappers' own RPC names rather than a hand-kept list.
+  const feed = readFileSync(join(root, "src/lib/projection/feed.ts"), "utf8");
+  const consumed = [...feed.matchAll(/"projection_([a-z_]+)"/g)].map((m) => m[1]);
+  if (consumed.length === 0) throw new Error("no projection RPC names found — the scan is vacuous");
+  const unregistered = [...new Set(consumed)]
+    .filter((k) => mod.SUPPORTED_VERSIONS[k] === undefined);
+  if (unregistered.length) {
+    throw new Error(`unregistered projection(s) consumed by feed.ts: ${unregistered.join(", ")}`);
+  }
+});
+
+T("U-26 an UNREGISTERED projection refuses outright — absence is not permission", () => {
+  // The envelope is well-formed and self-consistent: shape passes, name matches.
+  // The only thing wrong with it is that this client has never been told what
+  // version of `speculative_projection` it understands. Before v300 that was
+  // precisely the case the guard let through, at any version at all.
+  const unknown = { ...ENV, projection: "speculative_projection", version: 1 };
+  eq(mod.SUPPORTED_VERSIONS.speculative_projection, undefined);
+  eq(codeOf(() => mod.assertEnvelope("speculative_projection", unknown)),
+     "PROJECTION_VERSION_UNSUPPORTED");
+  // and no version is exempt — there is no unversioned escape hatch
+  eq(codeOf(() => mod.assertEnvelope("speculative_projection", { ...unknown, version: 0 })),
+     "PROJECTION_VERSION_UNSUPPORTED");
+  let err = null;
+  try { mod.assertEnvelope("speculative_projection", unknown); } catch (e) { err = e; }
+  if (!err.message.includes("speculative_projection")) throw new Error(`projection unnamed: ${err.message}`);
+  if (!/registr/i.test(err.message)) throw new Error(`refusal does not state WHY: ${err.message}`);
 });
 
 console.log(`\nunit-projection: ${passed} passed, ${failed} failed`);

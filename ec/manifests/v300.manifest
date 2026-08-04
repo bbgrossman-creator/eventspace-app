@@ -1,0 +1,17 @@
+version            v300
+migration          supabase/v300_occurrence_brief_risk.sql
+one_shot           proofs/v300_proofs.sh                        expect 14
+permanent          v300_permanent_proof                         expect 5
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/accept-navigation.mjs browser-tests/accept-release.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-occurrence-prep.mjs
+harness_install    supabase/tests/v300_permanent_proof.sql
+deployed_marker    v300_brief_risk
+# v300 is the FIRST release manifest authored after v299 created the deployment
+# certification layer, so it is the first whose git_files must carry a .deploy
+# file. v294-v297 could not list one; v298/v298a/v299 have no release manifest
+# at all. Omitting it would commit the release without its own prerequisite
+# declaration and fail gate 15 on the next clone — precisely the ship-the-code-
+# not-the-prerequisite failure the layer exists to prevent.
+git_files          supabase/v300_occurrence_brief_risk.sql supabase/tests/v300_permanent_proof.sql proofs/v300_proofs.sh ec/manifests/v300.manifest ec/deploy-manifests/v300.deploy src/lib/projection/types.ts src/components/occurrence/OccurrencePrep.tsx browser-tests/accept-occurrence-prep.mjs browser-tests/unit-projection.mjs src/lib/projection/client.ts src/lib/projection/feed.ts

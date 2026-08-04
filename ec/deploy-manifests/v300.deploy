@@ -1,0 +1,23 @@
+# v300 — OCCURRENCE BRIEF · RISK DISCLOSURE (audit finding EX-02)
+#
+# projection_occurrence_brief gains data.risk: the complete finding set from
+# risk_findings, so counts.at_risk decomposes to its grounds. The function is
+# REPLACED in place, not created — its identity signature is unchanged, and the
+# brief remains occurrence_brief v1, so no composed projection's version guard
+# is disturbed.
+#
+# v300_brief_risk() is the deployed marker and the only new database object.
+#
+release          v300
+migration        supabase/v300_occurrence_brief_risk.sql
+migration_source repository
+min_release      v299
+
+function         v300_brief_risk()
+
+# projection_occurrence_brief is REPLACED by this release, not created, and is
+# already required from v292b where it is first created. Its identity signature
+# does not change, so it is asserted once rather than twice — the same rule
+# v297 applied to occurrence_current_venue. The verifier walks min_release
+# transitively and checks the union, so v292b's declaration already covers a
+# database at v300's level.

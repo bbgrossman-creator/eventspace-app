@@ -8,8 +8,9 @@
  *  to prevent.
  */
 "use client";
-import { fetchProjection, fetchRows, fetchObject, toFilter } from "./client";
+import { fetchProjection, fetchRows, fetchObject, assertEnvelope, toFilter } from "./client";
 import {
+  type OccurrenceBriefData,
   type ProjectionFilter, type ResponsibilityRow, type GroupBy,
   type OperationsTodayEnvelope, type EventCommandEnvelope,
   type DepartmentQueueEnvelope, type DaySheetEnvelope,
@@ -141,14 +142,31 @@ export async function preparationQueue(
   ) as Promise<PreparationQueueEnvelope>;
 }
 
+/** v300 · CT-04. Two contracts hold at once and both must be honoured.
+ *
+ *  · I-40 — an absent or foreign occurrence returns SQL NULL, a genuine
+ *    not-found (OB-3). `fetchProjection` would raise PROJECTION_SHAPE_INVALID on
+ *    that null and destroy the surface's `notfound` state, so the read stays on
+ *    `fetchObject`.
+ *  · OB-1 — when it IS present, the payload is a standard envelope,
+ *    `occurrence_brief` v1. Reading it through `fetchObject` alone asserted
+ *    NOTHING: not shape, not name, not version. A v2 brief would have rendered
+ *    silently against v1 field expectations.
+ *
+ *  So: null passes through untouched; anything else is asserted. */
 export async function occurrenceBrief(
   occurrence: string,
   asOf?: string,
 ): Promise<OccurrenceBriefEnvelope | null> {
-  return fetchObject<OccurrenceBriefEnvelope>("projection_occurrence_brief", {
+  const payload = await fetchObject<unknown>("projection_occurrence_brief", {
     p_occurrence: occurrence,
     ...(asOf ? { p_now: asOf } : {}),
   });
+  if (payload === null) return null;
+  return assertEnvelope<OccurrenceBriefData>(
+    "occurrence_brief",
+    payload,
+  ) as OccurrenceBriefEnvelope;
 }
 
 /** v291 · One responsibility, in full. ONE request supplies anchors, current

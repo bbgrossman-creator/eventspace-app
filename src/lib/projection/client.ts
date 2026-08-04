@@ -41,7 +41,15 @@ export function normalizeRefusal(raw: string): ProjectionRefusal {
 
 /** Assert the envelope is the shape and version this client understands.
  *  Version awareness is deliberate: a surface pinned to v1 must fail loudly
- *  rather than silently render a shape it does not understand. */
+ *  rather than silently render a shape it does not understand.
+ *
+ *  v300 · CT-04. Registration is MANDATORY, not optional. This guard previously
+ *  ran the version comparison only when SUPPORTED_VERSIONS held an entry, so an
+ *  unregistered projection was accepted at ANY version — the one case where the
+ *  client has no basis whatever for trusting the shape it is about to render.
+ *  Absence of an entry is now itself the refusal. There is deliberately no
+ *  unversioned escape hatch: a new envelope projection is registered here or it
+ *  does not render. */
 export function assertEnvelope<T>(name: string, value: unknown): Envelope<T> {
   if (!isEnvelopeLike(value)) {
     throw new ProjectionRefusal(
@@ -59,7 +67,15 @@ export function assertEnvelope<T>(name: string, value: unknown): Envelope<T> {
     );
   }
   const expected = SUPPORTED_VERSIONS[name];
-  if (expected !== undefined && env.version !== expected) {
+  if (expected === undefined) {
+    throw new ProjectionRefusal(
+      "PROJECTION_VERSION_UNSUPPORTED",
+      `projection ${name} is not registered in this client's version registry; ` +
+        `received version ${env.version}`,
+      String(env.version),
+    );
+  }
+  if (env.version !== expected) {
     throw new ProjectionRefusal(
       "PROJECTION_VERSION_UNSUPPORTED",
       `projection ${name} is version ${env.version}; this client understands ${expected}`,

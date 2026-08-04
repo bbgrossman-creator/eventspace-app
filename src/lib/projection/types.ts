@@ -267,6 +267,14 @@ export interface OccurrenceBriefData {
   has_event: boolean;
   event: string | null;
   readiness: BriefReadiness[];
+  /** v300 · EX-02. The complete finding set for the event, all eight kinds.
+   *  counts.at_risk is count(distinct responsibility) over THIS collection
+   *  where responsibility is not null — so the aggregate decomposes here.
+   *  Event-level findings (venue_*) carry responsibility: null; indexRisk()
+   *  routes them to eventLevel. */
+  risk: RiskFinding[];
+  /** The `exception_recorded` subset of `risk`. Kept because counts.exceptions
+   *  decomposes to it exactly; never a second source. */
   exceptions: RiskFinding[];
   ownerless: Array<{ responsibility: string; department: DepartmentKey;
                      required_outcome: string; state: ResponsibilityState }>;
@@ -307,6 +315,12 @@ export const SUPPORTED_VERSIONS: Record<string, number> = {
   day_sheet: 1,
   occurrences_for_operational_day: 1,
   preparation_queue: 1,
+  // v300 · CT-04. The brief IS an envelope — v292b emits
+  // projection_envelope('occurrence_brief', 1, …) and OB-1 certifies it — but it
+  // was read through fetchObject, which asserts nothing, so shape, name and
+  // version all went unchecked on the direct path. Registering the key is half
+  // the correction; occurrenceBrief() now performs the assertion (feed.ts).
+  occurrence_brief: 1,
 };
 
 /** Structural guard used by the client before trusting a payload as an

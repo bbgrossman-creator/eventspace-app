@@ -1,27 +1,46 @@
 // v292c OCCURRENCE PREPARATION ACCEPTANCE — the REAL mounted console in Chromium,
-// invoking the REAL certified ceremonies against REAL Postgres. Claims PR-1…PR-16.
+// invoking the REAL certified ceremonies against REAL Postgres. Claims PR-1…PR-18.
 // Ceremony writes COMMIT, so the console's re-read sees them: this is the actual
 // capture loop, not a simulation of it.
 import esbuild from "esbuild";
 import { chromium } from "playwright-core";
 import { createServer } from "http";
-import { readFileSync, existsSync, writeFileSync, unlinkSync, chmodSync } from "fs";
-import { execFileSync } from "child_process";
+import { readFileSync, existsSync } from "fs";
+import { spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const DB = "ec_prep292c";
+// v300 · TRANSPORT ONLY. `su postgres` requires root, so this suite could never
+// run under the certification harness — it is what failed Gate 14 the moment
+// v300.manifest declared it. The v298a privilege model grants exactly one
+// non-interactive path, the closed-verb wrapper ec-pgadmin, so SQL travels on
+// stdin (`sqlstdin`) and the fixture database is built with `clone`/`drop`
+// rather than createdb/dropdb. No fixture, claim or assertion changes.
+//
+// `sqlstdin` runs psql with ON_ERROR_STOP=0, which would exit 0 on a failed
+// statement and silently turn every ceremony REFUSAL into a passing test. The
+// ON_ERROR_STOP=1 contract is therefore restored here: any ERROR: on stderr
+// throws, and the thrown Error carries .stderr — which is the exact channel the
+// /rpc handler reads to surface a refusal verbatim (PR-7, PR-8, PR-10).
+const PGADMIN = ["-n", "-u", "postgres", "/usr/local/sbin/ec-pgadmin"];
 const psql = (sql, db = DB) => {
-  const f = `/tmp/pr_${Math.random().toString(36).slice(2)}.sql`;
-  writeFileSync(f, sql); chmodSync(f, 0o644);
-  try { return execFileSync("su", ["postgres", "-c", `psql -d ${db} -tA -v ON_ERROR_STOP=1 -f ${f}`],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim(); }
-  finally { try { unlinkSync(f); } catch {} }
+  const r = spawnSync("sudo", [...PGADMIN, "sqlstdin", db],
+    { input: sql, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const out = (r.stdout || "").trim(), err = (r.stderr || "").trim();
+  if (r.status !== 0 || /^(psql:[^\n]*)?ERROR:/m.test(err)) {
+    const e = new Error(err || out || `sqlstdin exit ${r.status}`); e.stderr = err; throw e;
+  }
+  return out;
 };
-const sh = (c) => execFileSync("sh", ["-c", c], { encoding: "utf8" }).trim();
-sh(`su postgres -c "dropdb --if-exists ${DB}" ; su postgres -c "createdb -T ec ${DB}"`);
+const pgadmin = (...a) => {
+  const r = spawnSync("sudo", [...PGADMIN, ...a], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`${a[0]}: ${(r.stderr || "").trim()}`);
+  return (r.stdout || "").trim();
+};
+pgadmin("drop", DB); pgadmin("clone", "ec", DB);
 
 const [TENANT, USER] = psql(
   `select tu.tenant_id||' '||tu.user_id from public.tenant_users tu where tu.active order by tu.tenant_id limit 1`).split(" ");
@@ -69,6 +88,22 @@ const html = readFileSync(join(here,"prep.html"));
 const css = existsSync(join(here,"app.css")) ? readFileSync(join(here,"app.css")) : "";
 
 let tables = [], rpcs = [];
+// v300 · CT-04. `badversion` rewrites the brief's version on the wire — the SQL
+// stays v1 and certified. It is the only way to prove the client-side guard is
+// LIVE rather than merely registered, mirroring accept-preparation-queue.mjs.
+let mode = "live";
+// Four findings, three kinds, TWO distinct responsibilities, ONE event-level.
+// The shape is risk_findings' row type exactly.
+const RISK = [
+  { responsibility: "aaaaaaaa-0000-0000-0000-00000000000a", event_ref: "e1",
+    finding: "lapsed", severity: "critical", detail: {} },
+  { responsibility: "aaaaaaaa-0000-0000-0000-00000000000a", event_ref: "e1",
+    finding: "exception_recorded", severity: "advisory", detail: { count: 1 } },
+  { responsibility: "bbbbbbbb-0000-0000-0000-00000000000b", event_ref: "e1",
+    finding: "dependency_blocked", severity: "advisory", detail: {} },
+  { responsibility: null, event_ref: "e1",
+    finding: "venue_expired", severity: "critical", detail: {} },
+];
 const readBody = (rq) => new Promise(ok => { let s=""; rq.on("data",c=>s+=c); rq.on("end",()=>ok(s?JSON.parse(s):{})); });
 const server = createServer(async (req,res) => {
   const u = req.url.split("?")[0];
@@ -112,7 +147,19 @@ const server = createServer(async (req,res) => {
       else sql = `${ctx} select 'D:'||'"UNEXPECTED_${body.name}"'`;
       const line = psql(sql).split("\n").pop();
       if (!line.startsWith("D:")) throw new Error(`probe misread: ${line}`);
-      return json({ data: JSON.parse(line.slice(2)), error:null });
+      const data = JSON.parse(line.slice(2));
+      if (mode === "badversion" && body.name === "projection_occurrence_brief"
+          && data && typeof data === "object") data.version = 2;
+      // v300 · EX-02. Findings on the wire, so the SURFACE's faithfulness can be
+      // tested independently of what SQL happened to compute. counts.at_risk is
+      // set to a value the list does NOT imply — a client that derives the number
+      // instead of reading it will disagree and fail.
+      if (mode === "riskinject" && body.name === "projection_occurrence_brief"
+          && data && typeof data === "object") {
+        data.data.risk = RISK;
+        data.counts.at_risk = 7;
+      }
+      return json({ data, error:null });
     } catch (e) {
       const m = String(e.stderr || e.message || e).replace(/\s+/g," ").trim();
       return json({ data:null, error:{ message:m } });
@@ -320,7 +367,69 @@ await T("PR-16 a foreign or absent occurrence renders not-found and no ledger", 
   if (await page.$("[data-fact]")) throw new Error("facts rendered for a missing occurrence");
 });
 
+// ══ PR-17 · v300 · CT-04 · the brief's version guard is LIVE ═════════════
+await T("PR-17 a brief arriving at v2 REFUSES by name — it never renders as v1", async () => {
+  mode = "badversion";
+  await page.goto(`http://localhost:4320/?id=${OCC}`);
+  await page.waitForSelector("[data-prep][data-outcome]:not([data-outcome='loading'])",
+    { state:"attached", timeout:20000 });
+  const outcome = await attr("[data-prep]","data-outcome");
+  if (outcome !== "refusal") throw new Error(`a v2 brief rendered as ${outcome}`);
+  const code = await attr("[data-prep]","data-refusal-code");
+  if (code !== "PROJECTION_VERSION_UNSUPPORTED") throw new Error(`code ${code}`);
+  // a refusal must replace the console, not decorate stale content
+  if (await page.$("[data-ledger]")) throw new Error("ledger rendered under refusal");
+  if (await page.$("[data-fact]")) throw new Error("facts rendered under refusal");
+  // and the refusal must not be mistaken for the not-found state (PR-16)
+  if (await page.$("[data-prep][data-outcome='notfound']")) throw new Error("reported as not-found");
+  mode = "live";
+  await go();
+  if (await attr("[data-prep]","data-outcome") !== "ready")
+    throw new Error("the unmodified v1 brief no longer renders");
+});
+
+// ══ PR-18 · v300 · EX-02 · the brief's risk is disclosed, never derived ═══
+await T("PR-18 every finding is shown, event-level ones are marked, and the at-risk count is the projection's own", async () => {
+  mode = "riskinject";
+  await page.goto(`http://localhost:4320/?id=${OCC}`);
+  await page.waitForSelector("[data-prep][data-outcome='ready']", { timeout:20000 });
+  if (!(await page.$("[data-risk]"))) throw new Error("the console shows no risk section at all");
+
+  // nothing is dropped: all four findings render, including the three kinds the
+  // brief could never previously carry
+  const kinds = await page.$$eval("[data-risk-list] li", (e) => e.map((x) => x.getAttribute("data-finding")));
+  const want = ["lapsed", "exception_recorded", "dependency_blocked", "venue_expired"];
+  for (const k of want) if (!kinds.includes(k)) throw new Error(`${k} not rendered — kinds: ${kinds.join(",")}`);
+  if (kinds.length !== 4) throw new Error(`${kinds.length} findings rendered, expected 4`);
+
+  // severity comes from the finding, not from the client's opinion of the kind
+  const sev = await attr('[data-finding="lapsed"]', "data-severity");
+  if (sev !== "critical") throw new Error(`lapsed severity=${sev}`);
+
+  // the event-level finding is disclosed AND distinguished
+  if (await attr("[data-risk]","data-risk-event-level") !== "1") throw new Error("event-level not counted");
+  if (!(await page.$('[data-finding="venue_expired"] [data-event-level]')))
+    throw new Error("the event-level finding is not marked as such");
+  if (await attr('[data-finding="venue_expired"]',"data-finding-responsibility") !== "")
+    throw new Error("an event-level finding was given a responsibility");
+
+  // labels come from the active pack — raw SQL keys never reach the operator
+  const txt = await page.textContent('[data-finding="lapsed"]');
+  if (txt.includes("lapsed")) throw new Error(`raw finding key rendered: "${txt.trim()}"`);
+
+  // THE ANTI-DERIVATION CLAIM. The list implies 2 distinct responsibilities;
+  // the envelope says 7. The surface must report 7 — counts are SQL's (PRJ-10).
+  if (await attr("[data-risk]","data-risk-responsibilities") !== "2") throw new Error("partition wrong");
+  if (await attr("[data-risk]","data-risk-at-risk") !== "7")
+    throw new Error(`at_risk=${await attr("[data-risk]","data-risk-at-risk")} — the client recomputed the count`);
+  const summary = await page.textContent("[data-risk-summary]");
+  if (!summary.includes("7")) throw new Error(`summary reads "${summary.trim()}"`);
+
+  mode = "live"; await go();
+  if (await page.$("[data-risk]")) throw new Error("risk section rendered with an empty finding set");
+});
+
 console.log(`\naccept-occurrence-prep: ${passed} passed, ${failed} failed`);
 await browser.close(); server.close();
-sh(`su postgres -c "dropdb --if-exists ${DB}"`);
+pgadmin("drop", DB);
 process.exit(failed===0?0:1);
