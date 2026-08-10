@@ -1,0 +1,24 @@
+# EventCore release manifest — v304 Canonical Next Action (F-6)
+#
+# Realises Operational Constitution Freeze F-6 as a selection over the grounds
+# occurrence_readiness already carries, ordered by the ruled A9 Priority
+# Doctrine. Strictly additive: it retires nothing, modifies no existing
+# function, migrates no consumer, and authors no truth.
+#
+# The A9 order is stated in exactly ONE place, inside the projection, as F-5
+# requires. Readiness verdicts are proved byte-identical before and after.
+#
+# No browser suite: v304 ships no interface. Under R-13 the projection returns
+# a code and its ground; the INSTRUCTION WORDING belongs to the client and is
+# not authored here.
+version            v304
+one_shot           proofs/v304_proofs.sh                        expect 14
+migration          supabase/v304_next_action.sql
+permanent          v304_permanent_proof                         expect 13
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+harness_install    supabase/tests/v304_permanent_proof.sql
+deployed_marker    v304_next_action
+git_files          supabase/v304_next_action.sql supabase/tests/v304_permanent_proof.sql proofs/v304_proofs.sh ec/manifests/v304.manifest ec/deploy-manifests/v304.deploy

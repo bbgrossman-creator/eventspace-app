@@ -1,0 +1,13 @@
+# v304 — CANONICAL NEXT ACTION (F-6)
+#
+# One new projection selecting over the grounds occurrence_readiness already
+# carries, ordered by the ruled A9 Priority Doctrine. Additive only: no existing
+# function is replaced, so no identity signature changes and no composed version
+# guard is touched.
+release          v304
+migration        supabase/v304_next_action.sql
+migration_source repository
+min_release      v303
+
+function         occurrence_next_action(p_occurrence uuid, p_now timestamp with time zone)
+function         v304_next_action()
