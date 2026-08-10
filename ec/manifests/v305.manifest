@@ -1,0 +1,20 @@
+# EventCore release manifest — v305 Canonical Execution Facts
+#
+# Exposes Atlas-owned execution evidence directly, so the legacy event_stage may
+# later retire without losing an authorised capability. It emits FACTS ONLY and
+# never a collapsed progress token: Dependency Map line 338 assigns progress to
+# workflow, and workflow is not structure.
+#
+# No browser suite: v305 ships no interface. Under R-13 the projection returns
+# facts; the wording belongs to the client.
+version            v305
+one_shot           proofs/v305_proofs.sh                        expect 10
+migration          supabase/v305_execution_facts.sql
+permanent          v305_permanent_proof                         expect 13
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+harness_install    supabase/tests/v305_permanent_proof.sql
+deployed_marker    v305_execution_facts
+git_files          supabase/v305_execution_facts.sql supabase/tests/v305_permanent_proof.sql proofs/v305_proofs.sh ec/manifests/v305.manifest ec/deploy-manifests/v305.deploy

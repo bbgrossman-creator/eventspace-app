@@ -1,0 +1,12 @@
+# v305 — CANONICAL EXECUTION FACTS
+#
+# One additive projection over Atlas-owned execution evidence. No existing
+# function is replaced, so no identity signature changes and no composed
+# version guard is touched.
+release          v305
+migration        supabase/v305_execution_facts.sql
+migration_source repository
+min_release      v304
+
+function         occurrence_execution_facts(p_occurrence uuid, p_now timestamp with time zone)
+function         v305_execution_facts()
