@@ -1,0 +1,94 @@
+?column?
+"function|bind_occurrence_supervision(p_occurrence uuid, p_authority_org text, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_certificate_ref text, p_contact text, p_reason text)|PRESENT"
+"function|bind_occurrence_venue(p_occurrence uuid, p_venue uuid, p_reason text)|PRESENT"
+"function|bind_supervision(p_booking uuid, p_authority_org text, p_window_start timestamp with time zone, p_window_end timestamp with time zone, p_certificate_ref text, p_contact text, p_reason text)|PRESENT"
+function|can_bind_supervision()|PRESENT
+function|can_commit_attendance()|PRESENT
+function|can_edit_engagement_profile()|PRESENT
+function|can_open_occurrence()|PRESENT
+function|can_set_schedule()|PRESENT
+"function|cancel_occurrence(p_occurrence uuid, p_reason text)|PRESENT"
+function|claim_responsibility(p_responsibility uuid)|PRESENT
+"function|clear_schedule_milestone(p_occurrence uuid, p_milestone_key text, p_label text, p_reason text)|PRESENT"
+"function|commit_attendance(p_occurrence uuid, p_head_count integer, p_basis text, p_effective_moment timestamp with time zone, p_reason text)|PRESENT"
+"function|complete_responsibility(p_responsibility uuid, p_payload jsonb)|PRESENT"
+"function|correct_attendance(p_attendance uuid, p_head_count integer, p_basis text, p_reason text)|PRESENT"
+"function|current_observation(p_venue uuid, p_scope_space uuid, p_attribute text, p_context timestamp with time zone, p_conditions text[])|PRESENT"
+"function|engagement_occurrences(p_booking uuid, p_now timestamp with time zone)|PRESENT"
+"function|occurrence_current_supervision(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|occurrence_current_venue(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|occurrence_department_readiness(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|occurrence_is_active(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|occurrence_phase(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|occurrence_readiness(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|open_occurrence(p_booking uuid, p_display_name text, p_occasion_kind text)|PRESENT"
+"function|projection_day_sheet(p_day date, p_group_by text, p_now timestamp with time zone)|PRESENT"
+"function|projection_occurrence_brief(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|projection_occurrences_for_operational_day(p_day date, p_now timestamp with time zone)|PRESENT"
+function|projection_preparation_queue(p_now timestamp with time zone)|PRESENT
+function|promise_append_only_guard()|PRESENT
+"function|promise_current_attendance(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|promise_current_engagement_profile(p_booking uuid, p_now timestamp with time zone)|PRESENT"
+"function|promise_current_milestones(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|promise_current_occurrence_profile(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|promise_current_supervision(p_booking uuid, p_now timestamp with time zone)|PRESENT"
+"function|promise_scheduled_attendance(p_occurrence uuid, p_now timestamp with time zone)|PRESENT"
+"function|release_event(p_booking uuid, p_actor text, p_signoff_ref text, p_clearance_ref text, p_waiver_ref text)|PRESENT"
+"function|release_occurrence(p_occurrence uuid, p_actor text, p_signoff_ref text, p_clearance_ref text, p_waiver_ref text)|PRESENT"
+"function|release_promise(p_occurrence uuid, p_signoff_ref text, p_clearance_ref text, p_waiver_ref text)|PRESENT"
+"function|set_engagement_profile(p_booking uuid, p_display_name text, p_client_display_name text, p_reason text)|PRESENT"
+"function|set_occurrence_profile(p_occurrence uuid, p_display_name text, p_occasion_kind text, p_reason text)|PRESENT"
+"function|set_schedule_milestone(p_occurrence uuid, p_milestone_key text, p_at_date date, p_at_moment timestamp with time zone, p_window_end timestamp with time zone, p_label text, p_reason text)|PRESENT"
+"function|v292d_version_mismatch(p_name text, p_version text)|PRESENT"
+function|v300_brief_risk()|PRESENT
+function|v303_readiness()|PRESENT
+function|venue_asof_integrity()|PRESENT
+"function|venue_contradictions(p_venue uuid, p_context timestamp with time zone, p_conditions text[])|PRESENT"
+"function|venue_knowledge_findings(p_venue uuid, p_at timestamp with time zone, p_conditions text[])|PRESENT"
+"function|venue_profile(p_venue uuid, p_context timestamp with time zone, p_conditions text[])|PRESENT"
+"function|venue_profile_read(p_venue uuid, p_scope_space uuid, p_attribute text, p_context timestamp with time zone, p_conditions text[])|PRESENT"
+"function|venue_verification_requirement(p_venue uuid, p_at timestamp with time zone, p_conditions text[])|PRESENT"
+index|idx_attendance_occurrence|PRESENT
+index|idx_eng_profile_booking|PRESENT
+index|idx_milestone_occurrence|PRESENT
+index|idx_occ_profile_occurrence|PRESENT
+index|idx_occ_status_occurrence|PRESENT
+index|idx_occ_supervision_occurrence|PRESENT
+index|idx_occ_venue_occurrence|PRESENT
+index|idx_occurrence_booking|PRESENT
+index|idx_supervision_booking|PRESENT
+policy|engagement_occurrence:engagement_occurrence_insert|PRESENT
+policy|engagement_occurrence:engagement_occurrence_select|PRESENT
+policy|occurrence_profile:occurrence_profile_insert|PRESENT
+policy|occurrence_profile:occurrence_profile_select|PRESENT
+policy|occurrence_status:occurrence_status_insert|PRESENT
+policy|occurrence_status:occurrence_status_select|PRESENT
+policy|occurrence_supervision:occurrence_supervision_insert|PRESENT
+policy|occurrence_supervision:occurrence_supervision_select|PRESENT
+policy|occurrence_venue_binding:occurrence_venue_binding_insert|PRESENT
+policy|occurrence_venue_binding:occurrence_venue_binding_select|PRESENT
+"provenance|chain|v292a v292a1 v292b v292d v292d1 v293 v294 v295 v296 v297 v298 v299 v300 v301 v302 v303 "
+provenance|database|postgres
+provenance|db_user|postgres
+provenance|executed_at|2026-08-10 18:40:51.432658+00
+provenance|manifest_digest|0b9757c3f4a59ee1c2f1e68d3d721210
+provenance|object_count|82
+provenance|postmaster_start|2026-06-10 22:50:58.118014+00
+provenance|release|v303
+provenance|server_addr|2600:1f18:144f:6d01:2fb9:230c:f2e0:d143
+provenance|server_version|17.6
+provenance|verifier_digest|4cc32fafa58e9264d6549ec3b2750a37
+table|attendance_commitment|PRESENT
+table|engagement_occurrence|PRESENT
+table|engagement_profile|PRESENT
+table|engagement_supervision|PRESENT
+table|occurrence_profile|PRESENT
+table|occurrence_schedule_milestone|PRESENT
+table|occurrence_status|PRESENT
+table|occurrence_supervision|PRESENT
+table|occurrence_venue_binding|PRESENT
+trigger|engagement_occurrence:engagement_occurrence_append_only|PRESENT
+trigger|occurrence_profile:occurrence_profile_append_only|PRESENT
+trigger|occurrence_status:occurrence_status_append_only|PRESENT
+trigger|occurrence_supervision:occurrence_supervision_append_only|PRESENT
+trigger|occurrence_venue_binding:occurrence_venue_binding_append_only|PRESENT
