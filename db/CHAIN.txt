@@ -1,0 +1,121 @@
+# EventCore — verified certification chain (v288a baseline)
+# Applied in THIS order. Each file runs in its own transaction.
+#
+# Order notes:
+#   · db/base.sql and db/deps.sql provide the production-faithful base that
+#     replaces the pre-v200 legacy migrations (see db/CHAIN_EXCLUDED.txt).
+#   · supabase/v287_deploy_compat.sql is applied THIRD, before the v263 chain,
+#     as SQL_RELEASE_CONVENTIONS Rule 4 requires.
+#   · supabase/v280_profile.sql appears LAST, out of numeric order. It depends
+#     on objects created by later-numbered files. This position is verified.
+# Lines beginning with # are ignored.
+db/base.sql
+db/deps.sql
+supabase/v287_deploy_compat.sql
+supabase/v168_event_debriefs.sql
+supabase/v179_studio.sql
+supabase/v182_blueprints.sql
+supabase/v184_packages.sql
+supabase/v185_component_groups.sql
+supabase/v186_archive.sql
+supabase/v188_presentation.sql
+supabase/v189_tenancy_discovery.sql
+supabase/v189_tenancy_discovery_combined.sql
+supabase/v190_proposal_display.sql
+supabase/v191_item_categories.sql
+supabase/v192_component_identity.sql
+supabase/v194_financial_correctness.sql
+supabase/v196a_drop_transfer_map.sql
+supabase/v200_component_definitions.sql
+supabase/v201_component_configuration.sql
+supabase/v202_instantiation.sql
+supabase/v203_reroute.sql
+supabase/v205_legacy_config.sql
+supabase/v206_baseline_honesty.sql
+supabase/v207_curation.sql
+supabase/v209_layers.sql
+supabase/v221_section_categories.sql
+supabase/v225_publication.sql
+supabase/v227_brand.sql
+supabase/v233_photography.sql
+supabase/v241_templates.sql
+supabase/v251_blueprints_shelf.sql
+supabase/v253_instantiation.sql
+supabase/v255_promotion.sql
+supabase/v257_conditions.sql
+supabase/v258_composition.sql
+supabase/v263_spine_ledger.sql
+supabase/v264_relationship.sql
+supabase/v265_publish.sql
+supabase/v266_hardening.sql
+supabase/v267b_publish_offer_digest_fix.sql
+supabase/v267_boundary.sql
+supabase/v267a_pgcrypto_compat.sql
+supabase/v268_offered_terms.sql
+supabase/v269_acceptance_records.sql
+supabase/v270_protective_compatibility.sql
+supabase/v271_acceptance_ceremonies.sql
+supabase/v272_rescission.sql
+supabase/v273_pl4_closeout.sql
+supabase/v275_execution_spine.sql
+supabase/v275_projections.sql
+supabase/v275_ceremonies.sql
+supabase/v276_lifecycle.sql
+supabase/v276_ceremonies.sql
+supabase/v277_workspace.sql
+supabase/v278_staffing.sql
+supabase/v278_projections.sql
+supabase/v278_integration.sql
+supabase/v278_ceremonies.sql
+supabase/v279_action_registry.sql
+supabase/v279_action_projection.sql
+supabase/v279_integration.sql
+supabase/v279_action_dispatch.sql
+supabase/v280_venues.sql
+supabase/v280_ceremonies.sql
+supabase/v281_binding.sql
+supabase/v282_staleness.sql
+supabase/v283_profiles.sql
+supabase/v283_ceremonies.sql
+supabase/v284_publish.sql
+supabase/v284_integration.sql
+supabase/v284_ceremonies.sql
+supabase/v286_responsibility.sql
+supabase/v287a_projection_spine.sql
+supabase/v287b_projection_composed.sql
+supabase/v288a_operational_window.sql
+supabase/v280_profile.sql
+supabase/v292a_promise_capture.sql
+supabase/v292a1_occurrence_model.sql
+supabase/v292b_occurrence_brief.sql
+#
+# ── post-v292b lineage through v305 ───────────────────────────────────────
+# Added 2026-08-10 under the canonical bootstrap custody ruling. Before this,
+# the chain terminated at v292b while repository and production lineage ran
+# through v305, so a rebuild from the chain landed nine releases short and
+# sixteen objects below the v305 floor.
+#
+# Membership is derived from the min_release back-links in
+# ec/deploy-manifests/*.deploy — NOT from whichever objects happen to be
+# missing from some database. Two of these releases are mostly or entirely
+# CREATE OR REPLACE and contribute few or no new object identities:
+#   · v292d1 adds ZERO new objects; it replaces projection_day_sheet
+#   · v297 adds ONE new object; its other six venue functions are replaced
+# They are load-bearing all the same. Omitting them yields a database that
+# reports every object present while carrying stale function bodies.
+#
+# v296, v298, v299, v301 and v302 are intentionally absent: each declares
+# migration_source none and zero database objects. They are contract, tooling
+# and evidence releases, and no migration artifact exists for them.
+#
+# v306 is deliberately NOT here. It is neither closed nor deployed.
+supabase/v292d_occurrences_for_operational_day.sql
+supabase/v292d1_work_lens_operational_day.sql
+supabase/v293_work_ceremonies.sql
+supabase/v294_preparation_queue.sql
+supabase/v295_release_ceremony.sql
+supabase/v297_venue_asof_integrity.sql
+supabase/v300_occurrence_brief_risk.sql
+supabase/v303_readiness.sql
+supabase/v304_next_action.sql
+supabase/v305_execution_facts.sql

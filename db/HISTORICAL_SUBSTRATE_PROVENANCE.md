@@ -1,0 +1,114 @@
+# Historical bootstrap substrate — provenance and custody record
+
+Imported 2026-08-10 under the canonical bootstrap custody ruling, which makes this
+repository the custody authority for the complete substrate required to rebuild the
+local certification database `ec` from zero.
+
+Before this import a clean checkout could not reconstruct its own certification
+database: `db/CHAIN.txt`, `db/bootstrap.sh`, `db/base.sql`, `db/deps.sql` and the 74
+pre-v292b migrations existed only in untracked Downloads packages. The bootstrap that
+produced the current `ec` ran from `/tmp/ec_rebuild_tree`, a tree hand-assembled on
+2026-08-10 at 18:04 EDT that no committed artifact could reproduce.
+
+## Source
+
+All files below were taken byte-exact from `/tmp/ec_rebuild_tree`, the only complete
+bootstrap root then in existence, itself composited from `eventcore-v289-standalone`
+(74 legacy migrations, `db/base.sql`, `db/deps.sql`) and the certification harness
+(`db/CHAIN.txt`, `db/bootstrap.sh`). An emergency durable copy of that volatile tree,
+with its own inventory, was preserved first at:
+
+    /mnt/c/Users/bbgro/Downloads/eventcore-bootstrap-root-recovered-2026-08-10/
+    tree digest: fbfc645b6281fa9a2e85370e43758c1d4fdffbf6663400c66a499337e05b7d97
+
+Bytes were preserved exactly. Nothing was reformatted, normalised or rewritten.
+`supabase/v292a_promise_capture.sql`, `supabase/v292a1_occurrence_model.sql` and
+`supabase/v292b_occurrence_brief.sql` were already canonical in this repository and
+were NOT overwritten; each was verified byte-identical to the recovered tree.
+
+## Imported files (78) — sha256
+
+```
+c71ff5d21dee1a5edab8d669014224d34cda7e836598542b92eca8726328b0aa    db/base.sql
+c6243b2e580a4a49800d7ff1eae502fdf65bbb5e973fb9fe558975fcf5a5adc2    db/deps.sql
+108cd47f66ab177d62cec8ced2d0e54bff562ff8d4fb6df5ee145c73c9b3d42c    db/CHAIN.txt
+963b8470d71a7d7741ce489ba5627a650e11287b474de4aa10c8475990feba41    db/bootstrap.sh
+21a8b905826e280793e4a41c5b1dcb5815fb369799979502786294cfd354c2d6    supabase/v168_event_debriefs.sql
+f5cb85d95af7cf7a4e270de4186f08e18bb235f20a177ecb30f2f53acb2d737a    supabase/v179_studio.sql
+4ad472b976588ad7343b416206973a4b3b6527252063b2d350f5913b151204d3    supabase/v182_blueprints.sql
+beb1f3eeb11f9d380c4b835592253c202cc1d4915f7d87c0b4f0eda852a9805c    supabase/v184_packages.sql
+7fe709d485f90a00b162cbb90d123f735f60c3027af0762f59850668ac4149f3    supabase/v185_component_groups.sql
+117fcb82f577c7cc796d8216ef2f6c26596e923f182a2cada115831467be6fdb    supabase/v186_archive.sql
+e16fb82cd4d58807f9359f8f38b3520183cb88a11c18221650aa309e68db9867    supabase/v188_presentation.sql
+ae77512367a529b43ba8ea57d84cfe54537a1e86fb2374ff455248a6b297b5d9    supabase/v189_tenancy_discovery.sql
+5ee4d636fa942a0099322501a2792184ad2e9f17c404c873f3fb1100e385c37c    supabase/v189_tenancy_discovery_combined.sql
+7630191468f70f9b2723f0d1fd6a22d3072e95277e21eb006d2dae30854e9b32    supabase/v190_proposal_display.sql
+c414de75b0bfeca54f477d07701473c8748bb0363e8dbb0f58da313c11999eb2    supabase/v191_item_categories.sql
+bb27bf3453b2e7bcc3e842580b218245c68c11b71e2f9353f2a13073c6062b04    supabase/v192_component_identity.sql
+cacf84e48bac437a4dd8378d424fac5833d697a4412d983633b2903a43d7d8d2    supabase/v194_financial_correctness.sql
+b5c7d5fc48a360d9908cc7f8ec83059496e4eab8db9dca77001b898311076a48    supabase/v196a_drop_transfer_map.sql
+0085d4faaff690a73dac3db6c60508b0781dfb9e01db0cb952dbc894453ea8ee    supabase/v200_component_definitions.sql
+a632e7c36c491016e3a8cfa236e88ceb21ab7f8fd70dcf453396be8c86f63d7e    supabase/v201_component_configuration.sql
+c48686aee6934ff8d701caea85fd55c444a49ec07fbe7b90fb6033e4ffa3c745    supabase/v202_instantiation.sql
+db370ce6eb06f35b30c5074d52f3e4af05ba8b16d69d7a8f176b38423fc5a26d    supabase/v203_reroute.sql
+d7fe3a992c669c82a4ff4ca4f6229bf5841dddde511aa36472a6fdc36cdbad76    supabase/v205_legacy_config.sql
+8dacea4fed4148b8f28f05ed2875b286c221b12d5afad08e238740a8e442399b    supabase/v206_baseline_honesty.sql
+0c76b8e3f4d90d921efe12cc1bc085bed3e71412a2963a2e00faac962d5924ce    supabase/v207_curation.sql
+54af26203dd56d9fe8a449f2bfdadc1e160d713b13e0fb68374db008b4a7ef87    supabase/v209_layers.sql
+d36962d632c15924e3c8b0f806f024fdd5af51b4e8c9b4ef1ecfd53ae2468dcd    supabase/v221_section_categories.sql
+07d70f10e1c13f177931f3826d5381d0481be274e576512f4de0e62f8a456b59    supabase/v225_publication.sql
+1e063a804d0fbadee9e1d6d64e4c72191a0ec9649bf12aef2208862fc155bee5    supabase/v227_brand.sql
+4a0488cf6ddbe522aa5cbbbc32a6bc6fee1ff745d2ff57a5b1c5995629f04163    supabase/v233_photography.sql
+f63c7de402b616391c4c27a105b2189507ff0894751ce61022021ce048a3affa    supabase/v241_templates.sql
+c9dd7d099fb185fe6f932d918b0884aea559c428db64855e4f852b83d57af5de    supabase/v251_blueprints_shelf.sql
+19f9b5b2b18606c76d313ce0ce972313d7800e518f1b2486c4e77df1250d3fff    supabase/v253_instantiation.sql
+8624f38f002ceee3b02b2dd7488c45f8022b78f4200719c8f75ab3af35914f83    supabase/v255_promotion.sql
+c2f9670af1eeb300530405416ded85570e93ae8456fd0071e0038b2816833e72    supabase/v257_conditions.sql
+dc45ff91ef2aed5066761a7e691eff6b16eef6b4cb2543543915958c3a0a0739    supabase/v258_composition.sql
+11096d23bbf1e5bc394b18e3cff5df09ea9826c98f8e2692c31871939301fb6c    supabase/v263_spine_ledger.sql
+bd2040eb3da070b2df4a385c7368a00542faadbead990a675bf768d37dea5318    supabase/v264_relationship.sql
+6346a57a2f7977d27a0e986a7bda1262dea413f1671df2e66195428b60340531    supabase/v265_publish.sql
+5dea87e10467d9b48835ccdbccb6d8558ac19520188a2058fe0f9ba47a99a8af    supabase/v266_hardening.sql
+fa2c2810de283514ea902f5f44ef55acab872ed73bb70c3481823cdcd7b3ec66    supabase/v267_boundary.sql
+6a487b0493af9cfff3f9ce953f3bf14b491ab6d1d071e8ae9bc09e7b8bc284c6    supabase/v267a_pgcrypto_compat.sql
+adb04f323121e8e3dd347ff0a8b7aca9f50bca9a50abda65d7060c60142bf474    supabase/v267b_publish_offer_digest_fix.sql
+81cb495eaa55dcfd39e894a4bc0a3823b09dab9f33e98ffcbeb70e0a137334a0    supabase/v268_offered_terms.sql
+64fde5e399039b2b41b980c40e8fba13f458ef816ed87f6f20e40af0a1605c2b    supabase/v269_acceptance_records.sql
+d9fabacfe790a9d54b6d601a48730d5b0f3e9bac0319598991b4f6ad029b99bc    supabase/v270_protective_compatibility.sql
+de51181e0e03c426eb1d53fbbde9cdce67912ca578085c95739f806dc6eb71b5    supabase/v271_acceptance_ceremonies.sql
+18b5aa69cd57b60a3af694d8a01a247a86adc7aaf9f647129e7002bc19270c2a    supabase/v272_rescission.sql
+5e4fb7ab900cb02f3b24a2f67bc33509d67c7b20f61f28a9ba8d41b5c5e92fe8    supabase/v273_pl4_closeout.sql
+056915ea6b4c2e6183d81d944fb4ef5b4308bc219182a5192cda0e9dcc1646d9    supabase/v275_ceremonies.sql
+f39be071bade7e06dc94d7606a61fd66c56be3b11d36ebdfc5487f11e16f60b7    supabase/v275_execution_spine.sql
+31510815985cb50dcaf16f5282ebea1fe18111949757623ca76f1d55b18fefc0    supabase/v275_projections.sql
+d82b054a033b27dd8d8411800b34436e7d88f135ea11dc7c98124552e5cd2f54    supabase/v276_ceremonies.sql
+82fb3a62be3edb3b4225643802e352248bedd1555b05925865a084c737dda4b9    supabase/v276_lifecycle.sql
+32b7ac8375306b6ffe2cfa29a4b1450514283421f3189246a45cf798550cff56    supabase/v277_workspace.sql
+537b5dbde361bf9c0715f1af15e716351160a92a8f1c690ffd0c6f1118618217    supabase/v278_ceremonies.sql
+2e60210cb49fe6b02fb9c91ffbbcaaa1a0b8670282f8ee8661ae34b495e68328    supabase/v278_integration.sql
+14d457744428f8bead1d796b205f65468113f65eae88943086610b3d75541ca9    supabase/v278_projections.sql
+5568128b9832ac9e69b6e8ef44144c4a3a163a37964dd0be5e3cea0eb792f531    supabase/v278_staffing.sql
+1ef1b36a14012a03d54ac1909aabfcf5cd87822612cb5d01a5d7bfa0be505e25    supabase/v279_action_dispatch.sql
+d0408388708881c223cce5cc9bca6cdddec059cd8c5c5fe5d3eff4c2d2962ec2    supabase/v279_action_projection.sql
+81cf0bd7fc1c633ff5411cac1a93fbf43af35b29b48c10abd54068424cf355c1    supabase/v279_action_registry.sql
+ebecf20b2132d0cd74494be95ed790f34f6dbcaefcc619eef60c9c120dba13be    supabase/v279_integration.sql
+80d912a07136e65be1947e30b194c34ba00166746ac4f1ebd53a2a4ae2dd1bbd    supabase/v280_ceremonies.sql
+1fac057d12212136d9f38905253542dbc84bc66b0baa6a57a946e7a4c32e8ca5    supabase/v280_profile.sql
+e1e99d557d1fd17878f94ee5c56ea722d299e9a9c981774368341d2b1069498f    supabase/v280_venues.sql
+960b25439f09336a97428e380bfc7858444a551065f571110b6b97e9093dfdb0    supabase/v281_binding.sql
+82ee457feaeb04851db9f90d5b5a8dec27f6d82774f95cfa71dc5a429b001f9f    supabase/v282_staleness.sql
+00037ab0050fba6e31276450f42c931c74f4c9b90c3b8e72b56b0b9fa488978a    supabase/v283_ceremonies.sql
+93edc2cf172f2b35d940c3530599f738ff2fb46b8a6e327126d679639ecb87bb    supabase/v283_profiles.sql
+9f536c3e417e73204272a3b8b5d44125131e05f0b70cc8284f22383886958997    supabase/v284_ceremonies.sql
+b8acdf7c506e17b1b186fda41ce0e62a62457a21daa37649f669e523d731a082    supabase/v284_integration.sql
+7ccf60d6d3eef730f8ac465b5522b1345ea245f3aec9303c46fc2e73e4ee6671    supabase/v284_publish.sql
+44060c7d7d984bb306a408b11359f05817e53c91a7c88199cebfbab6ab012a2d    supabase/v286_responsibility.sql
+4ed4e7dfb978488288dfa368ed3bc354b4a7f056fa5d584c652cf8990891467b    supabase/v287_deploy_compat.sql
+a63a5c3aa058baf155a8e51c9c9814f727ce6bda01c7a2de1be3864654e90671    supabase/v287a_projection_spine.sql
+399c9732753fe872bd728360b260bd2b4634f866b5d0e8cc9c99a3e957c72fb0    supabase/v287b_projection_composed.sql
+b7b133c2ff0ddfa616012b4736e0c7d808e6dbbd2a982ee2f8906b2cb832df13    supabase/v288a_operational_window.sql
+```
+
+`db/CHAIN.txt` is recorded above at its **as-recovered** digest. It was extended in the
+same commit to carry the post-v292b lineage through v305; see the comment block in the
+file itself for what was added and why.
