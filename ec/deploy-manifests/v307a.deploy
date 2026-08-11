@@ -1,0 +1,25 @@
+# v307a — CEREMONY WIRING
+#
+# An integration/equivalence release: the seven ceremonies are CREATE OR REPLACE'd
+# to consume the frozen v306 admissibility authority instead of their own inline
+# conditions. Externally observable behavior is preserved (equivalence slice); no
+# Class-U closure (that is v307b), no occurrence-resolution pulled backward.
+#
+# The seven ceremonies keep their identity signatures (CREATE OR REPLACE), so no
+# composed version guard changes. The only new object is the deployed marker; the
+# wiring itself is proven by the permanent proof and the v306 differential
+# regression run against the migrated ceremonies.
+release          v307a
+migration        supabase/v307a_wiring.sql
+migration_source repository
+min_release      v306
+
+superseded       start_service (rewired to consume admissibility_evaluate)
+superseded       close_event (rewired)
+superseded       release_event (rewired)
+superseded       release_occurrence (rewired)
+superseded       assign_staff (rewired; Class-U kept inline)
+superseded       correct_staffing_assignment (rewired; Class-U kept inline)
+superseded       release_staffing_assignment (rewired; Class-U kept inline)
+
+function         v307a_wiring()

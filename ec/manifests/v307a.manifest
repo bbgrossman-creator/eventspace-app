@@ -1,0 +1,29 @@
+# EventCore release manifest — v307a Ceremony Wiring
+#
+# Wires the seven ceremonies onto the frozen v306 admissibility authority
+# (6225a34) — an integration/equivalence slice. Each ceremony sources its S/A
+# refusal from admissibility_evaluate while preserving success results, refusal
+# codes, rendered grounds, first-failure precedence, tenant isolation, and the
+# six-point LOCKING_AND_CONCURRENCY_CONTRACT (notably the Y3 requirement lock and
+# the R1 write-time guard).
+#
+# NOT in v307a: Class-U closure for the four unauthorized ceremonies (v307b), and
+# any v308 availability exposure or v310 event_stage change. The existing inline
+# can_manage_staffing checks are kept verbatim.
+#
+# Equivalence is proven three ways: the v307a permanent proof (wired ceremonies
+# reproduce the frozen refusal contract + Y3/R1 guards), the v306_permanent_proof
+# regression (the full 38-claim ceremony-vs-authority differential re-run against
+# the migrated ceremonies), and the race regression (concurrency preserved).
+version            v307a
+one_shot           proofs/v307a_proofs.sh                       expect 14
+migration          supabase/v307a_wiring.sql
+permanent          v307a_permanent_proof                        expect 17
+permanent_regress  v306_permanent_proof v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
+race               proofs/v307a_y3_race.sh
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+harness_install    supabase/tests/v307a_permanent_proof.sql
+deployed_marker    v307a_wiring
+git_files          supabase/v307a_wiring.sql supabase/tests/v307a_permanent_proof.sql proofs/v307a_proofs.sh proofs/v307a_y3_race.sh ec/manifests/v307a.manifest ec/deploy-manifests/v307a.deploy
