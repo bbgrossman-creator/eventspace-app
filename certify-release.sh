@@ -151,7 +151,7 @@ fi
 
 if [ "$MODE" = "full" ]; then
   [ -n "$M_ONESHOT_P" ] && gate_one_shot "$M_ONESHOT_P" "$M_MIGRATION" "$(mf_expect "$M_ONESHOT")"
-  [ -n "$M_MIGRATION" ] && gate_migration "$M_MIGRATION"
+  [ -n "$M_MIGRATION" ] && gate_migration "$M_MIGRATION" "$VERSION" "$M_DEPLOYED_MARKER"
   # ORDER IS LOAD-BEARING: the permanent proof executes THROUGH verify.sh, which
   # reads it from the harness. Installing after the permanent gate — as an
   # earlier revision did — guarantees "MISSING" on every first release. It

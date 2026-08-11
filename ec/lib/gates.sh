@@ -33,8 +33,32 @@ gate_one_shot() {  # $1 script, $2 migration, $3 expected PASS
 }
 
 # ── migration apply to the live database ──────────────────────────────────
-gate_migration() {  # $1 migration path
+gate_migration() {  # $1 migration path  $2 release  $3 deployed marker
   gate_begin "apply migration to $EC_DB"
+  local rel="${2:-}" marker="${3:-}" present=0
+  # Both certification states are valid: the release may or may not already be
+  # installed, because a prior run of THIS gate installs it. A migration
+  # preflight is CORRECT to refuse a second apply, so the gate adapts rather
+  # than the preflight weakening.
+  #
+  # A marker is NEVER sufficient evidence. The complete declared postcondition
+  # from the release's deploy manifest must verify, via the existing certified
+  # validator — no second deployment verifier is created here.
+  if [ -n "$marker" ]; then
+    present=$(pg_q "$EC_DB" "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='$marker'" 2>/dev/null || echo 0)
+  fi
+  if [ -n "$marker" ] && [ "$present" != "0" ]; then
+    local vc="ec/verify-deployment.sh $rel --db $EC_DB"; gate_cmd "$vc"
+    local vout vrc
+    vout=$(bash "$EC_REPO/ec/verify-deployment.sh" "$rel" --db "$EC_DB" 2>&1); vrc=$?
+    if [ "$vrc" -eq 0 ]; then
+      gate_ok "already applied — marker '$marker' present AND the full declared postcondition verifies: $(printf '%s' "$vout" | tr '\n' ' ' | grep -oE 'present: *[0-9]+ *missing: *[0-9]+' | tail -1)"
+      return
+    fi
+    gate_fail "$vc" \
+      "PARTIAL OR INCONSISTENT INSTALLATION: marker '$marker' is present but the declared deployment postcondition does NOT verify. Refusing to report already-applied and refusing to apply around it." \
+      "$vout"
+  fi
   local c="pg_file $EC_DB $1"; gate_cmd "$c"
   local out rc
   out=$(pg_file "$EC_DB" "$EC_REPO/$1" 2>&1); rc=$?
