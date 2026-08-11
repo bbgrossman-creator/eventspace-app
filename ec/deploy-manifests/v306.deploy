@@ -1,0 +1,22 @@
+# v306 — ADMISSIBILITY AUTHORITY
+#
+# Eleven new objects composing one shared, ordered admissibility authority. No
+# existing function is replaced, so no identity signature changes and no
+# composed version guard is touched. The release is UNWIRED: the no-reference
+# proof establishes that nothing calls any object declared here.
+release          v306
+migration        supabase/v306_admissibility.sql
+migration_source repository
+min_release      v305
+
+function         admissibility_ladder()
+function         admissibility_subject_visible(p_subject_type text, p_id uuid)
+function         admissibility_execution_fact(p_subject_type text, p_subject uuid, p_kind text)
+function         admissibility_commitment_facts(p_subject_type text, p_subject uuid)
+function         admissibility_obligation_pending(p_event uuid, p_kinds text[], p_exception_state boolean)
+function         admissibility_assignment_state(p_subject_type text, p_subject uuid, p_probe text, p_arg uuid)
+function         admissibility_argument_valid(p_condition text, p_args jsonb)
+function         admissibility_render_ground(p_template text, p_operands jsonb)
+function         admissibility_evaluate(p_action_key text, p_subject uuid, p_args jsonb)
+function         admissibility_required_arguments(p_action_key text)
+function         v306_admissibility()

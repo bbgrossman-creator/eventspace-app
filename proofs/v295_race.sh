@@ -76,37 +76,30 @@ cat > "$SEED" <<SQLEOF
 $CTX
 create table if not exists public.v295_race_fx(tag text primary key, occ uuid);
 do \$fx\$
-declare v_t uuid := '$TENANT'; b uuid; o uuid; snap uuid; v_ver uuid;
+declare v_t uuid := '$TENANT'; b uuid; o uuid; snap uuid; v_ver uuid; v_prop uuid;
 begin
-  -- Same lawful strategy as the one-shot: the acceptance resolves BY BOOKING,
-  -- the event is keyed on the OCCURRENCE. offer_snapshots.version_id is UNIQUE
-  -- and FK-bound to proposal_versions; offer_acceptances.snapshot_id is UNIQUE.
-  select a.booking_id into b
-    from public.offer_acceptances a
-    left join public.acceptance_rescissions r on r.acceptance_id = a.id
-   where a.tenant_id = v_t and r.id is null
-   order by a.created_at
-   limit 1;
-
-  if b is null then
-    select pv.id into v_ver
-      from public.proposal_versions pv
-     where not exists (select 1 from public.offer_snapshots s where s.version_id = pv.id)
-     limit 1;
-    if v_ver is null then
-      raise exception 'V295_RACE_FIXTURE_UNSATISFIABLE: no unrescinded acceptance and no unused proposal_versions row';
-    end if;
-    insert into public.bookings (tenant_id,contact_name,invoice_num,status)
-      values (v_t,'$NK','V295R-'||substr(gen_random_uuid()::text,1,8),'active') returning id into b;
-    insert into public.offer_snapshots
-      (id,tenant_id,version_id,fingerprint,model,artifact_bytes,artifact_hash,artifact_meta,assets,published_at)
-      values (gen_random_uuid(), v_t, v_ver, '$NK-fp', '{"components":[]}'::jsonb,
-              '\\x00'::bytea, '$NK-h', '{}'::jsonb, '[]'::jsonb, now())
-      returning id into snap;
-    insert into public.offer_acceptances
-      (id,tenant_id,snapshot_id,fingerprint,booking_id,recorded_moment,created_at)
-      values (gen_random_uuid(), v_t, snap, '$NK-af', b, now(), now());
-  end if;
+  -- Same lawful strategy as the permanent proof: the acceptance resolves BY
+  -- BOOKING, the event is keyed on the OCCURRENCE. The fixture builds its own
+  -- commitment truth rather than requiring a pre-existing unused
+  -- proposal_versions row. offer_snapshots.version_id is UNIQUE and FK-bound to
+  -- proposal_versions, and offer_acceptances.snapshot_id is UNIQUE, but those
+  -- forbid only a second snapshot on an already-snapshotted version and a
+  -- second acceptance on one snapshot — a version created here has neither, so
+  -- exactly one of each is lawful. This runs against a disposable clone.
+  insert into public.bookings (tenant_id,contact_name,invoice_num,status)
+    values (v_t,'$NK','V295R-'||substr(gen_random_uuid()::text,1,8),'active') returning id into b;
+  insert into public.proposals (tenant_id,booking_id,title,status)
+    values (v_t,b,'$NK-p','draft') returning id into v_prop;
+  insert into public.proposal_versions (tenant_id,proposal_id,version,status)
+    values (v_t,v_prop,1,'sent') returning id into v_ver;
+  insert into public.offer_snapshots
+    (tenant_id,version_id,fingerprint,model,artifact_bytes,artifact_hash,artifact_meta,assets,published_at)
+    values (v_t, v_ver, '$NK-fp', '{"components":[]}'::jsonb,
+            '\\x00'::bytea, '$NK-h', '{}'::jsonb, '[]'::jsonb, now())
+    returning id into snap;
+  insert into public.offer_acceptances
+    (tenant_id,snapshot_id,fingerprint,booking_id,recorded_moment,created_at)
+    values (v_t, snap, '$NK-af', b, now(), now());
 
   o := (public.open_occurrence(b,null,null)->>'occurrence_id')::uuid;
   insert into public.v295_race_fx values ('R',o);

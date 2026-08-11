@@ -19,8 +19,8 @@ do $$
 declare
   n_pass int := 0; n_fail int := 0; n_skip int := 0; n_unproven int := 0;
   v_tenant uuid; v_user uuid; v_orphan uuid := gen_random_uuid();
-  b uuid; occ uuid; snap uuid; v_ver uuid; v_ev uuid;
-  v_missing int; v_n int; v_s text; v_err text;
+  b uuid; occ uuid; snap uuid; v_ver uuid; v_prop uuid; v_ev uuid;
+  v_missing int; v_n int; v_s text; v_err text; v_sfx text;
   ev_before bigint; ev_after bigint; e_before bigint; e_after bigint;
 begin
   select tu.tenant_id, tu.user_id into v_tenant, v_user
@@ -34,42 +34,45 @@ begin
 
   -- ── fixture ─────────────────────────────────────────────────────────────
   -- release_occurrence resolves the acceptance BY BOOKING and keys the event on
-  -- the OCCURRENCE, so an occurrence opened on an already-accepted booking has
-  -- its commitment limb satisfied without creating anything in the offer tables.
-  -- That matters: offer_snapshots.version_id is UNIQUE and FK-bound to
-  -- proposal_versions, and offer_acceptances.snapshot_id is UNIQUE, so
-  -- fabricating either is unlawful. Everything below rolls back regardless.
-  select a.booking_id into b
-    from public.offer_acceptances a
-    left join public.acceptance_rescissions r on r.acceptance_id = a.id
-   where a.tenant_id = v_tenant and r.id is null
-   order by a.created_at
-   limit 1;
-
-  if b is null then
-    select pv.id into v_ver
-      from public.proposal_versions pv
-     where not exists (select 1 from public.offer_snapshots s where s.version_id = pv.id)
-     limit 1;
-    if v_ver is null then
-      raise exception 'v295 PERMANENT PROOF BLOCKED: no unrescinded acceptance for this tenant and no unused proposal_versions row to lawfully create one. Seed that truth; do not weaken the claims.';
-    end if;
-    insert into public.bookings (tenant_id, contact_name, invoice_num, status)
-      values (v_tenant, 'v295perm', 'V295P-'||substr(gen_random_uuid()::text,1,8), 'active')
-      returning id into b;
-    insert into public.offer_snapshots
-      (id, tenant_id, version_id, fingerprint, model, artifact_bytes,
-       artifact_hash, artifact_meta, assets, published_at)
-      values (gen_random_uuid(), v_tenant, v_ver,
-              'v295p-'||substr(gen_random_uuid()::text,1,10),
-              '{"components":[]}'::jsonb, '\x00'::bytea, 'v295p',
-              '{}'::jsonb, '[]'::jsonb, now())
-      returning id into snap;
-    insert into public.offer_acceptances
-      (id, tenant_id, snapshot_id, fingerprint, booking_id, recorded_moment, created_at)
-      values (gen_random_uuid(), v_tenant, snap,
-              'v295p-'||substr(gen_random_uuid()::text,1,10), b, now(), now());
-  end if;
+  -- the OCCURRENCE, so a booking carrying an unrescinded acceptance has the
+  -- commitment limb satisfied. The proof builds that truth itself, exactly as
+  -- v292a1, v292b, v300 and v303 build the identical five-layer chain.
+  --
+  -- An earlier revision instead REQUIRED a pre-existing unused proposal_versions
+  -- row, reasoning that offer_snapshots.version_id being UNIQUE and FK-bound to
+  -- proposal_versions — and offer_acceptances.snapshot_id being UNIQUE — made
+  -- fabrication unlawful. Those constraints are real, but they forbid only a
+  -- SECOND snapshot on an ALREADY-SNAPSHOTTED version, and a second acceptance
+  -- on one snapshot. They say nothing about a version created here: a fresh
+  -- proposal_versions row has no snapshot, so exactly one is lawful. Verified
+  -- against the current catalogue — proposal_versions requires only tenant_id
+  -- and proposal_id, proposals only tenant_id and booking_id, so the chain is
+  -- constructible from the tenant alone.
+  --
+  -- The old requirement made the proof depend on whichever rows a database had
+  -- accumulated, which is how it passed for months on unversioned residue and
+  -- then blocked on a database built correctly from the canonical chain. Every
+  -- claim below is unchanged. Everything here rolls back regardless.
+  v_sfx := substr(gen_random_uuid()::text, 1, 8);
+  insert into public.bookings (tenant_id, contact_name, invoice_num, status)
+    values (v_tenant, 'v295perm', 'V295P-'||v_sfx, 'active')
+    returning id into b;
+  insert into public.proposals (tenant_id, booking_id, title, status)
+    values (v_tenant, b, 'P295', 'draft')
+    returning id into v_prop;
+  insert into public.proposal_versions (tenant_id, proposal_id, version, status)
+    values (v_tenant, v_prop, 1, 'sent')
+    returning id into v_ver;
+  insert into public.offer_snapshots
+    (tenant_id, version_id, fingerprint, model, artifact_bytes,
+     artifact_hash, artifact_meta, assets, published_at)
+    values (v_tenant, v_ver, 'v295p-'||v_sfx,
+            '{"components":[]}'::jsonb, '\x00'::bytea, 'v295p',
+            '{}'::jsonb, '[]'::jsonb, now())
+    returning id into snap;
+  insert into public.offer_acceptances
+    (tenant_id, snapshot_id, fingerprint, booking_id, recorded_moment, created_at)
+    values (v_tenant, snap, 'v295p-'||v_sfx, b, now(), now());
 
   occ := (public.open_occurrence(b, null, null)->>'occurrence_id')::uuid;
 

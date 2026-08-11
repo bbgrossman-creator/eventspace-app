@@ -30,37 +30,35 @@ const ctx = `select set_config('app.user_id','${USER}',false), set_config('reque
 psql(`${ctx}
 create table if not exists public.v295_br(tag text primary key, occ uuid);
 do $$
-declare v_t uuid := '${TENANT}'; b uuid; o uuid; snap uuid; v_ver uuid; v_tag text;
+declare v_t uuid := '${TENANT}'; b uuid; o uuid; snap uuid; v_ver uuid; v_prop uuid; v_tag text;
 begin
   -- The acceptance resolves BY BOOKING and the event is keyed on the
-  -- OCCURRENCE, so both fixture occurrences sit on ONE already-accepted
-  -- booking and nothing is written to the offer tables. Required by the real
-  -- constraints: offer_snapshots.version_id is UNIQUE and FK-bound to
-  -- proposal_versions; offer_acceptances.snapshot_id is UNIQUE.
-  select a.booking_id into b
-    from public.offer_acceptances a
-    left join public.acceptance_rescissions r on r.acceptance_id = a.id
-   where a.tenant_id = v_t and r.id is null
-   order by a.created_at limit 1;
-
-  if b is null then
-    select pv.id into v_ver from public.proposal_versions pv
-     where not exists (select 1 from public.offer_snapshots s where s.version_id = pv.id)
-     limit 1;
-    if v_ver is null then
-      raise exception 'V295_BROWSER_FIXTURE_UNSATISFIABLE: no unrescinded acceptance and no unused proposal_versions row';
-    end if;
-    insert into public.bookings (tenant_id,contact_name,invoice_num,status)
-      values (v_t,'BR-ACC','V295BRACC-'||substr(gen_random_uuid()::text,1,8),'active') returning id into b;
-    insert into public.offer_snapshots
-      (id,tenant_id,version_id,fingerprint,model,artifact_bytes,artifact_hash,artifact_meta,assets,published_at)
-      values (gen_random_uuid(),v_t,v_ver,'br-'||substr(gen_random_uuid()::text,1,10),
-              '{"components":[]}'::jsonb,'\\x00'::bytea,'br-h','{}'::jsonb,'[]'::jsonb,now())
-      returning id into snap;
-    insert into public.offer_acceptances
-      (id,tenant_id,snapshot_id,fingerprint,booking_id,recorded_moment,created_at)
-      values (gen_random_uuid(),v_t,snap,'bra-'||substr(gen_random_uuid()::text,1,10),b,now(),now());
-  end if;
+  -- OCCURRENCE, so all three fixture occurrences sit on ONE accepted booking.
+  -- The fixture builds that booking's commitment chain itself, exactly as
+  -- v295_permanent_proof, v295_race.sh, v292a1, v292b, v300 and v303 do.
+  --
+  -- An earlier revision required a pre-existing unrescinded acceptance or an
+  -- unused proposal_versions row, on the reasoning that offer_snapshots
+  -- .version_id being UNIQUE and FK-bound — and offer_acceptances.snapshot_id
+  -- being UNIQUE — made construction unlawful. Those constraints forbid only a
+  -- SECOND snapshot on an already-snapshotted version and a SECOND acceptance
+  -- on one snapshot. A version created here has neither, so exactly one of each
+  -- is lawful. Depending on pre-existing rows made this suite pass only on a
+  -- database that had accumulated them.
+  insert into public.bookings (tenant_id,contact_name,invoice_num,status)
+    values (v_t,'BR-ACC','V295BRACC-'||substr(gen_random_uuid()::text,1,8),'active') returning id into b;
+  insert into public.proposals (tenant_id,booking_id,title,status)
+    values (v_t,b,'BR-295','draft') returning id into v_prop;
+  insert into public.proposal_versions (tenant_id,proposal_id,version,status)
+    values (v_t,v_prop,1,'sent') returning id into v_ver;
+  insert into public.offer_snapshots
+    (tenant_id,version_id,fingerprint,model,artifact_bytes,artifact_hash,artifact_meta,assets,published_at)
+    values (v_t,v_ver,'br-'||substr(gen_random_uuid()::text,1,10),
+            '{"components":[]}'::jsonb,'\\x00'::bytea,'br-h','{}'::jsonb,'[]'::jsonb,now())
+    returning id into snap;
+  insert into public.offer_acceptances
+    (tenant_id,snapshot_id,fingerprint,booking_id,recorded_moment,created_at)
+    values (v_t,snap,'bra-'||substr(gen_random_uuid()::text,1,10),b,now(),now());
 
   -- BA releasable + incomplete (BR-2); BB pre-released (BR-1); BC for BR-6.
   foreach v_tag in array array['BA','BB','BC'] loop

@@ -1,0 +1,29 @@
+# EventCore release manifest — v306 Admissibility Authority
+#
+# The shared, ordered admissibility authority for the seven ceremonies, seated
+# under C1 / R-14 as amended by Amendment Four. Strictly additive and UNWIRED:
+# every object is new, nothing calls any of them, and no existing function,
+# view, trigger, policy, constraint or client path is altered.
+#
+# Amendment Four governs three things this release must not blur:
+#   A · the taxonomy is S/A/U/W; RELEASE_ALREADY_RELEASED is Class-W, declared
+#       for preview mapping and NEVER evaluated — a readable precheck cannot
+#       prove a write will succeed under concurrency.
+#   B · R-14.6 — truth is conjunctive; ordering owns only which failure is
+#       reported. Reordering rungs can never change whether an act is admissible.
+#   C · Class-U is reserved at ordinal 0 for v307b. The `admissible` value this
+#       release returns is NOT the complete C1 availability verdict.
+#
+# No browser suite: v306 ships no interface. Under R-13 the authority returns a
+# refusal code and its ground; the wording belongs to the client.
+version            v306
+one_shot           proofs/v306_proofs.sh                        expect 29
+migration          supabase/v306_admissibility.sql
+permanent          v306_permanent_proof                         expect 38
+permanent_regress  v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
+race_regress       proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+harness_install    supabase/tests/v306_permanent_proof.sql
+deployed_marker    v306_admissibility
+git_files          supabase/v306_admissibility.sql supabase/tests/v306_permanent_proof.sql proofs/v306_proofs.sh ec/manifests/v306.manifest ec/deploy-manifests/v306.deploy
