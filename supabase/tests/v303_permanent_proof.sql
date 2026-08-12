@@ -23,6 +23,7 @@
 -- RS-18  blocker_count equals the impeding grounds, and the brief mirrors it
 -- RS-19  owner_required is RESERVED — no ceremony requires ownership
 -- RS-20  the obligation_state caller set is FROZEN against new callers
+--         (8 named identities since 10 Aug 2026 — see the ALLOWED comment)
 --
 -- WHY THESE ARE PERMANENT. Readiness is truth under R-13, so every later release
 -- must keep proving it. The BEHAVIOURAL half of the composed-guard story — making
@@ -42,9 +43,21 @@ declare
   v_nk_lapsed text;
   r jsonb; d jsonb; b jsonb; g jsonb;
   n int; m int; v_txt text;
+  -- SCOPE CORRECTION, 10 August 2026, by architect ruling on report a5f7c3d9.
+  -- The eighth entry is NOT a relaxation of RS-20's purpose. RS-20 predates
+  -- C1/R-14 and exists to stop the legacy obligation_state vocabulary
+  -- proliferating into new consumers while it awaits retirement. R-14.2 now
+  -- requires each precondition to be authored in exactly one named predicate
+  -- and forbids consumers to restate it, and the frozen v306 architecture
+  -- designates admissibility_obligation_pending as THE centralized
+  -- admissibility authority for this predicate. Admitting it therefore serves
+  -- containment rather than defeating it: v307a migrates the ceremonies onto
+  -- that single authority, which reduces the eventual caller set rather than
+  -- growing it. This admits ONE named identity. Every other new caller still
+  -- fails closed, and the v303 retirement debt is untouched.
   ALLOWED text[] := array['action_evaluate','close_event','event_readiness',
                           'event_stage','event_stage_detail','event_workspace',
-                          'start_service'];
+                          'start_service','admissibility_obligation_pending'];
 begin
   select tu.tenant_id, tu.user_id into v_tenant, v_user
     from public.tenant_users tu
@@ -455,7 +468,7 @@ begin
      and not (p.proname = any (ALLOWED));
   if v_txt = '' then
     n_pass := n_pass + 1;
-    raise notice 'RS-20 PASS: obligation_state has no callers outside the frozen allowlist of 7 — the legacy vocabulary is contained and cannot spread while it awaits retirement';
+    raise notice 'RS-20 PASS: obligation_state has no callers outside the frozen allowlist of 8 — the seven original consumers plus the single designated admissibility authority (R-14.2). The legacy vocabulary is contained and cannot spread while it awaits retirement';
   else
     n_fail := n_fail + 1;
     raise notice 'RS-20 FAIL: new obligation_state caller(s): %', v_txt;

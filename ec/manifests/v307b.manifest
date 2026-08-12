@@ -1,0 +1,29 @@
+# EventCore release manifest — v307b Class-U Closure
+#
+# Closes the Class-U (authorization) gap for the four execution ceremonies
+# (start_service, close_event, release_event, release_occurrence) with the
+# authorizer derived from existing canonical authority (action_authorized +
+# the release_promise wrapper precedent): public.is_active_member(). One
+# canonical refusal family per ruling v307b-R1: code EXECUTION_NOT_AUTHORIZED,
+# ceremony identifier as rendered detail.
+#
+# Ceremony-local, first statement, pre-lock, default-deny — the staffing-trio
+# pattern, so ordinal 0 outranks rung 1. The ladder's four reserved ordinal-0
+# seats are filled with DECLARED rungs (in_scope_v306=false); the exclusion
+# registry grows 4 -> 8 (7 U + 1 W). admissibility_evaluate is untouched:
+# Class-U remains declared, never evaluated, by the S/A authority (Amendment
+# Four C), so the v306 differential is unchanged by construction.
+#
+# The membership-deactivation window is inherited existing behavior (identical
+# to the frozen staffing trio's) — declared, not redesigned, per ruling.
+version            v307b
+one_shot           proofs/v307b_proofs.sh                       expect 12
+migration          supabase/v307b_class_u.sql
+permanent          v307b_permanent_proof                        expect 17
+permanent_regress  v307a_permanent_proof v306_permanent_proof v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
+race_regress       proofs/v307a_y3_race.sh proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+harness_install    supabase/tests/v307b_permanent_proof.sql
+deployed_marker    v307b_class_u
+git_files          supabase/v307b_class_u.sql supabase/tests/v307b_permanent_proof.sql proofs/v307b_proofs.sh ec/manifests/v307b.manifest ec/deploy-manifests/v307b.deploy

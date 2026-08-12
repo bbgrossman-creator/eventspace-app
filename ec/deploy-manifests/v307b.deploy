@@ -1,0 +1,24 @@
+# v307b — CLASS-U CLOSURE
+#
+# Authorization for the four execution ceremonies, enforced ceremony-local and
+# pre-lock via public.is_active_member() (the authorizer canonical
+# action_authorized already maps them to, and the release_promise wrapper's
+# frozen precedent). Refusal family per ruling v307b-R1:
+# EXECUTION_NOT_AUTHORIZED with the ceremony as rendered detail.
+#
+# Successor migration: replaces admissibility_ladder() (fills the four reserved
+# ordinal-0 U seats, declared/in_scope_v306=false) and the four ceremonies (one
+# new first statement each). admissibility_evaluate untouched. The only new
+# object is the deployed marker; ceremony identity signatures are unchanged.
+release          v307b
+migration        supabase/v307b_class_u.sql
+migration_source repository
+min_release      v307a
+
+superseded       admissibility_ladder() (four declared U rungs fill reserved ordinal 0)
+superseded       start_service (Class-U guard first, pre-lock)
+superseded       close_event (Class-U guard first, pre-lock)
+superseded       release_event (Class-U guard first, pre-lock)
+superseded       release_occurrence (Class-U guard first, pre-lock; M-A guard carried)
+
+function         v307b_class_u()
