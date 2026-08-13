@@ -90,9 +90,11 @@ const wsReady = {
   staffing: staffingCovered,
   actions: actionsReady,
   readiness_by_category, workboard, blockers: [],
+  // v309-canonical-availability: these mirror what the canonical projection emits —
+  // declared grounds as the reason, and the canonical reason_code.
   next_actions: [
-    { action: "start_service", label: "Start service", available: true, reason: null },
-    { action: "close_event", label: "Close event", available: false, reason: "Available once service has started" },
+    { action: "start_service", label: "Start service", available: true, reason: null, reason_code: "available" },
+    { action: "close_event", label: "Close event", available: false, reason: "CLOSE_NOT_IN_SERVICE", reason_code: "blocked" },
   ],
   recent_activity,
 };
@@ -106,9 +108,11 @@ const wsInService = {
     { what: "Final closeout (return / inspection / financial)", cause_ref: null,
       why: "closeout domains not modeled until v285+ (authorized override required)", next_action: "Close with an authorized closeout override" },
   ],
+  // close_event is reachable but pending its AUTHORIZED OVERRIDE (v308 correction 4)
   next_actions: [
-    { action: "start_service", label: "Start service", available: false, reason: "Available once every pre-service obligation is resolved" },
-    { action: "close_event", label: "Close event", available: true, reason: null },
+    { action: "start_service", label: "Start service", available: false, reason: "SERVICE_ALREADY_STARTED", reason_code: "already_completed" },
+    { action: "close_event", label: "Close event", available: false,
+      reason: "authorized override required: p_closeout_override", reason_code: "unavailable_pending_argument" },
   ],
   recent_activity: [
     { kind: "service_start", obligation_ref: null, actor: "ops", moment: "2026-07-22T12:00:00Z", note: {}, correction_of: null },
@@ -124,8 +128,8 @@ const wsUncovered = {
   actions: actionsUncovered,
   blockers: [{ what: "carver staffing", cause_ref: "req-carver", why: "1 of 2 carver position(s) open", next_action: "Assign staff to this role" }],
   next_actions: [
-    { action: "start_service", label: "Start service", available: false, reason: "Available once every pre-service obligation is resolved" },
-    { action: "close_event", label: "Close event", available: false, reason: "Available once service has started" },
+    { action: "start_service", label: "Start service", available: false, reason: "SERVICE_NOT_READY: 1 pre-service obligation(s) unresolved", reason_code: "blocked" },
+    { action: "close_event", label: "Close event", available: false, reason: "CLOSE_NOT_IN_SERVICE", reason_code: "blocked" },
   ],
 };
 const wsUnauth = { ...wsUncovered, header: { ...wsUncovered.header, can_manage_staffing: false }, actions: actionsUnauth };

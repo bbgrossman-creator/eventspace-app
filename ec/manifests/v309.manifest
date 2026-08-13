@@ -1,0 +1,38 @@
+# EventCore release manifest — v309 The Duplicate Previews Retire
+#
+# v308 made one availability authority true; v309 makes it the only one the
+# application can see. event_workspace.next_actions and event_stage_detail both
+# render the single projection availability_lifecycle_actions(), which reads the
+# canonical available_actions — hence action_evaluate, hence Class-U plus the
+# declared S/A authority. Blocker vocabulary now comes from the ladder's own
+# declared subject_path and ground rather than literal lists.
+#
+# The recon found the retired derivation was not merely redundant: it still
+# carried the pre-service rule v308 removed (F3), ignored the closeout override,
+# and performed NO Class-U check at all, so it could advertise an action to an
+# actor with no membership. EventWorkspace.tsx rendered it alongside the
+# canonical ActionPanel — two answers on one screen. That ends here.
+#
+# Legacy Preservation (Amendment Five): nothing is removed. next_actions keeps
+# its array and its {action,label,available,reason} contract and gains
+# reason_code; event_stage_detail keeps next_action and blockers and gains
+# next_actions; event_workspace.blockers keeps its object shape; the six legacy
+# reason codes, the | alternation, waiver-only and clearance-only release, and
+# the staffing closed-event behaviour are all untouched.
+#
+# APPLICATION CUSTODY. This is the first release since v294 to change
+# application files. app_marker/app_files bring them under the established
+# pre-certification integrity gate; git_files places them in release custody.
+version            v309
+one_shot           proofs/v309_proofs.sh                        expect 10
+migration          supabase/v309_preview_consolidation.sql
+permanent          v309_permanent_proof                         expect 10
+permanent_regress  v308_permanent_proof v307b_permanent_proof v307a_permanent_proof v306_permanent_proof v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
+race_regress       proofs/v307a_y3_race.sh proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+app_marker         v309-canonical-availability
+app_files          src/components/execution/EventWorkspace.tsx src/components/execution/EventLifecycle.tsx src/components/execution/ActionPanel.tsx src/lib/execution/spine.ts
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs browser-tests/accept-actions.mjs browser-tests/accept-workspace.mjs browser-tests/accept-staffing.mjs browser-tests/accept-event-ops.mjs
+harness_install    supabase/tests/v309_permanent_proof.sql
+deployed_marker    v309_preview_consolidation
+git_files          supabase/v309_preview_consolidation.sql supabase/tests/v309_permanent_proof.sql proofs/v309_proofs.sh ec/manifests/v309.manifest ec/deploy-manifests/v309.deploy src/components/execution/EventWorkspace.tsx src/components/execution/EventLifecycle.tsx src/components/execution/ActionPanel.tsx src/lib/execution/spine.ts browser-tests/event-ops.harness.tsx browser-tests/accept-workspace.mjs

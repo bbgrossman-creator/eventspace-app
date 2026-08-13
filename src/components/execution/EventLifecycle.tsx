@@ -97,23 +97,43 @@ export default function EventLifecycle({ eventId, actor }: { eventId: string; ac
             {refusal.replace(/^Error:\s*/, "")}
           </div>
         )}
+        {/* v309-canonical-availability: rendered from the projection, never decided here.
+            The stage no longer gates anything — availability, its reason, and whether an
+            authorized override is still outstanding all come from canonical truth. */}
         <div className="mt-2 flex items-center gap-2">
-          {detail.stage === "ready" && (
-            <button disabled={busy} onClick={doStart} data-start-service
-              className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:opacity-50">
-              Start service
-            </button>
-          )}
-          {detail.stage === "in_service" && (
-            <>
-              <input className="rounded border border-neutral-300 px-2 py-1 text-sm"
-                placeholder="Closeout override ref" value={override} onChange={(e) => setOverride(e.target.value)} />
-              <button disabled={busy || !override} onClick={doClose} data-close-event
-                className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50">
-                Close event
-              </button>
-            </>
-          )}
+          {detail.next_actions.map((a) => {
+            const pending = a.reason_code === "unavailable_pending_argument";
+            if (!a.available && !pending) {
+              return (
+                <span key={a.action} className="text-xs text-neutral-400" title={a.reason ?? ""}
+                  data-action-unavailable={a.action} data-action-reason={a.reason_code}>
+                  {a.label} — {a.reason}
+                </span>
+              );
+            }
+            if (a.action === "start_service") {
+              return (
+                <button key={a.action} disabled={busy} onClick={doStart} data-start-service
+                  className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:opacity-50">
+                  {a.label}
+                </button>
+              );
+            }
+            return (
+              <span key={a.action} className="flex items-center gap-2"
+                data-action-pending-argument={pending ? "true" : undefined}>
+                {pending && (
+                  <input className="rounded border border-neutral-300 px-2 py-1 text-sm"
+                    placeholder="Closeout override ref" value={override}
+                    onChange={(e) => setOverride(e.target.value)} />
+                )}
+                <button disabled={busy || (pending && !override)} onClick={doClose} data-close-event
+                  className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50">
+                  {a.label}
+                </button>
+              </span>
+            );
+          })}
         </div>
       </div>
     </div>

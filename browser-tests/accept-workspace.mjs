@@ -91,6 +91,31 @@ await T("W-8 Close Event appears only when permitted", async () => {
   await go("ready"); if (await page.$("[data-close-event]")) throw new Error("Close event shown when not permitted");
 });
 
+await T("W-8b a refused lifecycle action is SHOWN with its declared ground, never silently dropped", async () => {
+  // v309: the workspace renders one element per canonical entry. An unavailable action
+  // becomes a named, visible refusal carrying the authority's own words — closing the
+  // data-action-unavailable coverage gap found by the v309 recon.
+  await go("ready");
+  const closed = await page.$('[data-action-unavailable="close_event"]');
+  if (!closed) throw new Error("refused close_event not surfaced at ready");
+  if ((await page.getAttribute('[data-action-unavailable="close_event"]', "data-action-reason")) !== "blocked")
+    throw new Error("declared reason_code missing on the refusal");
+  if (!(await page.textContent('[data-action-unavailable="close_event"]')).includes("CLOSE_NOT_IN_SERVICE"))
+    throw new Error("declared ground not rendered on the refusal");
+  await go("in_service");
+  if (!(await page.$('[data-action-unavailable="start_service"]')))
+    throw new Error("refused start_service not surfaced at in_service");
+});
+
+await T("W-8c an outstanding authorized override renders from canonical truth, not from the stage", async () => {
+  // close_event is unavailable_pending_argument: the control is offered with its input,
+  // and enables only once the declared override is supplied.
+  await go("in_service");
+  if (!(await page.$("[data-action-pending-argument]"))) throw new Error("pending-argument state not rendered");
+  if (!(await page.$("[data-close-event]"))) throw new Error("close control missing while pending");
+  if (!(await page.isDisabled("[data-close-event]"))) throw new Error("close enabled before the override was supplied");
+});
+
 await T("W-9 a successful obligation action invokes the ceremony and refreshes the projection", async () => {
   await go("ready");
   const before = (await ceremonies()).filter((c) => c === "rpc:event_workspace").length;

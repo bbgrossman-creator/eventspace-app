@@ -142,6 +142,9 @@ export interface EventStageDetail {
   established_by: { kind: string; actor: string; moment: string }[];
   blockers: string[];
   next_action: string;
+  /** v309-canonical-availability: the lifecycle surface renders this projection
+   *  instead of deciding availability from `stage`. */
+  next_actions: WsNextAction[];
   readiness: Record<string, unknown>;
 }
 
@@ -196,7 +199,13 @@ export interface WsCard {
   actions: string[];
 }
 export interface WsBlocker { what: string; cause_ref: string | null; why: string; next_action: string; }
-export interface WsNextAction { action: string; label: string; available: boolean; reason: string | null; }
+/** v309-canonical-availability. A projection of canonical availability, never a
+ *  second computation. `reason_code` carries the canonical code so the interface can
+ *  render the pending-authorized-argument state instead of inferring it from a stage. */
+export interface WsNextAction {
+  action: string; label: string; available: boolean; reason: string | null;
+  reason_code: string;
+}
 export interface WsActivity {
   kind: EvidenceKind; obligation_ref: string | null; actor: string; moment: string;
   note: Record<string, unknown>; correction_of: string | null;

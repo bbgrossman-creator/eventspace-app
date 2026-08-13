@@ -92,23 +92,37 @@ export default function EventWorkspace({ eventId, actor = "ops" }: { eventId: st
         <div className="text-sm text-neutral-700">{ws.lifecycle.why}</div>
         <div className="mt-1 text-xs text-neutral-500">Next: {ws.lifecycle.next_action}</div>
         <div className="mt-3 flex items-center gap-2">
-          {ws.next_actions.map((a) => a.available ? (
-            a.action === "start_service" ? (
-              <button key={a.action} disabled={busy === a.action} onClick={() => run(a.action, () => startService(eventId, actor))}
-                data-start-service className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:opacity-50">{a.label}</button>
-            ) : (
-              <span key={a.action} className="flex items-center gap-2">
-                <input className="rounded border border-neutral-300 px-2 py-1 text-sm" placeholder="Closeout override ref"
-                  value={override} onChange={(e) => setOverride(e.target.value)} />
-                <button disabled={busy === a.action || !override} onClick={() => run(a.action, () => closeEvent(eventId, actor, override))}
+          {/* v309-canonical-availability: next_actions is now a projection of the one
+              authority. This renders it; it decides nothing. An outstanding authorized
+              override is reported by canonical truth, not inferred from the stage. */}
+          {ws.next_actions.map((a) => {
+            const pending = a.reason_code === "unavailable_pending_argument";
+            if (!a.available && !pending) {
+              return (
+                <span key={a.action} className="text-xs text-neutral-400" title={a.reason ?? ""}
+                  data-action-unavailable={a.action} data-action-reason={a.reason_code}>
+                  {a.label} — {a.reason}
+                </span>
+              );
+            }
+            if (a.action === "start_service") {
+              return (
+                <button key={a.action} disabled={busy === a.action} onClick={() => run(a.action, () => startService(eventId, actor))}
+                  data-start-service className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:opacity-50">{a.label}</button>
+              );
+            }
+            return (
+              <span key={a.action} className="flex items-center gap-2"
+                data-action-pending-argument={pending ? "true" : undefined}>
+                {pending && (
+                  <input className="rounded border border-neutral-300 px-2 py-1 text-sm" placeholder="Closeout override ref"
+                    value={override} onChange={(e) => setOverride(e.target.value)} />
+                )}
+                <button disabled={busy === a.action || (pending && !override)} onClick={() => run(a.action, () => closeEvent(eventId, actor, override))}
                   data-close-event className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50">{a.label}</button>
               </span>
-            )
-          ) : (
-            <span key={a.action} className="text-xs text-neutral-400" title={a.reason ?? ""} data-action-unavailable={a.action}>
-              {a.label} — {a.reason}
-            </span>
-          ))}
+            );
+          })}
         </div>
       </section>
 

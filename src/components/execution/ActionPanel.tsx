@@ -55,8 +55,11 @@ export default function ActionPanel({
       )}
       <div className="space-y-3">
         {groups.map((g) => {
-          // surface only workspace-visible actions the actor may act on; hide unauthorized,
-          // not-applicable, stale, and already-completed — the projection decides all of this
+          // v309-canonical-availability. Surface only workspace-visible actions the actor may
+          // act on; hide unauthorized, not-applicable, stale, and already-completed — the
+          // projection decides all of this. unavailable_pending_argument is deliberately NOT
+          // hidden: it means the ceremony is reachable once a declared argument is supplied,
+          // so the operator must be able to see it and its declared ground.
           const items = list.filter((a) => a.group_key === g && a.workspace_visible
             && a.reason_code !== "unauthorized" && a.reason_code !== "not_applicable"
             && a.reason_code !== "stale_target" && a.reason_code !== "already_completed");
@@ -66,7 +69,9 @@ export default function ActionPanel({
               <div className="mb-1 text-[11px] font-medium text-neutral-500">{GROUP_LABEL[g] ?? g}</div>
               <div className="flex flex-wrap gap-2">
                 {items.map((a) => (
-                  <div key={a.action_key} className="flex flex-col" data-action={a.action_key} data-action-available={String(a.available)}>
+                  <div key={a.action_key} className="flex flex-col" data-action={a.action_key} data-action-available={String(a.available)}
+                    data-action-reason={a.reason_code}
+                    data-action-pending-argument={a.reason_code === "unavailable_pending_argument" ? "true" : undefined}>
                     <button
                       disabled={!a.available || busy === a.action_key}
                       onClick={() => dispatch(a)}

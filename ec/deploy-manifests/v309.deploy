@@ -1,0 +1,31 @@
+# v309 — THE DUPLICATE PREVIEWS RETIRE
+#
+# The application-side consolidation of the authority v308 established. Both
+# preview projections stop deriving availability and start rendering it:
+# event_workspace.next_actions and event_stage_detail.next_actions are the same
+# projection, availability_lifecycle_actions(), reading canonical
+# available_actions. Blocker vocabulary comes from the ladder's declared
+# subject_path and ground instead of literal lists.
+#
+# Successor migration: CREATE OR REPLACE of two v276/v279-era projections plus
+# three read-only helpers and the marker. No ceremony, no v306/v307a/v307b/v308
+# object, and no table, index, trigger, policy or grant is touched. The v308
+# authority functions are provably unaware of this release.
+#
+# Nothing externally observable is removed. next_actions keeps its array and its
+# {action,label,available,reason} keys and gains reason_code; event_stage_detail
+# keeps next_action and blockers and gains next_actions; event_workspace.blockers
+# keeps {what,cause_ref,why,next_action}. available_actions and
+# event_available_actions are unchanged.
+release          v309
+migration        supabase/v309_preview_consolidation.sql
+migration_source repository
+min_release      v308
+
+superseded       event_workspace (next_actions is the canonical projection; declared kind set)
+superseded       event_stage_detail (blockers and next_actions over declared grounds)
+
+function         availability_lifecycle_actions(p_event uuid)
+function         availability_obligation_kinds(p_action_key text)
+function         availability_declared_ground(p_action_key text, p_condition text)
+function         v309_preview_consolidation()
