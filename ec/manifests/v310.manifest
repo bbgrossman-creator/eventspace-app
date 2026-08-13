@@ -1,0 +1,40 @@
+# EventCore release manifest — v310 event_stage Compatibility / Canonical Truth
+#
+# event_stage stops being an independent business authority and becomes a
+# COMPATIBILITY PROJECTION over canonical operational truth. One authority
+# underneath, the legacy stage vocabulary preserved above it.
+#
+# The recon proved, live against the certified database, that event_stage still
+# carried the v_pre_total > 0 readiness guard v308 removed from availability as
+# correction F3. An event with zero pre-service obligations therefore showed an
+# enabled Start Service button beside prose telling the operator to begin
+# preparing. Owner ruling E-1 (Option A) resolves it: such an event now reports
+# `ready`. No stage is removed or renamed — released, in_prep, ready,
+# in_service, closed and NULL all survive.
+#
+# Readiness is no longer re-derived: event_stage asks
+# admissibility_evaluate('start_service', event) — the authority that owns the
+# rule. Class-U is deliberately not consulted, so the projection stays
+# actor-independent exactly as before.
+#
+# Legacy Preservation (Amendment Five): PRESERVE L16 the five-stage rail, L17
+# .stage on both ceremony payloads, L22 the EventStage union and
+# getEventStage(), L23 the rail and DOM contracts. CHANGE L18 why and L19
+# next_action, authorized. RETIRE INTERNAL DUPLICATE ONLY L20, the stage-keyed
+# blocker selector. L21 is PRESERVED, not converged — see the deploy manifest.
+#
+# DATABASE-ONLY. No app_marker, no app_files, and no application path in
+# git_files: the application consumes stage VALUES and no longer branches on
+# them, so preserving the vocabulary means no application deploy occurs and the
+# v309 deployment-ordering finding is not exercised.
+version            v310
+one_shot           proofs/v310_proofs.sh                        expect 12
+migration          supabase/v310_stage_compatibility.sql
+permanent          v310_permanent_proof                         expect 16
+permanent_regress  v309_permanent_proof v308_permanent_proof v307b_permanent_proof v307a_permanent_proof v306_permanent_proof v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
+race_regress       proofs/v307a_y3_race.sh proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs browser-tests/accept-actions.mjs browser-tests/accept-workspace.mjs browser-tests/accept-staffing.mjs browser-tests/accept-event-ops.mjs
+harness_install    supabase/tests/v310_permanent_proof.sql
+deployed_marker    v310_stage_compatibility
+git_files          supabase/v310_stage_compatibility.sql supabase/tests/v310_permanent_proof.sql proofs/v310_proofs.sh ec/manifests/v310.manifest ec/deploy-manifests/v310.deploy

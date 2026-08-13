@@ -1,0 +1,37 @@
+# v310 — event_stage COMPATIBILITY / CANONICAL OPERATIONAL TRUTH
+#
+# event_stage is demoted from authority to projection. It keeps its name, its
+# signature, its five values and its NULL; what changes is where the answer
+# comes from. closed and in_service now come from the canonical execution-fact
+# authority; ready is admissibility_evaluate's own verdict on start_service;
+# in_prep is preserved as a presentation classification with no canonical
+# one-to-one equivalent; released remains the base state.
+#
+# Owner ruling E-1 (Option A) is applied: an event with zero pre-service
+# obligations and start_service AVAILABLE reports `ready`, not `released`. The
+# obsolete v_pre_total > 0 condition does not survive in any form.
+#
+# Successor migration: CREATE OR REPLACE of three projections plus one canonical
+# helper and the marker. No ceremony, no v306/v307a/v307b/v308/v309 authority
+# object, and no table, index, trigger, policy or grant is touched.
+#
+# L21 IS DELIBERATELY NOT CONVERGED. action_evaluate's single remaining
+# event_stage call, on the non-ladder record_execution_evidence path, is left
+# exactly as it is: v308's frozen one-shot US-5 asserts that call survives
+# exactly once, and changing it would make v308's own certification fail from
+# then on. The ruling directs preservation where convergence would disturb
+# frozen authority, so action_evaluate is untouched.
+#
+# DATABASE-ONLY. No application file changes, so no application deploy occurs
+# and the v309 deployment-ordering finding is not exercised by this release.
+release          v310
+migration        supabase/v310_stage_compatibility.sql
+migration_source repository
+min_release      v309
+
+superseded       event_stage (compatibility projection over canonical facts; E-1 applied)
+superseded       event_stage_detail (why/next_action selected from canonical truth; stage-keyed blocker selector retired)
+superseded       event_workspace (closeout blocker selected by canonical fact)
+
+function         stage_action_admissible(p_action_key text, p_event uuid)
+function         v310_stage_compatibility()
