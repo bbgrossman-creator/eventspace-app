@@ -1,0 +1,38 @@
+# v308 — AVAILABILITY DERIVATION
+#
+# The preview converges on the authority. action_evaluate becomes Class-U
+# authorization (availability_class_u, from the canonical action_authorized plus
+# the declared ordinal-0 ladder row) conjoined with the declared Class-S/Class-A
+# authority (admissibility_evaluate), following any declared delegates_to seam.
+#
+# Successor migration: CREATE OR REPLACE of four v279-era action-routing objects
+# (action_evaluate, action_required_fields, action_reason_of, perform_event_action)
+# plus five new functions. No frozen v306/v307a/v307b object is modified, no
+# ceremony is touched, and no table, index, trigger, policy or grant changes.
+#
+# perform_event_action changes in exactly one block: required-field validation
+# now calls action_missing_required, so the | alternation the ceremony already
+# declares means the same thing in the dispatcher as in availability. This
+# removes no requirement and adds none — it stops the dispatcher enforcing a
+# rule stricter than the ceremony owns (waiver-only and clearance-only release
+# both continue to work).
+#
+# p_closeout_override is an authorized override, not a routine collectable
+# input, and is deliberately absent from action_required_fields. That data
+# decision — not a branch on an action name — is what yields close_event's
+# unavailable_pending_argument state.
+release          v308
+migration        supabase/v308_availability_derivation.sql
+migration_source repository
+min_release      v307b
+
+superseded       action_evaluate (derives from the authority; invents no condition, omits none)
+superseded       action_required_fields (completed for the routine Class-A inputs, with | alternation)
+superseded       action_reason_of (declared reason identity; LIKE retained for non-ladder paths)
+superseded       perform_event_action (required-field gate converged on the shared alternation parser)
+
+function         action_alternatives(p_entry text)
+function         action_missing_required(p_action_key text, p_payload jsonb)
+function         availability_class_u(p_action_key text)
+function         availability_delegated_subject(p_action_key text, p_subject uuid)
+function         v308_availability()

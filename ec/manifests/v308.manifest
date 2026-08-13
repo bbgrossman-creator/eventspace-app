@@ -1,0 +1,39 @@
+# EventCore release manifest — v308 Availability Derivation
+#
+# Availability stops holding its own copy of the law. action_evaluate becomes
+# the conjunction the ceremony performs: Class-U authorization (evaluated by the
+# new availability_class_u from the canonical action_authorized and the declared
+# ordinal-0 ladder row) then the declared Class-S/Class-A authority
+# (admissibility_evaluate), following any declared delegates_to seam.
+#
+# admissibility_evaluate and admissibility_ladder are NOT modified. All seven
+# Class-U declarations stay declared-and-unevaluated by the S/A authority
+# (Amendment Four Article C). No ceremony is touched, so the v306 differential,
+# v307a equivalence and v307b Class-U suites must be unchanged.
+#
+# Five declared behavioural corrections: Y1 (release_staffing_assignment loses
+# an invented closed-event block), F3 (start_service derives from its rungs),
+# F8 (release_event follows its delegation seam), close_event's authorized
+# override surfaces as unavailable_pending_argument, and R5 (declared ground
+# replaces hand-written detail). action_reason_of's LIKE inference retires only
+# where the ladder names the refusal.
+#
+# Legacy Preservation (Amendment Five): no capability is removed. The external
+# shapes of available_actions and event_available_actions are unchanged, the six
+# legacy reason codes survive, and the | alternation keeps both waiver-only and
+# clearance-only release working. Inventory item 15 is an ADD.
+#
+# browser_regress carries the four availability/DOM suites in addition to the
+# eight standing ones, because v308 is the release that changes what
+# data-action-available reports.
+version            v308
+one_shot           proofs/v308_proofs.sh                        expect 12
+migration          supabase/v308_availability_derivation.sql
+permanent          v308_permanent_proof                         expect 19
+permanent_regress  v307b_permanent_proof v307a_permanent_proof v306_permanent_proof v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
+race_regress       proofs/v307a_y3_race.sh proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs browser-tests/accept-actions.mjs browser-tests/accept-workspace.mjs browser-tests/accept-staffing.mjs browser-tests/accept-event-ops.mjs
+harness_install    supabase/tests/v308_permanent_proof.sql
+deployed_marker    v308_availability
+git_files          supabase/v308_availability_derivation.sql supabase/tests/v308_permanent_proof.sql proofs/v308_proofs.sh ec/manifests/v308.manifest ec/deploy-manifests/v308.deploy
