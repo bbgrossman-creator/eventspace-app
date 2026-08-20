@@ -1,0 +1,76 @@
+# v310.1 — TENANT INTEGRITY TERMINAL NORMALIZATION
+#
+# Four tenant-scoped surfaces stop defaulting to a tenant UUID pinned at
+# migration time and derive from public.current_tenant_id() instead:
+# proposal_versions, photo_library, publication_themes and blueprints.
+# proposal_versions rows whose tenancy contradicts their parent proposal are
+# corrected from the parent, which is the authoritative owner of that
+# relationship.
+#
+# Successor migration: four ALTER TABLE ... ADD COLUMN IF NOT EXISTS tenant_id
+# uuid REFERENCES tenants(id), four ALTER COLUMN ... SET DEFAULT, one UPDATE
+# bounded by a parent join, and the marker function. No table, index, trigger,
+# policy, grant or type is created, dropped or altered. No authority, ceremony,
+# projection or availability object from v306 through v310 is touched. No tenant
+# is created, renamed or removed. No data is purged. No tenancy abstraction,
+# helper function or provisioning machinery is introduced.
+#
+# PREDECESSOR-TOLERANT. Two shapes are accepted and converge identically:
+# the column present carrying the literal-default defect, and the column absent
+# because the guarded historical block never fired. The ADD COLUMN clause is the
+# only thing that differs between them, and it is a no-op on the first.
+#
+# DATA CHANGE — DECLARED. This release writes to existing rows of
+# public.proposal_versions only, setting tenant_id to the parent proposal's
+# tenant_id where the two disagree and the parent declares a tenancy. In
+# EventCore production that is exactly five rows. No row is inserted and no row
+# is deleted; one-shot UT-5 asserts the pre and post row counts are equal.
+# photo_library, publication_themes and blueprints receive NO data repair —
+# they have no governing parent relation, so any reassignment would be
+# invention. Production currently holds zero rows in all three.
+#
+# BLUEPRINTS DRIFT. Production already reads current_tenant_id() on
+# blueprints.tenant_id although the frozen chain can still produce the old
+# literal default there. Applied out of band, recorded in no release.
+# Classified PRE-EXISTING UNDOCUMENTED PRODUCTION DRIFT — CAPABILITY NOW
+# ABSORBED BY v310.1. Production is not reversed to match history, no separate
+# repair release is created, and no historical release evidence is rewritten.
+#
+# BOOKING CRM IS NOT CONTACTED. Shared Cross-Product Ledger X-013: SHARED CORE,
+# common ancestor, EventCore repairs independently, Booking CRM already repaired
+# independently, synchronization NONE, automatic inheritance NONE.
+#
+# DATABASE-ONLY. No application file changes, so no application deploy occurs
+# and the v309 deployment-ordering finding is not exercised by this release.
+#
+# ROLLBACK. The default changes are reversible by restoring the prior defaults.
+# A column created by this release on a shape-B predecessor is reversible by
+# dropping it. The row repair is NOT automatically reversible — the pre-image is
+# the five production rows carrying the Burger Bar tenant UUID against an
+# EventCore Demo parent, and it must be captured in the production preflight
+# evidence before the migration runs.
+release          v310.1
+migration        supabase/v310_1_tenant_integrity.sql
+migration_source repository
+min_release      v310
+
+function         v310_1_tenant_integrity()
+
+# DECLARED POSTCONDITION. The marker function above is the whole of this
+# release's declared deployment postcondition, and that is deliberate. The
+# verifier's key vocabulary describes OBJECTS a release creates — function,
+# table, view, index, trigger, policy, superseded — and v310.1 creates exactly
+# one object. Its other effects are column defaults, a conditionally added
+# column and a bounded row repair, none of which the deploy vocabulary can
+# express. Inventing keys for them was rejected, correctly: an unrecognised key
+# silently drops a requirement.
+#
+# Those effects are not left unverified. They are asserted by the release's own
+# gates, which is the right place for them:
+#   · four tenant_id columns present with the canonical tenants(id) FK — UT-4
+#   · four defaults resolving through current_tenant_id()               — UT-2, TI-2
+#   · zero hardcoded uuid tenant defaults anywhere in public            — UT-3, TI-3
+#   · zero proposal_versions parent/child mismatches, no row gained or
+#     lost by the repair                                                — UT-5, TI-6
+#   · the repair converges a wrong row and spares a correct sibling     — TI-5
+#   · RLS posture and policy count unchanged across the migration       — UT-7

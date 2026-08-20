@@ -1,0 +1,79 @@
+# EventCore release manifest — v310.1 Tenant Integrity Terminal Normalization
+#
+# A tenant-scoped column must derive its tenant from the acting session, never
+# from a constant compiled in at migration time.
+#
+# THE DEFECT IS IN THE CHAIN, NOT IN PRODUCTION DRIFT ALONE. Three frozen
+# historical migrations — v182_blueprints.sql, v227_brand.sql and
+# v233_photography.sql — resolve the tenant slugged burger-bar at migration time
+# and pin its UUID as a column default via format(). The tenant UUID therefore
+# never appears in the repository as a literal, and two databases replaying the
+# same chain reach different schemas depending on whether that tenant existed.
+# That divergence is the defect.
+#
+# HISTORICAL MIGRATIONS ARE IMMUTABLE. Architect ruling: none of the three is
+# edited and no historical certification is reopened. v310.1 is the FORWARD
+# TERMINAL NORMALIZATION for this capability. The governing invariant is
+# convergence — a database reaching v310.1 through ANY supported predecessor
+# converges to the same lawful terminal tenant-integrity state. A historical
+# migration may still create the old shape during replay; this release
+# deterministically normalizes it before the terminal level is reached.
+#
+# FOUR SURFACES, ONE DEFECT FAMILY: proposal_versions, photo_library,
+# publication_themes and blueprints. Not a new tenancy architecture — the same
+# bounded SHARED CORE defect wherever it can appear.
+#
+# BLUEPRINTS DRIFT, RECORDED HERE AS RELEASE EVIDENCE. EventCore production
+# already reads current_tenant_id() on blueprints.tenant_id even though the
+# frozen chain can still produce the old literal default there. That correction
+# was applied out of band and appears in no release. Classified PRE-EXISTING
+# UNDOCUMENTED PRODUCTION DRIFT — CAPABILITY NOW ABSORBED BY v310.1. Production
+# is not reversed to match history and no separate repair release is created.
+# No historical release evidence is rewritten.
+#
+# TWO PREDECESSOR SHAPES, BOTH OBSERVED AND BOTH ACCEPTED. Shape A: the column
+# exists carrying the literal-default defect (production). Shape B: the column
+# is ABSENT because the guarded block never fired (the certification database,
+# which has no burger-bar tenant). The certification database therefore
+# exercises the missing-column branch, which is why it is useful evidence and
+# why it is deliberately NOT seeded to reproduce production's historical
+# accident.
+#
+# Canonical column semantics were READ from production, not assumed: uuid,
+# nullable, foreign key to tenants(id), NO ACTION on delete and update,
+# identical on all four. Nullability is deliberately not normalized —
+# proposal_versions.tenant_id is NOT NULL in the certification database and
+# nullable in production, and changing either would be a schema redesign.
+#
+# Data repair is narrow. proposal_versions inherits tenancy from its parent
+# proposal, the authoritative owner of that relationship, and only where the
+# parent exists and declares a tenancy. photo_library, publication_themes and
+# blueprints receive NO data repair: they have no governing parent relation, so
+# any reassignment would be invention. Unattributable rows are reported by the
+# proof, never rewritten.
+#
+# Cross-product: Shared Cross-Product Ledger X-013, SHARED CORE, common
+# ancestor, EventCore repairs independently, Booking CRM already repaired
+# independently, synchronization NONE, automatic inheritance NONE. The Architect
+# updates the authoritative ledger separately; its absence does not block local
+# certification but DOES block production authorization.
+#
+# DATABASE-ONLY (Forward Process SOP Rule 1, Class A). No app_marker, no
+# app_files, no application path in git_files, so no application deploy occurs
+# and the v309 deployment-ordering finding is not exercised. Rule 2 does not
+# apply: no mixed release, therefore no intermediate production state.
+#
+# SOP Rule 4: v310_1_permanent_proof is a NEWLY FROZEN permanent suite. The
+# STANDING floor is reconciled empirically as harness maintenance and recorded
+# in the v310.1 release evidence only.
+version            v310.1
+one_shot           proofs/v310_1_proofs.sh                      expect 7
+migration          supabase/v310_1_tenant_integrity.sql
+permanent          v310_1_permanent_proof                       expect 6
+permanent_regress  v310_permanent_proof v309_permanent_proof v308_permanent_proof v307b_permanent_proof v307a_permanent_proof v306_permanent_proof v292d1_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
+race_regress       proofs/v307a_y3_race.sh proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs browser-tests/accept-actions.mjs browser-tests/accept-workspace.mjs browser-tests/accept-staffing.mjs browser-tests/accept-event-ops.mjs
+harness_install    supabase/tests/v310_1_permanent_proof.sql
+deployed_marker    v310_1_tenant_integrity
+git_files          supabase/v310_1_tenant_integrity.sql supabase/tests/v310_1_permanent_proof.sql proofs/v310_1_proofs.sh ec/manifests/v310.1.manifest ec/deploy-manifests/v310.1.deploy

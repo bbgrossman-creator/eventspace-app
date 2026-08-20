@@ -108,7 +108,11 @@ supabase/v292b_occurrence_brief.sql
 # migration_source none and zero database objects. They are contract, tooling
 # and evidence releases, and no migration artifact exists for them.
 #
-# v306 is deliberately NOT here. It is neither closed nor deployed.
+# v306 through v310 were previously absent because bootstrap custody ended at
+# v305 while certified forward releases continued independently. Each was
+# certified and deployed through the release harness and each declares
+# migration_source repository, so they are now carried here in their lawful
+# order. v310.1 is the terminal entry. No historical entry was reordered.
 supabase/v292d_occurrences_for_operational_day.sql
 supabase/v292d1_work_lens_operational_day.sql
 supabase/v293_work_ceremonies.sql
@@ -119,3 +123,10 @@ supabase/v300_occurrence_brief_risk.sql
 supabase/v303_readiness.sql
 supabase/v304_next_action.sql
 supabase/v305_execution_facts.sql
+supabase/v306_admissibility.sql
+supabase/v307a_wiring.sql
+supabase/v307b_class_u.sql
+supabase/v308_availability_derivation.sql
+supabase/v309_preview_consolidation.sql
+supabase/v310_stage_compatibility.sql
+supabase/v310_1_tenant_integrity.sql

@@ -37,7 +37,27 @@ TENANT=${TU%% *}; USER=${TU##* }
 CTX="select set_config('app.user_id','$USER',false),
             set_config('request.jwt.claim.sub','$USER',false);"
 
-NOW="timestamptz '2026-08-19 15:00:00+00'"
+# Fixture chronology (RACE-OD1 maintenance). promise_current_milestones admits
+# evidence only where `m.recorded_at <= p_now`, so the as-of instant must be at
+# or after the milestones this proof itself commits. The original absolute
+# instant satisfied that when it was authored and stopped satisfying it the
+# moment real time passed it: from 2026-08-19 15:00 UTC onward the fixture's
+# own evidence was recorded AFTER the as-of instant, the resolver correctly
+# excluded it, and the control could never reach 2. Nothing about the product
+# changed — the fixture expired.
+#
+# One reference instant is captured at run time and used for BOTH the
+# operational-day computation and the projection's as-of argument, so the two
+# can never disagree. The hour of headroom sits comfortably after the writer's
+# commit, which lands about a second into the run. It is bounded and relative,
+# so it cannot expire, and it is deliberately not a distant fixed date.
+#
+# This does not soften what the proof tests. The as-of filter now ADMITS both
+# occurrences for the reader as well, so the only thing that can still make the
+# reader see 0 is its single statement snapshot — which is the invariant under
+# test. The reader's expectation of 0 and the control's of 2 are unchanged.
+REF=$(psq "select 'V:'||(now() + interval '1 hour')::text" | tail -1); REF=${REF#V:}
+NOW="timestamptz '$REF'"
 DAY=$(psq "$CTX select 'V:'||public.operational_day_of($NOW,
   public.tenant_operational_timezone('$TENANT'::uuid),
   public.tenant_operational_day_start_hour('$TENANT'::uuid))" | tail -1); DAY=${DAY#V:}

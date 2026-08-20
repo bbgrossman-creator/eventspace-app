@@ -361,11 +361,27 @@ await T("PR-13 binding supervision on the occurrence overrides the default and t
 });
 
 // ══ PR-14…PR-16 · scheduled counts, regime, and truth agreement ══════════
+// PR-14 fixture chronology. promise_scheduled_attendance surfaces a commitment
+// only `where l.effective_moment > p_now`, so this case is meaningful only while
+// its effective moment is genuinely still ahead of the evaluation instant. The
+// original absolute literal 2026-08-16T09:00 satisfied that when it was written
+// and stopped satisfying it the moment real time passed it: from 2026-08-16
+// 09:00 onward nothing was scheduled, [data-scheduled-count] never rendered, and
+// the case failed on every run. Nothing about attendance behaviour changed — the
+// fixture expired.
+//
+// The instant is now derived from the DATABASE clock, which is the same clock
+// promise_scheduled_attendance compares against, so the ordering holds by
+// construction rather than by luck. Two days of headroom is ordinary for a final
+// count and absorbs the timezone gap between the Postgres session and the
+// browser, which reads [data-input="eff"] as local wall-clock time; a few hours
+// would not survive that gap in every zone.
+const FUTURE_EFF = scalar(`to_char(now() + interval '2 days', 'YYYY-MM-DD"T"HH24:MI')`);
 await T("PR-14 a future-effective count is shown as scheduled and never as the operative number", async () => {
   await record("attendance", async () => {
     await page.fill('[data-input="count"]',"291");
     await page.selectOption('[data-input="basis"]',"final");
-    await page.fill('[data-input="eff"]',"2026-08-16T09:00");
+    await page.fill('[data-input="eff"]',FUTURE_EFF);
     await page.fill('[data-input="reason"]',"final count"); });
   const head = await page.textContent("[data-head-count]");
   if (head.trim() === "291") throw new Error("a future count became the operative number");

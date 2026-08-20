@@ -196,3 +196,31 @@ architectural level. Certification does this by construction — the standing ga
 runs against `EC_DB`, which the migration gate has already brought up to level. A
 database deliberately rebuilt to an *older* release would fail this floor and
 should be verified with an explicit `PROOFS=` list for that era instead.
+
+### Reconciliation of 20 August 2026 — v310.1
+
+The 13 August reconciliation above stands unaltered as historical evidence. This
+section records the next one; it does not rewrite the previous.
+
+**Before.** Twenty-three suites, 383 unique claims.
+
+**Change.** One suite added: `v310_1_permanent_proof`, the frozen permanent suite
+of the v310.1 Tenant Integrity Terminal Normalization release.
+
+**After.** Twenty-four suites, **389 unique claims**, measured empirically rather
+than inferred: exactly 383 + 6, with **zero claim-id collisions**. The floor now
+contains the twenty-three suites listed above plus `v310_1_permanent_proof`.
+
+**Custody, verified before the change rather than assumed.** `manifest_digest` is
+computed from the repository deploy manifests and `verifier_digest` from
+`ec/verify-deployment.sh` (`ec/verify-deployment.sh:166-167`). Neither digests the
+harness `db/verify.sh`, where `STANDING` lives, so this floor change invalidates no
+frozen production evidence. Nothing asserts the number: `standing_verify` is a
+boolean, and `certify-release.sh:241` reports the observed floor without comparing
+it to anything.
+
+**Why this release needed one.** v310.1 is a small integrity patch, but its
+permanent proof is the only standing guard against the defect class it repairs —
+a tenant-scoped column default that names a tenant. Leaving that suite outside the
+floor would have protected it by convention rather than by the floor, which is the
+precise drift Rule 4 exists to prevent.
