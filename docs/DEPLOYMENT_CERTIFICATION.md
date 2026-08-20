@@ -56,12 +56,35 @@ ec/verify-deployment.sh v297 --emit-sql       # print the check; run it yourself
 ec/verify-deployment.sh v297 --grade out.csv  # grade output pasted back
 ```
 
-`--emit-sql` is not a convenience. **Production is reachable only through the
-Supabase SQL Editor from this host** — there is no database credential in the
-environment, and `ec-pgadmin` is namespace-locked to local `ec*` databases. A
-guard that could only inspect `ec` would repeat the original mistake in a new
-file. Emit the SQL, run it where the database actually is, save the result,
-grade it. Same manifests, same verdict, no credential handling.
+`--emit-sql` is not a convenience. `ec-pgadmin` is namespace-locked to local
+`ec*` databases, so it can never reach production; a guard that could only
+inspect `ec` would repeat the original mistake in a new file. Emit the SQL, run
+it where the database actually is, save the result, grade it. Same manifests,
+same verdict.
+
+### Which transport carries production
+
+The Supabase SQL Editor remains an acceptable operator path and is always
+available. Where an authorised Supabase management channel is configured, it may
+carry production instead — v310.1 was deployed and graded that way.
+
+The transport is not the contract. What the transport may change is **how**
+certified bytes reach production; it may never change **what** is deployed.
+Whichever is used, all four of these hold:
+
+1. Production mutation requires explicit production authorisation. Certification
+   passing locally is not authorisation.
+2. The bytes executed must be identical to the certified release artifact —
+   verified by digest before execution, applied whole, never retyped or split.
+3. The production target identity must be positively verified before execution,
+   not assumed from configuration.
+4. Evidence is captured through this same ceremony regardless of transport, and
+   `gate_deployment_certification` grades it unchanged.
+
+Documenting the channel that is already in use creates no new production access.
+Access is created by provisioning a credential, which is a separate act with its
+own authorisation. No token, secret or credential value appears in this
+repository, and none should.
 
 ## 4 · Example output
 
