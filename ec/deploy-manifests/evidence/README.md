@@ -70,8 +70,25 @@ EC_EVIDENCE_OVERRIDE_REASON="prod frozen for the holiday embargo; verified 2026-
 
 There is no silent override and no default-on bypass.
 
-## What this directory does NOT hold
+## What a `.production.grade` file does NOT hold
 
-Not a database dump, not credentials, not a connection string. Each file is the
-text output of one read-only catalog query: object names, PRESENT/MISSING, and
+Not a database dump, not credentials, not a connection string. Each grade file is
+the text output of one read-only catalog query: object names, PRESENT/MISSING, and
 provenance identifying which database answered and when.
+
+## Deployment pre-images
+
+A release that repairs existing production rows may also archive a **pre-image** —
+the state of exactly those rows before deployment — as a distinct, separately named
+artifact:
+
+    ec/deploy-manifests/evidence/<release>.production.preimage.md
+
+This exists only where a repair has no automatic reversal, so the prior values
+cannot be reconstructed afterwards. It records row identity and the field being
+repaired, never proposal or customer content, and never credentials.
+
+A pre-image is **not** production evidence in the grading sense. `gate_deployment_certification`
+looks for `<release>.production.grade` by exact path, so a pre-image is never
+ingested as a grade, never satisfies the gate, and never substitutes for one. The
+first release to carry one is v310.1.
