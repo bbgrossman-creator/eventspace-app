@@ -29,6 +29,22 @@ export const supabase = {
       rec(`override:${args.p_kind}`);
       return R({ override_id: "ov-new", kind: args.p_kind });
     }
+    // ── v311 · Kitchen quantities. The panel must render what SQL returns and
+    //    compute nothing, so the fixture supplies whole lines; a refusal is
+    //    returned verbatim to prove it reaches the surface unsoftened.
+    if (fn === "kitchen_event_panel") return R(f.kitchen_event_panel ?? null);
+    if (fn === "kitchen_requirement_preview") return R(f.kitchen_requirement_preview ?? null);
+    if (fn === "adjust_kitchen_quantity") {
+      if (f.kitchen_refuse_adjust)
+        return Promise.resolve({ data: null, error: { message: String(f.kitchen_refuse_adjust) } });
+      return R({ decision_id: "d-adj", created: true, requirement_line: String(args.p_requirement) });
+    }
+    if (fn === "approve_kitchen_quantity") {
+      if (f.kitchen_refuse_approve)
+        return Promise.resolve({ data: null, error: { message: String(f.kitchen_refuse_approve) } });
+      return R({ decision_id: "d-app", created: true, approved_quantity: String(args.p_quantity ?? "130"),
+                 requirement_line: String(args.p_requirement), requirement_revision: "req-rev-2" });
+    }
     if (fn === "event_stage_detail") return R(f.event_stage_detail ?? null);
     if (fn === "event_workspace") return R(f.event_workspace ?? null);
     if (fn === "eligible_staff") return R(f.eligible_staff ?? []);

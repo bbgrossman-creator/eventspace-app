@@ -6,6 +6,7 @@ import {
 } from "@/lib/execution/spine";
 import StaffingSection from "@/components/execution/StaffingSection";
 import ActionPanel from "@/components/execution/ActionPanel";
+import KitchenQuantities from "@/components/execution/KitchenQuantities";
 
 /** Event Operations Workspace (v277). A single first-class operational surface:
  *  header, lifecycle rail, readiness by category, the workboard, blockers,
@@ -150,6 +151,11 @@ export default function EventWorkspace({ eventId, actor = "ops" }: { eventId: st
       {/* 3b · Staffing coverage (v278) */}
       <StaffingSection eventId={eventId} actor={actor} staffing={ws.staffing}
         canManage={!!h.can_manage_staffing} onChanged={refresh} />
+
+      {/* 3c · Kitchen quantities (v311). Sits above the workboard because an
+          approved quantity is what the culinary work is FOR; the workboard shows
+          the obligations, this shows how much each one owes. */}
+      <KitchenQuantities eventId={eventId} actor={actor} />
 
       {/* 4 · Operational workboard */}
       <section className="space-y-3" data-daily-ops>

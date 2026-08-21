@@ -1,0 +1,123 @@
+# v311 — BOOKED EVENT → OPERATIONAL REQUIREMENTS (Kitchen proving slice)
+#
+# A committed design's quantity rule survives commitment, becomes an operative
+# Kitchen Requirement at release, moves only by attributable acts, and reaches
+# fulfillment only through an approval that the Requirement itself records.
+#
+# WHAT THIS RELEASE CREATES
+#   · three relations — authority_grant, requirement_quantity_decision and
+#     event_commitment_revision — each append-only by trigger, each RLS-enabled
+#     with tenant select/insert policies matching the existing house pattern
+#   · the Kitchen derivation, decision, lineage, enactment and panel functions
+#   · one replaced publish hook (embed_operational_basis), which now also freezes
+#     items_committed
+#   · one replaced generator (generate_obligations) carrying v275's body verbatim
+#     plus Kitchen enactment and a lineage-aware sweep
+#   · two replaced attendance ceremonies (commit_attendance, correct_attendance)
+#     carrying v292a1's bodies verbatim plus one line each
+#
+# WHAT IT REMOVES
+#   · can_manage_kitchen_quantity() — a role-list evaluator that granted Kitchen
+#     quantity authority to admin/owner/manager/ops, which in a tenant where
+#     every user is admin is universal authority under another name. It has no
+#     callers outside v311 and is replaced by explicit Authority Grants.
+#
+# NO PRODUCTION MUTATION IS AUTHORIZED BY THIS ARTIFACT, and no production
+# Authority Grant is created. A deployed v311 with no grants is default-deny by
+# construction: every Kitchen quantity control is inert until a tenant issues
+# grants deliberately. That is the intended landing state, not a gap.
+#
+# NO DATA CHANGE TO EXISTING ROWS. No UPDATE and no DELETE against any
+# pre-existing relation. Enactment INSERTS Kitchen Requirements and
+# recommendations for events as they are released or regenerated; existing
+# obligations, evidence, acceptances, snapshots and attendance commitments are
+# read only. public.obligation remains append-only (v286 responsibility_no_edit)
+# and every change to a Requirement is expressed by supersession.
+#
+# HISTORICAL SNAPSHOTS ARE NOT REWRITTEN. Only snapshots published after this
+# release carry items_committed. Older ones derive as UNRESOLVED with the machine
+# reason 'committed design predates quantity capture' — honest, because their
+# commitment genuinely did not record a quantity.
+#
+# REGENERATION SAFETY. The v275 sweep now inherits entailment from the root of a
+# supersession line, so regenerating an event no longer invalidates an approved
+# Kitchen Requirement revision. Permanent claim E8 asserts it end to end.
+#
+# BOOKING CRM IS NOT CONTACTED. Shared Cross-Product Ledger v2, X-013: EventCore
+# only — no query, no migration, no synchronization, no comparison, no
+# deployment.
+#
+# MIXED RELEASE — ORDERING IS NOT OPTIONAL (SOP Rule 2). Database first. The
+# panel calls kitchen_event_panel, which does not exist until the migration
+# lands; an application-first deploy would ship a surface that errors on load.
+# The four migrations are themselves ordered: requirements → authority →
+# decisions → enactment.
+#
+# ROLLBACK. The three relations are droppable — they are new and nothing outside
+# v311 references them. The replaced functions are restorable from their frozen
+# sources: embed_operational_basis from v284, generate_obligations from v275, and
+# commit_attendance / correct_attendance from v292a1. can_manage_kitchen_quantity
+# is restorable from its v311 predecessor text, though restoring it reinstates
+# the role-list authority defect and should not be done without the Architect.
+release          v311
+migration        supabase/v311_kitchen_requirements.sql
+migration        supabase/v311_authority_grant.sql
+migration        supabase/v311_kitchen_quantity_decisions.sql
+migration        supabase/v311_kitchen_enactment.sql
+migration_source repository
+min_release      v310.1
+
+table            authority_grant
+table            requirement_quantity_decision
+table            event_commitment_revision
+
+trigger          authority_grant:ag_no_edit
+trigger          requirement_quantity_decision:rqd_no_edit
+trigger          event_commitment_revision:ecr_no_edit
+
+policy           authority_grant:ag_tenant_select
+policy           authority_grant:ag_tenant_insert
+policy           requirement_quantity_decision:rqd_tenant_select
+policy           requirement_quantity_decision:rqd_tenant_insert
+policy           event_commitment_revision:ecr_tenant_select
+policy           event_commitment_revision:ecr_tenant_insert
+
+function         v311_kitchen_requirements()
+function         v311_authority_grant()
+function         v311_kitchen_quantity_decisions()
+function         v311_kitchen_enactment()
+function         has_authority(p_actor uuid, p_act_class text, p_subject uuid, p_as_of timestamp with time zone)
+function         current_actor()
+function         can_adjust_kitchen_quantity(p_requirement uuid, p_as_of timestamp with time zone)
+function         can_approve_kitchen_quantity(p_requirement uuid, p_as_of timestamp with time zone)
+function         kitchen_quantity_text(p_quantity numeric)
+function         requirement_lineage_root(p_requirement uuid)
+function         requirement_lineage_head(p_requirement uuid)
+function         requirement_lineage(p_requirement uuid)
+function         record_kitchen_recommendation(p_requirement uuid, p_quantity numeric, p_quantity_basis text, p_design_quantity numeric, p_guest_count numeric, p_resolved boolean, p_unresolved_reason text, p_derivation text, p_effective_basis jsonb)
+function         adjust_kitchen_quantity(p_requirement uuid, p_quantity numeric, p_reason text)
+function         approve_kitchen_quantity(p_requirement uuid, p_reason text, p_quantity numeric)
+function         kitchen_quantity_state(p_requirement uuid)
+function         kitchen_quantity_derive(p_snapshot uuid, p_attendance numeric)
+function         kitchen_requirement_preview(p_snapshot uuid, p_attendance numeric)
+function         event_operative_guest_count(p_event uuid, p_as_of timestamp with time zone)
+function         enact_kitchen_requirements(p_event uuid)
+function         kitchen_line_current(p_requirement uuid, p_as_of timestamp with time zone)
+function         kitchen_event_panel(p_event uuid, p_as_of timestamp with time zone)
+function         refresh_kitchen_recommendations(p_occurrence uuid)
+function         event_current_commitment(p_event uuid, p_as_of timestamp with time zone)
+function         can_revise_event_commitment(p_event uuid, p_as_of timestamp with time zone)
+function         revise_event_commitment(p_event uuid, p_acceptance uuid, p_reason text)
+superseded       can_manage_kitchen_quantity
+
+# DECLARED POSTCONDITION — WHAT THE VOCABULARY CANNOT EXPRESS.
+# The keys above name the objects this release creates or removes. Three of its
+# properties are behavioural and have no deploy key, so they are asserted by the
+# release's own gates rather than invented as keys here:
+#   · approval atomically creates the superseding quantified Requirement
+#     revision, and neither survives if the revision fails    — L1, L2, L13, L14
+#   · regeneration no longer voids an approved revision                  — E8
+#   · a future-effective guest count becomes current by derivation at its own
+#     instant, and is never materialized early           — E12, E13, E14
+#   · a post-commitment revision is inert until adopted, adoption keeps the
+#     baseline, and the same Requirement re-derives     — R1, R3, R5, R6, R7

@@ -1,0 +1,118 @@
+# EventCore release manifest — v311 Booked Event → Operational Requirements
+#                              (Kitchen proving slice)
+#
+# The first lawful bridge from a committed Event into the reconstructed Kitchen
+# stage spine. It carries exactly one stage — Menu/Intake Review → QUANTITIES —
+# and stops there deliberately.
+#
+# THE DEBT THIS PAYS. Kitchen has received an enacted obligation since v275, and
+# it has never carried a quantity. v275 emits culinary work whose required
+# outcome literally reads "unresolved: produce <title> menu component
+# (recipe/yields not modeled …)". The cause was structural: Event Design DOES
+# state the rule in component_items.quantity / .quantity_basis, but the frozen
+# snapshot builders serialized each item as {name, unit_price, price_confirmed}
+# only, so at enactment the rule was unreachable. The design knew the answer and
+# commitment discarded it.
+#
+# FORWARD-ONLY BY CONSTRUCTION. embed_operational_basis is v284's publish-time
+# enrichment hook; v311 replaces it so publish also freezes items_committed. It
+# runs only at publish, so only snapshots created after this release carry the
+# rule. No historical snapshot is rewritten and no frozen migration is edited.
+# Historical snapshots stay lawful and quantitatively UNRESOLVED, which is the
+# honest state: their commitment genuinely did not record a quantity.
+#
+# NOTHING IS EVER INFERRED. per_person with a null quantity does NOT mean one
+# per person; it is an incomplete rule. Repository evidence justifies refusing to
+# guess — v205's legacy import coalesces a null basis to 'per_person' while
+# VersionPricing.tsx renders a null basis as 'flat'. Those two disagree, which is
+# exactly why null must resolve to nothing at all.
+#
+# RECOMMENDED ≠ ADJUSTED ≠ APPROVED. Three distinct append-only acts, separately
+# attributable. Only an approval produces fulfillable demand; a recommendation
+# never reaches a later stage.
+#
+# AUTHORITY IS EXPLICIT (O-010). v311 first gated Kitchen quantity on a role
+# list, in the shape existing can_* ceremonies use. Inspection showed why that is
+# unsafe: tenant_users.role carries no CHECK constraint, so the vocabulary is
+# open text, and in EventCore production every user is 'admin' — making any
+# role-list capability tenant-wide in effect, which is precisely what O-010
+# rejects by name. The Authority Grant relation is the canonical implementation;
+# the role-list evaluator can_manage_kitchen_quantity() is dropped. NO PRODUCTION
+# GRANT IS CREATED BY THIS RELEASE.
+#
+# APPROVAL IS ONE ACT WITH TWO INSEPARABLE EFFECTS. It appends the approval
+# decision AND creates the next quantified revision of the Requirement itself,
+# citing the prior revision through supersedes_ref. A side projection alone was
+# rejected: public.obligation is the Requirement (C-04) and is what every
+# downstream stage will read, so the authoritative quantified demand must BE the
+# Requirement. Atomicity is structural — one function, no exception handler — and
+# permanent claim L14 forces the revision to fail after the decision is written
+# and proves neither survives.
+#
+# THE v275 SWEEP HAD TO LEARN ABOUT SUPERSESSION. generate_obligations
+# invalidates every obligation for the event whose natural key the accepted
+# configuration does not entail. An approved Kitchen revision carries a key the
+# configuration cannot name, so the next regeneration would have voided the very
+# Requirement the approval had just made authoritative. Entailment is now
+# inherited from the ROOT of a supersession line. Nothing else about the sweep
+# changes; an obligation genuinely dropped is still invalidated exactly as
+# before. v275's body is otherwise carried over verbatim.
+#
+# GUEST COUNT BECOMES CURRENT BY DERIVATION, NOT BY SCHEDULE. The current
+# recommendation is derived as of a moment through v292a1's
+# promise_current_attendance, which already filters on both recorded_at and
+# effective_moment. A commitment effective next Tuesday is not part of the answer
+# until next Tuesday and is part of it from that instant, with nothing polled,
+# scheduled or triggered in between. Materialization happens only at explicit
+# ceremony points — release, regeneration, an attendance act.
+#
+# POST-COMMITMENT REVISION — THE SEAM IS CLOSED. Inspection found something
+# worse than absence: a SECOND acceptance for an already-released engagement is
+# recordable, event.origin_commitment_ref permanently names the FIRST, re-release
+# is refused, and regeneration keeps reading the original snapshot forever. The
+# revised commitment was recorded and then silently ignored. v311 separates the
+# commercial fact (the counterparty accepted a revised offer) from the
+# operational act (this Event now works to it): a revision is INERT until
+# explicitly adopted under an Authority Grant, adoption is append-only, and
+# event.origin_commitment_ref is never rewritten so the baseline stays. Kitchen
+# re-derives; the prior approval remains historical and becomes Review required.
+#
+# BOUNDED RESIDUAL, DECLARED. Kitchen resolves its committed design through the
+# adopted revision. The v275 execution obligations do NOT: their natural keys
+# embed the acceptance, so re-pointing them would supersede and regenerate every
+# equipment, staffing and venue obligation on the event. That is an
+# execution-spine decision rather than a Kitchen one and is referred to the
+# Architect, not taken here.
+#
+# DOWNSTREAM FENCE HELD. No Ingredient Coverage/Sourcing, Prep Plan, Prep,
+# Production, Pack or Handoff object exists. Permanent claim E16 asserts it.
+#
+# Cross-product: EventCore only. Booking CRM is not contacted — no query, no
+# migration, no synchronization, no comparison, no deployment (Shared
+# Cross-Product Ledger v2, X-013).
+#
+# MIXED RELEASE (Forward Process SOP Rule 1, Class B). Database objects AND
+# application files. Rule 2 ordering applies: the migration precedes the
+# application deploy, and the application path is additive — the new panel reads
+# kitchen_event_panel, which does not exist until the migration lands, so an
+# application-first order would render an error surface. Database first.
+#
+# SOP Rule 4: v311_permanent_proof is a NEWLY FROZEN permanent suite (72
+# claims). The STANDING floor is reconciled empirically as harness maintenance
+# and recorded in the v311 release evidence.
+version            v311
+migration          supabase/v311_kitchen_requirements.sql
+migration          supabase/v311_authority_grant.sql
+migration          supabase/v311_kitchen_quantity_decisions.sql
+migration          supabase/v311_kitchen_enactment.sql
+permanent          v311_permanent_proof                         expect 72
+permanent_regress  v310_1_permanent_proof v310_permanent_proof v309_permanent_proof v308_permanent_proof v307b_permanent_proof v307a_permanent_proof v306_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
+race_regress       proofs/v307a_y3_race.sh proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+standing_verify    yes
+browser_regress    browser-tests/accept-kitchen-quantities.mjs browser-tests/accept-event-ops.mjs browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs browser-tests/accept-actions.mjs browser-tests/accept-workspace.mjs browser-tests/accept-staffing.mjs
+harness_install    supabase/tests/v311_permanent_proof.sql
+deployed_marker    v311_kitchen_requirements
+deployed_marker    v311_authority_grant
+deployed_marker    v311_kitchen_quantity_decisions
+deployed_marker    v311_kitchen_enactment
+git_files          db/CHAIN.txt supabase/v311_kitchen_requirements.sql supabase/v311_authority_grant.sql supabase/v311_kitchen_quantity_decisions.sql supabase/v311_kitchen_enactment.sql supabase/tests/v311_permanent_proof.sql src/lib/kitchen/quantities.ts src/components/execution/KitchenQuantities.tsx src/components/execution/EventWorkspace.tsx browser-tests/accept-kitchen-quantities.mjs browser-tests/kitchen-quantities.harness.tsx browser-tests/kitchen-quantities.html browser-tests/mock-supabase.ts ec/manifests/v311.manifest ec/deploy-manifests/v311.deploy

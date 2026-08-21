@@ -130,3 +130,7 @@ supabase/v308_availability_derivation.sql
 supabase/v309_preview_consolidation.sql
 supabase/v310_stage_compatibility.sql
 supabase/v310_1_tenant_integrity.sql
+supabase/v311_kitchen_requirements.sql
+supabase/v311_authority_grant.sql
+supabase/v311_kitchen_quantity_decisions.sql
+supabase/v311_kitchen_enactment.sql
