@@ -7,7 +7,7 @@
 -- and reaches fulfillment only through an approval that the Requirement itself
 -- records. Recommended ≠ adjusted ≠ approved, at every step.
 --
--- Six suites, 72 claims, each rolling back independently.
+-- Seven suites, 85 claims, each rolling back independently.
 --
 -- FX-1…8   COMMITTED RULE · publish freezes items_committed; one shared
 --          derivation serves preview and enactment; per_person scales with the
@@ -37,6 +37,19 @@
 --          decision history is never orphaned; and the approval made under the
 --          old commitment stands historically while the panel reports Review
 --          required. Adoption approves nothing and moves nothing downstream.
+--
+-- X1…X12   CROSS-DOMAIN RECONCILIATION · an adopted commitment revision
+--          reconciles Event Requirements in EVERY receiving domain, not only
+--          Kitchen. Unchanged Requirements preserve identity (and keep their
+--          completed work); changed Requirements supersede while the prior text
+--          remains; new Requirements append; removed Requirements resolve
+--          historically without deletion. Operational acts already performed
+--          against a superseded Requirement are retained and named in an
+--          explicit reconciliation fact, and the revised Requirement is
+--          outstanding rather than pre-satisfied. Reconciliation is idempotent,
+--          and completion reads across a line so supersession never strands a
+--          dependent. X13 additionally proves v311 reproduces v275's natural
+--          keys exactly for an unrevised event, so deploying it re-keys nothing.
 --
 -- L14 is the claim that matters most. It installs a guard that forces the
 -- Requirement revision to fail after the approval decision has been written,
@@ -1016,5 +1029,246 @@ begin
   raise exception 'PCR_ROLLBACK';
 exception when others then
   if sqlerrm = 'PCR_ROLLBACK' then raise notice 'rolled back cleanly — zero residue';
+  else raise; end if;
+end $$;
+-- CROSS-DOMAIN REVISION RECONCILIATION (Architect ruling).
+-- An adopted commitment revision reconciles Event Requirements in EVERY
+-- receiving domain: unchanged preserve identity, changed supersede, new append,
+-- removed resolve historically, and enacted work is never silently rewritten.
+do $$
+declare
+  v_t uuid; v_u uuid; v_book uuid; v_occ uuid; v_prop uuid;
+  v_v1 uuid; v_v2 uuid; v_s1 uuid; v_s2 uuid; v_a1 uuid; v_a2 uuid;
+  v_ev uuid; v_sfx text := substr(gen_random_uuid()::text,1,8);
+  v_now timestamptz := now(); m1 jsonb; m2 jsonb;
+  n_pass int := 0; n_fail int := 0; v_n int; v_txt text;
+  cA uuid := gen_random_uuid(); cB uuid := gen_random_uuid(); cC uuid := gen_random_uuid();
+  v_carve uuid; v_carve2 uuid; v_setup uuid; v_staff uuid; v_pay jsonb;
+begin
+  select tu.tenant_id, tu.user_id into v_t, v_u
+    from public.tenant_users tu where tu.active order by tu.tenant_id limit 1;
+  perform set_config('app.user_id', v_u::text, true);
+  perform set_config('request.jwt.claim.sub', v_u::text, true);
+
+  -- ── baseline commitment · two stations ───────────────────────────────────
+  m1 := jsonb_build_object('components', jsonb_build_array(
+    jsonb_build_object('componentId', cA, 'title','Carving Station','station',true,
+      'requirements', jsonb_build_array(
+        jsonb_build_object('category','equipment','item','carving board'),
+        jsonb_build_object('category','staff','role','carver'))),
+    jsonb_build_object('componentId', cB, 'title','Oyster Bar','station',true,
+      'requirements', jsonb_build_array(
+        jsonb_build_object('category','staff','role','shucker')))));
+
+  -- ── revised commitment ───────────────────────────────────────────────────
+  --   Carving Station : UNCHANGED           → identity preserved
+  --   Oyster Bar      : RENAMED to Raw Bar  → superseded
+  --   Dessert Table   : ADDED               → appended
+  --   (nothing removed here; removal is exercised below by dropping Raw Bar)
+  m2 := jsonb_build_object('components', jsonb_build_array(
+    jsonb_build_object('componentId', cA, 'title','Carving Station','station',true,
+      'requirements', jsonb_build_array(
+        jsonb_build_object('category','equipment','item','carving board'),
+        jsonb_build_object('category','staff','role','carver'))),
+    jsonb_build_object('componentId', cB, 'title','Raw Bar','station',true,
+      'requirements', jsonb_build_array(
+        jsonb_build_object('category','staff','role','shucker'))),
+    jsonb_build_object('componentId', cC, 'title','Dessert Table','station',true,
+      'requirements', jsonb_build_array(
+        jsonb_build_object('category','equipment','item','cake stand')))));
+
+  insert into public.bookings (tenant_id, contact_name, invoice_num, status)
+    values (v_t,'XDOM','XDOM-'||v_sfx,'active') returning id into v_book;
+  v_occ := (public.open_occurrence(v_book, null, null)->>'occurrence_id')::uuid;
+  insert into public.proposals (tenant_id, booking_id, title, status)
+    values (v_t, v_book, 'XDOM', 'draft') returning id into v_prop;
+  insert into public.proposal_versions (tenant_id, proposal_id, version, status)
+    values (v_t, v_prop, 1, 'sent') returning id into v_v1;
+  insert into public.offer_snapshots (tenant_id, version_id, fingerprint, model,
+      artifact_bytes, artifact_hash, artifact_meta, assets)
+    values (v_t, v_v1, 'x1-'||v_sfx, m1, '\x00'::bytea,'h','{}'::jsonb,'{}'::jsonb)
+    returning id into v_s1;
+  insert into public.offer_acceptances (tenant_id, snapshot_id, fingerprint, booking_id,
+      principal, authority_basis, evidence_basis, channel, recorded_moment)
+    values (v_t, v_s1, 'x1-'||v_sfx, v_book, '{}'::jsonb,'b','b','portal', v_now)
+    returning id into v_a1;
+  insert into public.attendance_commitment (tenant_id, occurrence_id, head_count, basis,
+      effective_moment, recorded_by) values (v_t, v_occ, 80, 'contracted', v_now, 'probe');
+
+  v_ev := (public.release_occurrence(v_occ,'op','signoff','clearance',null)->>'event_id')::uuid;
+
+  select o.id into v_carve from public.obligation o
+    where o.event_ref=v_ev and o.kind='equipment_pull' and o.resource_role='carving board';
+  select o.id into v_setup from public.obligation o
+    where o.event_ref=v_ev and o.kind='venue_setup' and o.resource_role=cB::text;
+  select o.id into v_staff from public.obligation o
+    where o.event_ref=v_ev and o.kind='staffing_assign' and o.resource_role='shucker';
+
+  -- real operational acts performed against the ORIGINAL requirements
+  perform public.record_execution_evidence(v_ev, v_carve, 'completion', 'crew', '{}'::jsonb);
+  perform public.record_execution_evidence(v_ev, v_staff, 'assignment', 'crew', '{}'::jsonb);
+
+  -- ── adopt the revision ───────────────────────────────────────────────────
+  insert into public.proposal_versions (tenant_id, proposal_id, version, status)
+    values (v_t, v_prop, 2, 'sent') returning id into v_v2;
+  insert into public.offer_snapshots (tenant_id, version_id, fingerprint, model,
+      artifact_bytes, artifact_hash, artifact_meta, assets)
+    values (v_t, v_v2, 'x2-'||v_sfx, m2, '\x00'::bytea,'h','{}'::jsonb,'{}'::jsonb)
+    returning id into v_s2;
+  insert into public.offer_acceptances (tenant_id, snapshot_id, fingerprint, booking_id,
+      principal, authority_basis, evidence_basis, channel, recorded_moment)
+    values (v_t, v_s2, 'x2-'||v_sfx, v_book, '{}'::jsonb,'b','b','portal', v_now + interval '1 hour')
+    returning id into v_a2;
+  insert into public.authority_grant (tenant_id, record_kind, actor, act_class, granted_by)
+    values (v_t,'grant',v_u,'event.commitment.revise','proof');
+  perform public.revise_event_commitment(v_ev, v_a2, 'customer revised the stations after booking');
+  perform public.generate_obligations(v_ev);
+
+  -- ══ X1 · UNCHANGED requirements preserve identity ═════════════════════════
+  if (select o.id from public.obligation o
+        where o.event_ref=v_ev and o.kind='equipment_pull' and o.resource_role='carving board'
+          and o.supersedes_ref is null) = v_carve
+     and (select count(*) from public.obligation
+           where event_ref=v_ev and kind='equipment_pull' and resource_role='carving board') = 1 then
+    n_pass:=n_pass+1;
+    raise notice 'X1 PASS the untouched Carving Station requirement kept its identity — no new row, no supersession';
+  else n_fail:=n_fail+1; raise notice 'X1 FAIL identity was not preserved'; end if;
+
+  -- ══ X2 · its completed work is untouched and still reads complete ═════════
+  if public.responsibility_state(v_carve) = 'discharged'
+     and exists (select 1 from public.execution_evidence
+                  where obligation_ref=v_carve and kind='completion') then
+    n_pass:=n_pass+1; raise notice 'X2 PASS work completed before the revision is still discharged';
+  else n_fail:=n_fail+1; raise notice 'X2 FAIL state=%', public.responsibility_state(v_carve); end if;
+
+  -- ══ X3 · CHANGED requirements supersede, append-only ══════════════════════
+  select o.id into v_carve2 from public.obligation o
+    where o.event_ref=v_ev and o.kind='venue_setup' and o.supersedes_ref = v_setup;
+  if v_carve2 is not null
+     and (select required_outcome from public.obligation where id=v_carve2) = 'Set up Raw Bar at venue'
+     and (select required_outcome from public.obligation where id=v_setup) = 'Set up Oyster Bar at venue'
+     and public.responsibility_state(v_setup) = 'superseded' then
+    n_pass:=n_pass+1;
+    raise notice 'X3 PASS the renamed station superseded: prior says Oyster Bar and remains, revision says Raw Bar';
+  else n_fail:=n_fail+1; raise notice 'X3 FAIL rev=%', v_carve2; end if;
+
+  -- ══ X4 · NEW requirements append ══════════════════════════════════════════
+  if (select count(*) from public.obligation
+       where event_ref=v_ev and resource_role='cake stand') = 1
+     and (select count(*) from public.obligation
+           where event_ref=v_ev and kind='venue_setup' and resource_role=cC::text) = 1 then
+    n_pass:=n_pass+1; raise notice 'X4 PASS the added Dessert Table appended new requirements';
+  else n_fail:=n_fail+1; raise notice 'X4 FAIL'; end if;
+
+  -- ══ X5 · enacted work on a SUPERSEDED line is never rewritten ═════════════
+  -- The shucker requirement states "Assign shucker to Oyster Bar", so renaming
+  -- the station genuinely changed WHAT IT SAYS and it must supersede. This is
+  -- the case the ruling cares about most: a staffing assignment had already been
+  -- made against the prior requirement.
+  select o.id into v_carve2 from public.obligation o
+    where o.event_ref=v_ev and o.kind='staffing_assign' and o.supersedes_ref = v_staff;
+  if v_carve2 is not null
+     and (select required_outcome from public.obligation where id=v_carve2) = 'Assign shucker to Raw Bar'
+     and (select required_outcome from public.obligation where id=v_staff) = 'Assign shucker to Oyster Bar' then
+    n_pass:=n_pass+1;
+    raise notice 'X5 PASS the staffing requirement changed with the station and superseded, prior text intact';
+  else n_fail:=n_fail+1; raise notice 'X5 FAIL rev=%', v_carve2; end if;
+
+  -- The assignment stays attached to the requirement it was performed against —
+  -- it was true — and the new revision is outstanding, which IS the pressure.
+  select e.payload into v_pay from public.execution_evidence e
+    where e.obligation_ref = v_staff and e.kind='superseded'
+      and e.actor='commitment_reconciliation' limit 1;
+  if exists (select 1 from public.execution_evidence
+              where obligation_ref=v_staff and kind='assignment')
+     and v_pay->>'enacted_work_on_prior' = 'assignment'
+     and public.responsibility_state(v_carve2) <> 'discharged' then
+    n_pass:=n_pass+1;
+    raise notice 'X6 PASS the assignment is retained on the prior requirement, named in the reconciliation fact, and the revised requirement is outstanding rather than pre-satisfied';
+  else n_fail:=n_fail+1; raise notice 'X6 FAIL pay=% state=%', v_pay, public.responsibility_state(v_carve2); end if;
+
+  -- ══ X7 · reconciliation pressure is stated, not implied ═══════════════════
+  select e.payload into v_pay from public.execution_evidence e
+    where e.obligation_ref = v_setup and e.kind='superseded'
+      and e.actor='commitment_reconciliation' limit 1;
+  if v_pay is not null
+     and v_pay->>'prior_outcome' = 'Set up Oyster Bar at venue'
+     and v_pay->>'revised_outcome' = 'Set up Raw Bar at venue' then
+    n_pass:=n_pass+1;
+    raise notice 'X7 PASS an explicit reconciliation fact names the delta: % → %',
+      v_pay->>'prior_outcome', v_pay->>'revised_outcome';
+  else n_fail:=n_fail+1; raise notice 'X7 FAIL %', v_pay; end if;
+
+  -- ══ X8 · nothing is permanently tied to the superseded commitment ═════════
+  if (select count(*) from public.obligation o
+        where o.event_ref=v_ev and o.origin_ref = v_a2) > 0
+     and public.event_current_commitment(v_ev, now()) = v_a2 then
+    n_pass:=n_pass+1;
+    raise notice 'X8 PASS requirements derived after adoption cite the revised commitment';
+  else n_fail:=n_fail+1; raise notice 'X8 FAIL still tied to the superseded commitment'; end if;
+
+  -- ══ X9 · REMOVED requirements resolve historically ════════════════════════
+  update public.offer_snapshots set model = jsonb_build_object('components',
+    (select jsonb_agg(c) from jsonb_array_elements(m2->'components') c
+      where c->>'componentId' <> cB::text))
+   where id = v_s2;
+  perform public.generate_obligations(v_ev);
+  select o.id into v_carve2 from public.obligation o
+    where o.event_ref=v_ev and o.kind='staffing_assign' and o.resource_role='shucker'
+      and o.supersedes_ref is null;
+  if public.responsibility_state(v_carve2) in ('void','superseded')
+     and exists (select 1 from public.obligation where id=v_carve2) then
+    n_pass:=n_pass+1;
+    raise notice 'X9 PASS the withdrawn station resolved historically (%) — the row still exists',
+      public.responsibility_state(v_carve2);
+  else n_fail:=n_fail+1; raise notice 'X9 FAIL state=%', public.responsibility_state(v_carve2); end if;
+
+  -- ══ X10 · the untouched line survived BOTH regenerations ══════════════════
+  if public.responsibility_state(v_carve) = 'discharged' then
+    n_pass:=n_pass+1;
+    raise notice 'X10 PASS after two revisions the untouched completed requirement is still discharged';
+  else n_fail:=n_fail+1; raise notice 'X10 FAIL state=%', public.responsibility_state(v_carve); end if;
+
+  -- ══ X11 · reconciliation is idempotent ════════════════════════════════════
+  select count(*) into v_n from public.obligation where event_ref = v_ev;
+  perform public.generate_obligations(v_ev);
+  if (select count(*) from public.obligation where event_ref = v_ev) = v_n then
+    n_pass:=n_pass+1; raise notice 'X11 PASS re-running reconciliation created nothing further';
+  else n_fail:=n_fail+1; raise notice 'X11 FAIL rows % -> %', v_n,
+    (select count(*) from public.obligation where event_ref = v_ev); end if;
+
+  -- ══ X12 · a dependency on a superseded predecessor still resolves ═════════
+  -- venue_breakdown depends on venue_setup's identity key; superseding setup
+  -- must not strand its dependent behind a revision that can no longer be worked.
+  select o.id into v_carve2 from public.obligation o
+    where o.event_ref=v_ev and o.kind='venue_setup' and o.resource_role=cA::text
+      and o.supersedes_ref is null;
+  perform public.record_execution_evidence(v_ev, public.requirement_lineage_head(v_carve2),
+                                           'completion', 'crew', '{}'::jsonb);
+  select o.natural_key into v_txt from public.obligation o where o.id = v_carve2;
+  if public.obligation_nk_complete(v_ev, v_txt) then
+    n_pass:=n_pass+1;
+    raise notice 'X12 PASS completion is read across the line, so dependents are not stranded by supersession';
+  else n_fail:=n_fail+1; raise notice 'X12 FAIL dependency blocked behind a superseded revision'; end if;
+
+  -- ══ X13 · existing events are NOT re-keyed by this release ═══════════════
+  -- Identity moved from the acceptance to the Event's baseline commitment. On an
+  -- event that never adopted a revision those are the same value, so v311 must
+  -- reproduce v275's natural keys exactly. If it did not, deploying v311 would
+  -- silently invalidate and re-create every obligation on every existing event.
+  select o.natural_key into v_txt from public.obligation o
+    where o.event_ref = v_ev and o.kind = 'culinary_prepare' and o.resource_role = cA::text
+      and o.supersedes_ref is null;
+  if v_txt = encode(extensions.digest(
+       v_ev::text || v_a1::text || 'culinary_prepare' || cA::text, 'sha256'), 'hex') then
+    n_pass:=n_pass+1;
+    raise notice 'X13 PASS v311 reproduces the v275 natural key exactly — no existing event is re-keyed by this release';
+  else n_fail:=n_fail+1; raise notice 'X13 FAIL identity digest changed for an unrevised event'; end if;
+
+  raise notice 'v311 CROSS-DOMAIN RECONCILIATION: % PASS / % FAIL', n_pass, n_fail;
+  if n_fail > 0 then raise exception 'v311 XDOM PROOF FAILED: %', n_fail; end if;
+  raise exception 'V311_XDOM_ROLLBACK';
+exception when others then
+  if sqlerrm = 'V311_XDOM_ROLLBACK' then raise notice 'rolled back cleanly — zero residue';
   else raise; end if;
 end $$;

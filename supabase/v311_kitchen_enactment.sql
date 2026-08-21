@@ -17,9 +17,11 @@
 -- one seam reaches every release path without editing four ceremonies, and
 -- regeneration then refreshes Kitchen exactly when it refreshes everything else.
 --
--- generate_obligations is therefore replaced here. Its v275 body is carried over
--- unchanged — same station gate, same natural keys, same additive invalidation —
--- with two additions, both marked v311 inline.
+-- generate_obligations is therefore replaced here. Its v275 structure is carried
+-- over — same station gate, same emission order, same additive invalidation —
+-- with three changes, all marked v311 inline: Kitchen enactment, a
+-- lineage-aware sweep, and emission routed through emit_event_requirement (§9)
+-- so an adopted commitment revision reconciles every receiving domain.
 --
 -- ── THE SWEEP HAD TO LEARN ABOUT SUPERSESSION ───────────────────────────────
 -- v275's sweep invalidates every obligation for the event whose natural key the
@@ -435,7 +437,10 @@ begin
 end $$;
 
 -- ── 7 · generation licenses Kitchen enactment, and stops voiding revisions ──
--- v275's body verbatim. The two v311 additions are marked inline.
+-- v275's body, with the three v311 changes marked inline. Emission is routed
+-- through emit_event_requirement (§9): identity is keyed on the Event's BASELINE
+-- commitment so it survives revision, while content derives from the commitment
+-- the Event currently works to.
 create or replace function public.generate_obligations(p_event uuid)
 returns integer
 language plpgsql
@@ -445,6 +450,7 @@ as $$
 declare
   v_tenant  uuid := public.current_tenant_id();
   v_acc     uuid;
+  v_base    uuid;
   v_model   jsonb;
   v_comp    jsonb;
   v_req     jsonb;
@@ -457,10 +463,18 @@ declare
   v_present    text[] := '{}';  -- natural_keys entailed by the current config
   v_count      integer;
 begin
-  -- resolve the event and its originating acceptance under the tenant
-  select origin_commitment_ref into v_acc
+  -- v311 · TWO commitments, separating identity from content.
+  --   v_base — the Event's ORIGINAL baseline. Requirement identity is built from
+  --            it and it never changes, so a Requirement the revision did not
+  --            touch keeps its identity, its ownership history and its evidence.
+  --   v_acc  — the commitment the Event WORKS TO now (§8). Content derives from
+  --            it, so an adopted revision is no longer left unreachable.
+  -- On an Event that never revised, the two are the same value and generation
+  -- behaves exactly as v275 did.
+  select origin_commitment_ref into v_base
     from public.event where id = p_event and tenant_id = v_tenant;
   if not found then raise exception 'CEREMONY_NOT_FOUND'; end if;
+  v_acc := public.event_current_commitment(p_event, now());
 
   -- the FROZEN accepted model (immutable snapshot). Generation reads only this.
   select s.model into v_model
@@ -480,13 +494,11 @@ begin
 
     -- ── culinary_prepare (decision-debt: recipe/yields not modeled in v275) ──
     v_role := v_comp->>'componentId';
-    v_nk := encode(extensions.digest(p_event::text||v_acc::text||'culinary_prepare'||coalesce(v_role,''),'sha256'),'hex');
-    insert into public.obligation
-        (tenant_id,event_ref,origin_ref,origin_kind,kind,department,required_outcome,resource_role,dependencies,natural_key)
-      values (v_tenant,p_event,v_acc,'selection','culinary_prepare','culinary',
+    v_nk := public.emit_event_requirement(p_event,
+              encode(extensions.digest(p_event::text||v_base::text||'culinary_prepare'||coalesce(v_role,''),'sha256'),'hex'),
+              v_acc, 'culinary_prepare', 'culinary',
               'unresolved: produce '||v_title||' menu component (recipe/yields not modeled until v286)',
-              v_role,'[]'::jsonb,v_nk)
-      on conflict (tenant_id,natural_key) do nothing;
+              v_role, '[]'::jsonb);
     v_comp_nks := array_append(v_comp_nks, v_nk); v_present := array_append(v_present, v_nk);
 
     -- ── requirement-derived obligations (equipment / staffing) from the frozen model ──
@@ -494,21 +506,19 @@ begin
     loop
       if (v_req->>'category') in ('equipment','rental','supply','vehicle') then
         v_role := coalesce(v_req->>'item', v_req->>'category');
-        v_nk := encode(extensions.digest(p_event::text||v_acc::text||'equipment_pull'||coalesce(v_role,''),'sha256'),'hex');
-        insert into public.obligation
-            (tenant_id,event_ref,origin_ref,origin_kind,kind,department,required_outcome,resource_role,dependencies,natural_key)
-          values (v_tenant,p_event,v_acc,'selection','equipment_pull','equipment',
-                  'Pull '||v_role||' for '||v_title, v_role,'[]'::jsonb,v_nk)
-          on conflict (tenant_id,natural_key) do nothing;
+        v_nk := public.emit_event_requirement(p_event,
+              encode(extensions.digest(p_event::text||v_base::text||'equipment_pull'||coalesce(v_role,''),'sha256'),'hex'),
+              v_acc, 'equipment_pull', 'equipment',
+              'Pull '||v_role||' for '||v_title,
+              v_role, '[]'::jsonb);
         v_comp_nks := array_append(v_comp_nks, v_nk); v_present := array_append(v_present, v_nk);
       elsif (v_req->>'category') = 'staff' then
         v_role := coalesce(v_req->>'role', 'attendant');
-        v_nk := encode(extensions.digest(p_event::text||v_acc::text||'staffing_assign'||coalesce(v_role,''),'sha256'),'hex');
-        insert into public.obligation
-            (tenant_id,event_ref,origin_ref,origin_kind,kind,department,required_outcome,resource_role,dependencies,natural_key)
-          values (v_tenant,p_event,v_acc,'selection','staffing_assign','staffing',
-                  'Assign '||v_role||' to '||v_title, v_role,'[]'::jsonb,v_nk)
-          on conflict (tenant_id,natural_key) do nothing;
+        v_nk := public.emit_event_requirement(p_event,
+              encode(extensions.digest(p_event::text||v_base::text||'staffing_assign'||coalesce(v_role,''),'sha256'),'hex'),
+              v_acc, 'staffing_assign', 'staffing',
+              'Assign '||v_role||' to '||v_title,
+              v_role, '[]'::jsonb);
         v_comp_nks := array_append(v_comp_nks, v_nk); v_present := array_append(v_present, v_nk);
       end if;
     end loop;
@@ -516,45 +526,39 @@ begin
     -- decision-debt where a needed category was not enumerated in the frozen model
     if not exists (select 1 from jsonb_array_elements(coalesce(v_comp->'requirements','[]'::jsonb)) r
                    where (r->>'category') in ('equipment','rental','supply','vehicle')) then
-      v_nk := encode(extensions.digest(p_event::text||v_acc::text||'equipment_pull'||'unresolved','sha256'),'hex');
-      insert into public.obligation
-          (tenant_id,event_ref,origin_ref,origin_kind,kind,department,required_outcome,resource_role,dependencies,natural_key)
-        values (v_tenant,p_event,v_acc,'selection','equipment_pull','equipment',
-                'unresolved: '||v_title||' equipment not enumerated (equipment master arrives v281)',
-                'unresolved','[]'::jsonb,v_nk)
-        on conflict (tenant_id,natural_key) do nothing;
+      v_nk := public.emit_event_requirement(p_event,
+              encode(extensions.digest(p_event::text||v_base::text||'equipment_pull'||coalesce('unresolved',''),'sha256'),'hex'),
+              v_acc, 'equipment_pull', 'equipment',
+              'unresolved: '||v_title||' equipment not enumerated (equipment master arrives v281)',
+              'unresolved', '[]'::jsonb);
       v_comp_nks := array_append(v_comp_nks, v_nk); v_present := array_append(v_present, v_nk);
     end if;
     if not exists (select 1 from jsonb_array_elements(coalesce(v_comp->'requirements','[]'::jsonb)) r
                    where (r->>'category') = 'staff') then
-      v_nk := encode(extensions.digest(p_event::text||v_acc::text||'staffing_assign'||'unresolved','sha256'),'hex');
-      insert into public.obligation
-          (tenant_id,event_ref,origin_ref,origin_kind,kind,department,required_outcome,resource_role,dependencies,natural_key)
-        values (v_tenant,p_event,v_acc,'selection','staffing_assign','staffing',
-                'unresolved: '||v_title||' staffing not enumerated (scheduling arrives v279)',
-                'unresolved','[]'::jsonb,v_nk)
-        on conflict (tenant_id,natural_key) do nothing;
+      v_nk := public.emit_event_requirement(p_event,
+              encode(extensions.digest(p_event::text||v_base::text||'staffing_assign'||coalesce('unresolved',''),'sha256'),'hex'),
+              v_acc, 'staffing_assign', 'staffing',
+              'unresolved: '||v_title||' staffing not enumerated (scheduling arrives v279)',
+              'unresolved', '[]'::jsonb);
       v_comp_nks := array_append(v_comp_nks, v_nk); v_present := array_append(v_present, v_nk);
     end if;
 
     -- ── venue_setup: depends on prep + all pulls + all assigns (structural) ──
     v_setup_deps := to_jsonb(v_comp_nks);
     v_role := v_comp->>'componentId';
-    v_setup_nk := encode(extensions.digest(p_event::text||v_acc::text||'venue_setup'||coalesce(v_role,''),'sha256'),'hex');
-    insert into public.obligation
-        (tenant_id,event_ref,origin_ref,origin_kind,kind,department,required_outcome,resource_role,dependencies,natural_key)
-      values (v_tenant,p_event,v_acc,'selection','venue_setup','venue',
-              'Set up '||v_title||' at venue', v_role, v_setup_deps, v_setup_nk)
-      on conflict (tenant_id,natural_key) do nothing;
+    v_setup_nk := public.emit_event_requirement(p_event,
+              encode(extensions.digest(p_event::text||v_base::text||'venue_setup'||coalesce(v_role,''),'sha256'),'hex'),
+              v_acc, 'venue_setup', 'venue',
+              'Set up '||v_title||' at venue',
+              v_role, v_setup_deps);
     v_present := array_append(v_present, v_setup_nk);
 
     -- ── venue_breakdown: depends on setup ──
-    v_nk := encode(extensions.digest(p_event::text||v_acc::text||'venue_breakdown'||coalesce(v_role,''),'sha256'),'hex');
-    insert into public.obligation
-        (tenant_id,event_ref,origin_ref,origin_kind,kind,department,required_outcome,resource_role,dependencies,natural_key)
-      values (v_tenant,p_event,v_acc,'selection','venue_breakdown','venue',
-              'Break down '||v_title||' and return', v_role, jsonb_build_array(v_setup_nk), v_nk)
-      on conflict (tenant_id,natural_key) do nothing;
+    v_nk := public.emit_event_requirement(p_event,
+              encode(extensions.digest(p_event::text||v_base::text||'venue_breakdown'||coalesce(v_role,''),'sha256'),'hex'),
+              v_acc, 'venue_breakdown', 'venue',
+              'Break down '||v_title||' and return',
+              v_role, jsonb_build_array(v_setup_nk));
     v_present := array_append(v_present, v_nk);
   end loop;
 
@@ -775,6 +779,163 @@ begin
                             'baseline', (select e.origin_commitment_ref
                                            from public.event e where e.id = p_event));
 end $$;
+
+-- ── 9 · cross-domain revision reconciliation ────────────────────────────────
+-- Architect ruling: an adopted commitment revision re-derives and reconciles the
+-- affected Event Requirements across EVERY receiving domain, not only Kitchen.
+-- Requirement history stays append-only. Unchanged Requirements PRESERVE
+-- IDENTITY; changed Requirements SUPERSEDE; new Requirements APPEND; removed
+-- Requirements RESOLVE HISTORICALLY. Already-enacted downstream acts are never
+-- silently rewritten — changed demand produces explicit reconciliation pressure.
+--
+-- ── WHY v275's KEYS COULD NOT CARRY THIS ────────────────────────────────────
+-- v275 keys every obligation on the ACCEPTANCE:
+--   digest(event || acceptance || kind || role)
+-- so re-deriving against a revised commitment changes every key at once. The
+-- sweep would then invalidate the entire equipment, staffing and venue set and
+-- append a brand-new one. That satisfies "removed resolves historically" and
+-- "new appends" by accident, and violates "unchanged preserves identity"
+-- completely — a station nobody touched would lose its identity, its ownership
+-- history and its evidence.
+--
+-- Identity therefore moves to the Event and the line:
+--   digest(event || BASELINE commitment || kind || role)
+-- The baseline never changes, so identity is stable across every revision, while
+-- the CONTENT is derived from the currently adopted commitment. Which
+-- Requirement it is, and what it currently says, become separable — which is
+-- exactly what the ruling requires.
+--
+-- ── THE FOUR OUTCOMES, DECIDED BY CONTENT ───────────────────────────────────
+-- emit_event_requirement compares the derived content against the line's current
+-- head and does one of three things; the sweep does the fourth:
+--   absent            → APPEND a new root
+--   content identical → PRESERVE, write nothing at all
+--   content differs   → SUPERSEDE: append a revision citing the head
+--   no longer derived → the lineage-aware sweep INVALIDATES the line (historical)
+--
+-- ── ENACTED WORK IS NEVER REWRITTEN ─────────────────────────────────────────
+-- When a superseded revision already carried real operational acts — an
+-- assignment, a scan, an inspection, a completion — those acts stay exactly where
+-- they are, attached to the revision they were performed against. They were true.
+-- What is recorded instead is an explicit 'superseded' evidence fact naming the
+-- delta, and the new revision starts unsatisfied. That unsatisfied revision IS
+-- the reconciliation pressure: it surfaces as outstanding work in every existing
+-- projection without anything having been overwritten to produce it.
+create or replace function public.emit_event_requirement(
+  p_event uuid, p_identity text, p_commitment uuid,
+  p_kind text, p_department text, p_required_outcome text,
+  p_resource_role text, p_dependencies jsonb)
+returns text language plpgsql security definer set search_path = public
+as $$
+declare
+  v_tenant uuid := public.current_tenant_id();
+  v_root uuid; v_head uuid; v_h public.obligation%rowtype;
+  v_rev_nk text; v_deps jsonb := coalesce(p_dependencies,'[]'::jsonb);
+  v_enacted text;
+begin
+  select o.id into v_root from public.obligation o
+    where o.tenant_id = v_tenant and o.natural_key = p_identity;
+
+  -- APPEND · the line does not exist yet
+  if v_root is null then
+    insert into public.obligation
+        (tenant_id, event_ref, scope, origin_ref, origin_kind, kind, department,
+         required_outcome, resource_role, dependencies, natural_key, anchors)
+      values (v_tenant, p_event, 'event', p_commitment, 'selection', p_kind,
+              p_department, p_required_outcome, p_resource_role, v_deps, p_identity,
+              jsonb_build_array(jsonb_build_object(
+                'truth','selection', 'ref', p_commitment)))
+      on conflict (tenant_id, natural_key) do nothing;
+    return p_identity;
+  end if;
+
+  v_head := public.requirement_lineage_head(v_root);
+  select * into v_h from public.obligation o where o.id = v_head and o.tenant_id = v_tenant;
+
+  -- PRESERVE · nothing about what this Requirement says has changed. The
+  -- commitment it was first derived from is deliberately NOT part of this
+  -- comparison: re-pointing an otherwise identical Requirement at a new
+  -- commitment would be a revision with no difference in it.
+  if v_h.kind = p_kind
+     and v_h.department = p_department
+     and v_h.required_outcome = p_required_outcome
+     and v_h.resource_role is not distinct from p_resource_role
+     and coalesce(v_h.dependencies,'[]'::jsonb) = v_deps then
+    return p_identity;
+  end if;
+
+  -- SUPERSEDE · content moved. Identity from the line, content from the
+  -- revision, so replaying the same revised commitment is idempotent.
+  v_rev_nk := encode(extensions.digest(
+                p_identity || '@rev:' || p_kind || '|' || p_department || '|' ||
+                p_required_outcome || '|' || coalesce(p_resource_role,'') || '|' ||
+                v_deps::text, 'sha256'), 'hex');
+
+  if exists (select 1 from public.obligation o
+              where o.tenant_id = v_tenant and o.natural_key = v_rev_nk) then
+    return p_identity;                      -- already the current revision
+  end if;
+
+  -- Enacted acts on the outgoing revision are named, never touched.
+  select string_agg(distinct e.kind, ', ' order by e.kind) into v_enacted
+    from public.execution_evidence e
+   where e.obligation_ref = v_head
+     and e.kind in ('assignment','scan','inspection','completion');
+
+  insert into public.obligation
+      (tenant_id, event_ref, scope, origin_ref, origin_kind, origin_revision,
+       kind, department, required_outcome, resource_role, dependencies, timing,
+       natural_key, supersedes_ref, anchors)
+    values (v_tenant, p_event, v_h.scope, p_commitment, v_h.origin_kind,
+            v_h.origin_revision, p_kind, p_department, p_required_outcome,
+            p_resource_role, v_deps, v_h.timing, v_rev_nk, v_head,
+            coalesce(v_h.anchors,'[]'::jsonb) || jsonb_build_array(jsonb_build_object(
+              'truth','commitment_revision',
+              'ref', p_commitment,
+              'supersedes', v_head,
+              'prior_outcome', v_h.required_outcome)))
+    on conflict (tenant_id, natural_key) do nothing;
+
+  -- RECONCILIATION PRESSURE, stated rather than implied. The prior revision's
+  -- own evidence is left untouched; this fact says what changed underneath it.
+  insert into public.execution_evidence
+      (tenant_id, event_ref, obligation_ref, kind, actor, payload)
+    values (v_tenant, p_event, v_head, 'superseded', 'commitment_reconciliation',
+            jsonb_build_object(
+              'reason', 'the adopted commitment revision changed this requirement',
+              'commitment', p_commitment,
+              'prior_outcome', v_h.required_outcome,
+              'revised_outcome', p_required_outcome,
+              'enacted_work_on_prior', v_enacted,
+              'note', case when v_enacted is null
+                           then 'no operational act had been performed against the prior requirement'
+                           else 'operational acts already performed against the prior requirement are retained and are NOT rewritten; the revised requirement is outstanding'
+                      end));
+
+  return p_identity;
+end $$;
+
+-- A dependency names a LINE by its stable identity key, so completion must be
+-- read across that line. Without this, superseding a predecessor would leave its
+-- dependents permanently blocked behind a revision that can no longer be worked.
+create or replace function public.obligation_nk_complete(p_event uuid, p_nk text)
+returns boolean language sql stable security definer set search_path = public
+as $$
+  with recursive line as (
+    select o.id from public.obligation o
+     where o.event_ref = p_event and o.natural_key = p_nk
+       and o.tenant_id = public.current_tenant_id()
+    union all
+    select c.id from public.obligation c join line l on c.supersedes_ref = l.id)
+  select exists (
+    select 1
+      from line
+      join public.execution_evidence e
+        on e.obligation_ref = line.id and e.kind = 'completion'
+     where not exists (select 1 from public.execution_evidence i
+                        where i.obligation_ref = line.id and i.kind = 'invalidated'
+                          and i.moment >= e.moment));
+$$;
 
 -- ── the deployed marker ─────────────────────────────────────────────────────
 create function public.v311_kitchen_enactment() returns text

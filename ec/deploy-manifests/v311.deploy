@@ -11,8 +11,13 @@
 #   · the Kitchen derivation, decision, lineage, enactment and panel functions
 #   · one replaced publish hook (embed_operational_basis), which now also freezes
 #     items_committed
-#   · one replaced generator (generate_obligations) carrying v275's body verbatim
-#     plus Kitchen enactment and a lineage-aware sweep
+#   · one replaced generator (generate_obligations) carrying v275's structure
+#     plus Kitchen enactment, a lineage-aware sweep, and emission routed through
+#     emit_event_requirement so an adopted commitment revision reconciles every
+#     receiving domain
+#   · one replaced projection helper (obligation_nk_complete), now reading
+#     completion across a supersession line so a superseded predecessor cannot
+#     strand its dependents
 #   · two replaced attendance ceremonies (commit_attendance, correct_attendance)
 #     carrying v292a1's bodies verbatim plus one line each
 #
@@ -38,6 +43,23 @@
 # release carry items_committed. Older ones derive as UNRESOLVED with the machine
 # reason 'committed design predates quantity capture' — honest, because their
 # commitment genuinely did not record a quantity.
+#
+# CROSS-DOMAIN RECONCILIATION. Adopting a commitment revision re-derives every
+# receiving domain. Requirement identity is keyed on the Event's BASELINE
+# commitment and so survives revision; content derives from the adopted one.
+# Unchanged Requirements preserve identity and their evidence; changed ones
+# supersede; new ones append; removed ones resolve historically without deletion.
+# Operational acts already performed against a superseded Requirement are
+# retained, named in an explicit reconciliation fact, and never rewritten — the
+# revised Requirement is outstanding, which is the pressure. X1-X12 assert it.
+#
+# EXISTING EVENTS ARE NOT RE-KEYED — VERIFIED, NOT ASSUMED. Requirement identity
+# now derives from the Event's BASELINE commitment where v275 used the acceptance.
+# For any event that has never adopted a revision those are the same value, so
+# the digest input is byte-identical and v311 reproduces exactly the natural keys
+# v275 produced. Permanent claim X13 releases an event and asserts the generated
+# key equals the v275 formula. No existing obligation is re-keyed, invalidated or
+# re-created by deploying this release.
 #
 # REGENERATION SAFETY. The v275 sweep now inherits entailment from the root of a
 # supersession line, so regenerating an event no longer invalidates an approved
@@ -108,6 +130,8 @@ function         refresh_kitchen_recommendations(p_occurrence uuid)
 function         event_current_commitment(p_event uuid, p_as_of timestamp with time zone)
 function         can_revise_event_commitment(p_event uuid, p_as_of timestamp with time zone)
 function         revise_event_commitment(p_event uuid, p_acceptance uuid, p_reason text)
+function         emit_event_requirement(p_event uuid, p_identity text, p_commitment uuid, p_kind text, p_department text, p_required_outcome text, p_resource_role text, p_dependencies jsonb)
+function         obligation_nk_complete(p_event uuid, p_nk text)
 superseded       can_manage_kitchen_quantity
 
 # DECLARED POSTCONDITION — WHAT THE VOCABULARY CANNOT EXPRESS.
@@ -121,3 +145,6 @@ superseded       can_manage_kitchen_quantity
 #     instant, and is never materialized early           — E12, E13, E14
 #   · a post-commitment revision is inert until adopted, adoption keeps the
 #     baseline, and the same Requirement re-derives     — R1, R3, R5, R6, R7
+#   · an adopted revision reconciles every receiving domain: unchanged preserve
+#     identity, changed supersede, new append, removed resolve historically, and
+#     enacted work is retained and named rather than rewritten  — X1…X12

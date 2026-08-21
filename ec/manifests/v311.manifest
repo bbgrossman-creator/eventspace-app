@@ -77,12 +77,30 @@
 # event.origin_commitment_ref is never rewritten so the baseline stays. Kitchen
 # re-derives; the prior approval remains historical and becomes Review required.
 #
-# BOUNDED RESIDUAL, DECLARED. Kitchen resolves its committed design through the
-# adopted revision. The v275 execution obligations do NOT: their natural keys
-# embed the acceptance, so re-pointing them would supersede and regenerate every
-# equipment, staffing and venue obligation on the event. That is an
-# execution-spine decision rather than a Kitchen one and is referred to the
-# Architect, not taken here.
+# CROSS-DOMAIN REVISION RECONCILIATION (Architect ruling, implemented). An
+# adopted revision reconciles Event Requirements in EVERY receiving domain, not
+# only Kitchen. v275 keyed every obligation on the ACCEPTANCE, so re-deriving
+# against a revised commitment would have changed every key at once — invalidating
+# the whole equipment, staffing and venue set and appending a brand-new one. That
+# violates "unchanged preserves identity" completely: a station nobody touched
+# would lose its identity, its ownership history and its evidence.
+#
+# Identity therefore moves to the Event and its BASELINE commitment, which never
+# changes, while CONTENT derives from the commitment the Event currently works
+# to. Which Requirement it is, and what it currently says, become separable.
+# emit_event_requirement then decides by content: absent APPENDS, identical
+# PRESERVES and writes nothing, different SUPERSEDES with a revision citing the
+# head, and the lineage-aware sweep RESOLVES a no-longer-derived line
+# historically without deleting it.
+#
+# ENACTED WORK IS NEVER REWRITTEN. Acts already performed against a superseded
+# Requirement — assignment, scan, inspection, completion — stay attached to the
+# revision they were performed against, because they were true. An explicit
+# 'superseded' reconciliation fact names the delta and the enacted work, and the
+# revised Requirement starts outstanding. That unsatisfied revision IS the
+# reconciliation pressure: it surfaces in every existing projection without
+# anything having been overwritten to produce it. obligation_nk_complete now
+# reads completion across a line, so supersession never strands a dependent.
 #
 # DOWNSTREAM FENCE HELD. No Ingredient Coverage/Sourcing, Prep Plan, Prep,
 # Production, Pack or Handoff object exists. Permanent claim E16 asserts it.
@@ -97,7 +115,7 @@
 # kitchen_event_panel, which does not exist until the migration lands, so an
 # application-first order would render an error surface. Database first.
 #
-# SOP Rule 4: v311_permanent_proof is a NEWLY FROZEN permanent suite (72
+# SOP Rule 4: v311_permanent_proof is a NEWLY FROZEN permanent suite (85
 # claims). The STANDING floor is reconciled empirically as harness maintenance
 # and recorded in the v311 release evidence.
 version            v311
@@ -105,7 +123,7 @@ migration          supabase/v311_kitchen_requirements.sql
 migration          supabase/v311_authority_grant.sql
 migration          supabase/v311_kitchen_quantity_decisions.sql
 migration          supabase/v311_kitchen_enactment.sql
-permanent          v311_permanent_proof                         expect 72
+permanent          v311_permanent_proof                         expect 85
 permanent_regress  v310_1_permanent_proof v310_permanent_proof v309_permanent_proof v308_permanent_proof v307b_permanent_proof v307a_permanent_proof v306_permanent_proof v293_permanent_proof v294_permanent_proof v295_permanent_proof v297_permanent_proof v300_permanent_proof v302_permanent_proof v303_permanent_proof v304_permanent_proof v305_permanent_proof
 race_regress       proofs/v307a_y3_race.sh proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
 standing_verify    yes
