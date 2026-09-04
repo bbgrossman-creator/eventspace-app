@@ -224,3 +224,44 @@ permanent proof is the only standing guard against the defect class it repairs �
 a tenant-scoped column default that names a tenant. Leaving that suite outside the
 floor would have protected it by convention rather than by the floor, which is the
 precise drift Rule 4 exists to prevent.
+
+### Reconciliation of 4 September 2026 — v311
+
+The 13 August and 20 August reconciliations above stand unaltered as historical
+evidence. This section records the next one; it does not rewrite either.
+
+**Before.** Twenty-four suites, 389 unique claims.
+
+**Change.** One suite added: `v311_permanent_proof`, the frozen permanent suite of
+the v311 Booked Event → Operational Requirements release, installed into the
+harness by the certification run's install gate and appended to `STANDING` exactly
+once.
+
+**After.** Twenty-five suites, **474 unique claims**, measured empirically rather
+than inferred: exactly 389 + 85, with **zero claim-id collisions** and zero proof
+residue — row counts identical before and after. The floor now contains the
+twenty-four suites listed above plus `v311_permanent_proof`. The measurement was
+taken under `./certify-release.sh v311` — twenty-five gates, exit 0, the governed
+deployable verdict rather than the `--local-only` banner that refuses it — in which
+v311's own suite reported PASS=85 FAIL=0 ERROR=0 across seven rolled-back suites,
+and the archived production evidence graded present 151, missing 0, committed as
+`ec/deploy-manifests/evidence/v311.production.grade` in d89e595.
+
+**Custody, verified before the change rather than assumed.** `manifest_digest` is
+computed from the repository deploy manifests and `verifier_digest` from
+`ec/verify-deployment.sh` (`ec/verify-deployment.sh:166-167`). Neither digests the
+harness `db/verify.sh`, where `STANDING` lives, so this floor change invalidates no
+frozen production evidence, including the v311 evidence committed above. The
+harness is not a git repository, so its frozen state is recorded here rather than
+by a harness commit; the installed proof was verified byte-identical to the
+repository's `supabase/tests/v311_permanent_proof.sql` by SHA-256.
+
+**Why this release needed one.** v311 carries eighty-five claims and is the first
+release to bridge a committed Event into an operative Kitchen Requirement. Its
+permanent proof is the only standing guard over properties that have no deploy key
+at all — approval atomicity, regeneration no longer voiding an approved revision, a
+future-effective guest count becoming current by derivation at its own instant, and
+an adopted commitment revision reconciling every receiving domain while preserving
+the identity and evidence of Requirements nobody touched. Leaving that suite outside
+the floor would have protected the release's core behaviour by convention rather
+than by the floor, which is the precise drift Rule 4 exists to prevent.
