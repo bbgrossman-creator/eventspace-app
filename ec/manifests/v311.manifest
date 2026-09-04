@@ -56,7 +56,13 @@
 # Requirement the approval had just made authoritative. Entailment is now
 # inherited from the ROOT of a supersession line. Nothing else about the sweep
 # changes; an obligation genuinely dropped is still invalidated exactly as
-# before. v275's body is otherwise carried over verbatim.
+# before. The rest of v275's generator is carried FORWARD rather than
+# reimplemented — its structure, ordering and refusal vocabulary are preserved
+# — but the body is revised, not byte-for-byte identical: the lineage-aware
+# sweep and emission through emit_event_requirement are woven into it. What
+# protects the prior ceremony is regression evidence, not textual identity:
+# every frozen pre-v311 permanent proof still passes against a database
+# carrying this release.
 #
 # GUEST COUNT BECOMES CURRENT BY DERIVATION, NOT BY SCHEDULE. The current
 # recommendation is derived as of a moment through v292a1's

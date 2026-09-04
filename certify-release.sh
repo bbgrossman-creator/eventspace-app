@@ -82,10 +82,17 @@ MANIFEST="$EC/manifests/${VERSION}.manifest"
 
 # ── manifest reader (declarative; no logic in manifests) ──────────────────
 mf() { awk -v k="$1" '$1==k { $1=""; sub(/^[ \t]+/,""); print; exit }' "$MANIFEST"; }
+# A few release keys lawfully REPEAT: a release may ship several migrations and
+# declare a deployed marker for each. mf() answers with the FIRST line by design
+# and every scalar key depends on that, so it is left exactly as it was.
+# mf_all() answers with EVERY line, in declaration order. Only genuinely
+# repeatable keys use it — measured across all shipped manifests, that is
+# `migration` and `deployed_marker` and nothing else.
+mf_all() { awk -v k="$1" '$1==k { $1=""; sub(/^[ \t]+/,""); print }' "$MANIFEST"; }
 mf_expect() { printf '%s' "$1" | grep -oE "expect [0-9]+" | awk '{print $2}'; }
 mf_path()   { printf '%s' "$1" | sed 's/ *expect [0-9]*//'; }
 
-M_MIGRATION=$(mf migration)
+M_MIGRATION=$(mf_all migration)
 M_ONESHOT=$(mf one_shot);        M_ONESHOT_P=$(mf_path "$M_ONESHOT")
 M_PERMANENT=$(mf permanent)
 M_PERM_REGRESS=$(mf permanent_regress)
@@ -101,7 +108,7 @@ M_BROWSER=$(mf browser);          M_BROWSER_P=$(mf_path "$M_BROWSER")
 M_BROWSER_REG=$(mf browser_regress)
 M_HARNESS_INSTALL=$(mf harness_install)
 M_APP_MARKER=$(mf app_marker)
-M_DEPLOYED_MARKER=$(mf deployed_marker)
+M_DEPLOYED_MARKER=$(mf_all deployed_marker)
 M_APP_FILES=$(mf app_files)
 M_GIT=$(mf git_files)
 

@@ -94,19 +94,19 @@ begin
 
     if r.item_name = 'Slider' then
       if r.resolved and r.required_quantity = 100 then n_pass:=n_pass+1;
-        raise notice '    PASS per_person 1 x 100 guests = 100';
+        raise notice 'FX-1 PASS per_person 1 x 100 guests = 100';
       else n_fail:=n_fail+1; raise notice '    FAIL expected 100'; end if;
     elsif r.item_name = 'Sauce tray' then
       if r.resolved and r.required_quantity = 5 and r.attendance_used is null then n_pass:=n_pass+1;
-        raise notice '    PASS flat = 5, attendance did not scale it';
+        raise notice 'FX-2 PASS flat = 5, attendance did not scale it';
       else n_fail:=n_fail+1; raise notice '    FAIL expected flat 5'; end if;
     elsif r.item_name = 'Pickles' then
       if (not r.resolved) and r.required_quantity is null then n_pass:=n_pass+1;
-        raise notice '    PASS per_person with null quantity stayed UNRESOLVED (did not become 100)';
+        raise notice 'FX-3 PASS per_person with null quantity stayed UNRESOLVED (did not become 100)';
       else n_fail:=n_fail+1; raise notice '    FAIL null quantity was inferred'; end if;
     elsif r.item_name = 'Garnish' then
       if (not r.resolved) then n_pass:=n_pass+1;
-        raise notice '    PASS missing basis stayed UNRESOLVED';
+        raise notice 'FX-4 PASS missing basis stayed UNRESOLVED';
       else n_fail:=n_fail+1; raise notice '    FAIL missing basis was inferred'; end if;
     end if;
   end loop;
@@ -115,11 +115,11 @@ begin
   for r in select * from public.kitchen_quantity_derive(v_snap, null) loop
     if r.item_name = 'Slider' then
       if (not r.resolved) then n_pass:=n_pass+1;
-        raise notice '    PASS per_person without attendance = UNRESOLVED (%)', r.unresolved_reason;
+        raise notice 'FX-5 PASS per_person without attendance = UNRESOLVED (%)', r.unresolved_reason;
       else n_fail:=n_fail+1; raise notice '    FAIL invented an attendance'; end if;
     elsif r.item_name = 'Sauce tray' then
       if r.resolved and r.required_quantity = 5 then n_pass:=n_pass+1;
-        raise notice '    PASS flat resolves without attendance';
+        raise notice 'FX-6 PASS flat resolves without attendance';
       else n_fail:=n_fail+1; raise notice '    FAIL flat needed attendance'; end if;
     end if;
   end loop;
@@ -139,7 +139,7 @@ begin
     for r in select * from public.kitchen_quantity_derive(v_old, 100) loop
       v_cnt := v_cnt + 1;
       if (not r.resolved) and r.unresolved_reason = 'committed design predates quantity capture' then
-        n_pass:=n_pass+1; raise notice '    PASS legacy snapshot reported once, unresolved, no error';
+        n_pass:=n_pass+1; raise notice 'FX-7 PASS legacy snapshot reported once, unresolved, no error';
       else n_fail:=n_fail+1; raise notice '    FAIL legacy handling'; end if;
     end loop;
     if v_cnt <> 1 then n_fail:=n_fail+1; raise notice '    FAIL expected exactly 1 legacy row, got %', v_cnt; end if;
@@ -150,7 +150,7 @@ begin
     select count(*) into v_ob from public.obligation;
     perform public.kitchen_requirement_preview(v_snap, 100);
     if (select count(*) from public.obligation) = v_ob then n_pass:=n_pass+1;
-      raise notice '    PASS preview created zero obligations';
+      raise notice 'FX-8 PASS preview created zero obligations';
     else n_fail:=n_fail+1; raise notice '    FAIL preview wrote an obligation'; end if;
   end;
 

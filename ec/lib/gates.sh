@@ -33,9 +33,9 @@ gate_one_shot() {  # $1 script, $2 migration, $3 expected PASS
 }
 
 # ── migration apply to the live database ──────────────────────────────────
-gate_migration() {  # $1 migration path  $2 release  $3 deployed marker
+gate_migration() {  # $1 migration path(s), declaration order  $2 release  $3 deployed marker(s)
   gate_begin "apply migration to $EC_DB"
-  local rel="${2:-}" marker="${3:-}" present=0
+  local rel="${2:-}" markers="${3:-}" present=0 declared=0 m n
   # Both certification states are valid: the release may or may not already be
   # installed, because a prior run of THIS gate installs it. A migration
   # preflight is CORRECT to refuse a second apply, so the gate adapts rather
@@ -44,26 +44,47 @@ gate_migration() {  # $1 migration path  $2 release  $3 deployed marker
   # A marker is NEVER sufficient evidence. The complete declared postcondition
   # from the release's deploy manifest must verify, via the existing certified
   # validator — no second deployment verifier is created here.
-  if [ -n "$marker" ]; then
-    present=$(pg_q "$EC_DB" "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='$marker'" 2>/dev/null || echo 0)
+  # A release may declare SEVERAL markers, one per migration. Every declared
+  # marker must be present before this gate may report already-applied: a prefix
+  # of them is a partial install, which is precisely the state the postcondition
+  # check below exists to refuse rather than to apply around.
+  for m in $markers; do
+    declared=$((declared+1))
+    n=$(pg_q "$EC_DB" "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='$m'" 2>/dev/null || echo 0)
+    n=$(printf '%s' "$n" | tail -1)
+    [ "$n" != "0" ] && present=$((present+1))
+  done
+  if [ "$declared" -gt 0 ] && [ "$present" -gt 0 ] && [ "$present" -ne "$declared" ]; then
+    gate_fail "catalog check for $declared declared marker(s)" \
+      "PARTIAL INSTALLATION: $present of $declared declared deployment markers are present in $EC_DB. Refusing to report already-applied and refusing to apply around a partial install."
   fi
-  if [ -n "$marker" ] && [ "$present" != "0" ]; then
+  if [ "$declared" -gt 0 ] && [ "$present" -eq "$declared" ]; then
     local vc="ec/verify-deployment.sh $rel --db $EC_DB"; gate_cmd "$vc"
     local vout vrc
     vout=$(bash "$EC_REPO/ec/verify-deployment.sh" "$rel" --db "$EC_DB" 2>&1); vrc=$?
     if [ "$vrc" -eq 0 ]; then
-      gate_ok "already applied — marker '$marker' present AND the full declared postcondition verifies: $(printf '%s' "$vout" | tr '\n' ' ' | grep -oE 'present: *[0-9]+ *missing: *[0-9]+' | tail -1)"
+      gate_ok "already applied — all $declared declared marker(s) present AND the full declared postcondition verifies: $(printf '%s' "$vout" | tr '\n' ' ' | grep -oE 'present: *[0-9]+ *missing: *[0-9]+' | tail -1)"
       return
     fi
     gate_fail "$vc" \
-      "PARTIAL OR INCONSISTENT INSTALLATION: marker '$marker' is present but the declared deployment postcondition does NOT verify. Refusing to report already-applied and refusing to apply around it." \
+      "PARTIAL OR INCONSISTENT INSTALLATION: all $declared declared marker(s) are present but the declared deployment postcondition does NOT verify. Refusing to report already-applied and refusing to apply around it." \
       "$vout"
   fi
-  local c="pg_file $EC_DB $1"; gate_cmd "$c"
-  local out rc
-  out=$(pg_file "$EC_DB" "$EC_REPO/$1" 2>&1); rc=$?
-  [ "$rc" -ne 0 ] && gate_fail "$c" "exit $rc" "$out"
-  gate_ok "$(printf '%s' "$out" | tr '\n' ' ')"
+  # Each declared migration is applied exactly once, in declaration order. The
+  # first failure stops the sequence — a prefix of the set must never be able to
+  # report the whole migration green.
+  local c out rc applied=0
+  for m in $1; do
+    c="pg_file $EC_DB $m"; gate_cmd "$c"
+    out=$(pg_file "$EC_DB" "$EC_REPO/$m" 2>&1); rc=$?
+    [ "$rc" -ne 0 ] && gate_fail "$c" "exit $rc (migration $((applied+1)) of the declared set; earlier migrations in this run already applied)" "$out"
+    applied=$((applied+1))
+    gate_ok "$(printf '%s' "$out" | tr '\n' ' ')"
+  done
+  if [ "$applied" -eq 0 ]; then
+    gate_fail "gate_migration" "no migration path was declared, so nothing was applied"
+  fi
+  return 0
 }
 
 # ── permanent proofs THROUGH the harness, inheriting its residue check ─────
@@ -287,21 +308,28 @@ gate_harness_install() {  # $@ = files relative to the release
 # installed once the migration is CONFIRMED live, so the deployed marker is
 # checked against the database first. Verifying a release that is not deployed
 # fails precisely rather than installing a proof for absent SQL.
-gate_verify_deployed() {  # $1 marker function name, $2.. = harness files
-  local marker="$1"; shift
-  [ -z "$marker" ] && { gate_begin "deployed check"; gate_ok "no marker declared — skipped"; return 0; }
+gate_verify_deployed() {  # $1 marker function name(s), $2.. = harness files
+  local markers="$1"; shift
+  [ -z "$markers" ] && { gate_begin "deployed check"; gate_ok "no marker declared — skipped"; return 0; }
   gate_begin "confirm the release is deployed to $EC_DB"
-    local c="pg_q $EC_DB <catalog count for $marker>"
+  # EVERY declared marker is checked. A release that ships several migrations
+  # declares a marker for each, and certifying it from the first alone would
+  # grade a partial deployment as live.
+  local marker c n rc seen=0
+  for marker in $markers; do
+    seen=$((seen+1))
+    c="pg_q $EC_DB <catalog count for $marker>"
     gate_cmd "$c"
-    local n rc
     n=$(pg_q "$EC_DB" \
           "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
             where n.nspname='public' and p.proname='$marker'"); rc=$?
     [ "$rc" -ne 0 ] && gate_fail "$c" "catalog query failed (rc=$rc): $n"
     n=$(printf '%s' "$n" | tail -1)
-  [ "$n" = "0" ] && gate_fail "$c" "$marker is absent from $EC_DB — this release is NOT deployed, so --verify cannot certify it. Run a full pass on a database that predates the release."
-  case "$n" in ''|*[!0-9]*) gate_fail "$c" "could not read the catalog: [$n]";; esac
-  gate_ok "$marker present — release is live"
+    [ "$n" = "0" ] && gate_fail "$c" "$marker is absent from $EC_DB — this release is NOT deployed, so --verify cannot certify it. Run a full pass on a database that predates the release."
+    case "$n" in ''|*[!0-9]*) gate_fail "$c" "could not read the catalog: [$n]";; esac
+    gate_ok "$marker present"
+  done
+  gate_ok "all $seen declared marker(s) present — release is live"
 
   for f in "$@"; do
     [ -z "$f" ] && continue
