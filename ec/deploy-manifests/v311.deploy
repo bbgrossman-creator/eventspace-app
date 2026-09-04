@@ -19,7 +19,7 @@
 #     completion across a supersession line so a superseded predecessor cannot
 #     strand its dependents
 #   · two replaced attendance ceremonies (commit_attendance, correct_attendance)
-#     carrying v292a1's bodies verbatim plus one line each
+#     carrying v292a1's bodies verbatim with the bounded v311 addition each
 #
 # WHAT IT REMOVES
 #   · can_manage_kitchen_quantity() — a role-list evaluator that granted Kitchen
