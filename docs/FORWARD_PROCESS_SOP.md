@@ -2,7 +2,7 @@
 
 **Adopted 13 August 2026, at the post-v310 governance boundary.**
 
-This document banks four standing rules that govern how releases reach production
+This document banks five standing rules that govern how releases reach production
 and how the certification floor is maintained. It is process governance: it
 changes no product behaviour, removes no capability, and touches no
 admissibility, availability or lifecycle doctrine.
@@ -265,3 +265,129 @@ an adopted commitment revision reconciling every receiving domain while preservi
 the identity and evidence of Requirements nobody touched. Leaving that suite outside
 the floor would have protected the release's core behaviour by convention rather
 than by the floor, which is the precise drift Rule 4 exists to prevent.
+
+---
+
+## Rule 5 · Deployment Topology
+
+**Adopted 10 September 2026, at the v311 closure boundary.**
+
+**EventCore production is served by exactly one Vercel project, from exactly one
+git branch, and that branch must at rest point to the commit production is actually
+serving.**
+
+### Branch roles
+
+| Branch | Role | A push produces |
+|---|---|---|
+| `eventcore-erp` | canonical EventCore development and custody branch | preview deployments only |
+| `eventcore-production` | the Vercel Production Branch of project `eventcore` | the EventCore production deployment |
+| `main` | frozen historical lineage, and the fork point Booking CRM inherits | nothing; it is not advanced |
+| `booking-crm` | a separate governed product | outside this rule entirely |
+
+### The production surface
+
+| | |
+|---|---|
+| Vercel project | `eventcore` — `prj_fi0ijYRimGMmDwJjGGzNmS3oCP6O` |
+| URL | `https://eventspacems.vercel.app` |
+| Production Branch | `eventcore-production` |
+
+**`eventspace-app` (`prj_TLQCWjvY7WZKygjxdvMSZYhuh0A5`) is not a deployment
+target.** Nothing is pushed, promoted or deployed to it, and the staleness of what
+it serves is not a defect to be repaired by deploying to it. Its disposition is a
+separate retirement decision, and until that decision is taken it is preserved
+unaltered.
+
+Booking CRM is a separate governed product with its own branch, Vercel project,
+Supabase project and release namespace. **No EventCore deployment act ever targets
+it.** `main` is frozen partly to keep it that way: `main` is the last common
+ancestor of both products, so advancing `main` would place EventCore changes on the
+path a Booking CRM merge would naturally follow.
+
+### The invariant
+
+**At rest, `eventcore-production` points to the commit EventCore production is
+serving.**
+
+That is the whole rule in one line; everything below is the procedure that keeps it
+true. When the branch and the live deployment disagree, the repository has lost the
+ability to answer *what is live* — and answering that question from a branch tip
+while the two had silently diverged is the specific error this rule exists to
+prevent.
+
+### The governed release ceremony
+
+Custody and deployment are separate acts with separate triggers. **A push to
+`eventcore-erp` is never a deployment.**
+
+1. Develop on `eventcore-erp`.
+2. Push `eventcore-erp` for custody. Previews only. This may happen at any time,
+   including for work nowhere near releasable.
+3. Certify the release.
+4. Where the release changes the database contract and Rule 2's chosen ordering is
+   DB-first, apply the migration and verify production against the release's deploy
+   manifest **before** step 5. A DATABASE-ONLY release under Rule 1 completes here:
+   it has no application deployment and `eventcore-production` does not move.
+5. Fast-forward `eventcore-production` to the certified SHA.
+6. Push `eventcore-production`. **This is the deployment act.**
+7. Verify the live application.
+8. Record the resulting deployment identity in the release's closure.
+
+Step 5 is a fast-forward. **`eventcore-production` is never force-pushed, rebased or
+rewritten.** It is a ledger of what reached production, and a ledger that can be
+edited is not one.
+
+The failure mode of this ordering is deliberately the safe one: omitting step 6
+leaves certified work undeployed, which is visible and harmless. The arrangement it
+replaces — where the development branch was itself the deployment trigger — fails
+the other way, deploying uncertified work the moment it is pushed for safekeeping.
+That is the Rule 2 hazard arriving through a different door.
+
+### Rollback
+
+Rollback is Vercel Instant Rollback to a deployment that was itself a governed
+production deployment, or a fast-forward of `eventcore-production` to a prior
+certified SHA where the history permits it. Neither reverses a migration: Rule 2's
+per-step rollback statement governs the database, and a rollback of the application
+alone returns production to an intermediate state that Rule 2 requires to have been
+proven compatible.
+
+### Manual promotion
+
+**Manual promotion of a Vercel deployment to production is emergency-only.** It is
+permitted only:
+
+- **(a)** as a rollback to a deployment that was itself a governed production
+  deployment, or
+- **(b)** under explicit written emergency authorisation naming the deployment id.
+
+Promoting a preview that was never a governed production deployment is not permitted
+under (a) and requires (b).
+
+**Any manual promotion must be reconciled into git custody the same day**, by moving
+`eventcore-production` to the promoted commit and pushing it, so the invariant is
+restored. An unreconciled promotion is the defect this rule was written to close, not
+an accepted state.
+
+### Origin — the v311 promotion
+
+v311's application half reached production on 23 August 2026 by manual promotion of
+the preview built from `eventcore-erp` at `e9cd8869f2e7` — deployment
+`dpl_3MSHUpGDYxaprzXWez3RRco4HG58`, recorded by Vercel as `action: promote`. It was
+not a push, it was not the governed ceremony, and it preceded v311's certification by
+twelve days.
+
+No harm followed. The promoted source is the certified v311 application source:
+`e9cd886..c56967e` contains no application delta, so what production serves is what
+v311 certified. The damage was to knowledge. For eighteen days the repository could
+not say what production was running, because the only branch anyone would consult had
+never been the branch that deployed, and a full provenance reconstruction was required
+to recover a fact a release branch would have recorded for free.
+
+That reconstruction — project creation history, the `eventspace-app-tw14` →
+`eventcore` rename, the alias inventory, the production deployment chronology and nine
+recorded governance deviations, each marked VERIFIED, STRONGLY INFERRED or UNVERIFIED
+— is banked at
+`docs/architecture/audit/EVENTCORE_VERCEL_PROVENANCE_RECONCILIATION.md` (commit
+`456aed4`). This rule discharges that finding; that record holds its evidence.
