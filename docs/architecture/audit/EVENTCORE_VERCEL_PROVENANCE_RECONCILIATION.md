@@ -438,3 +438,83 @@ Until an owner ruling supersedes it:
 5. **`eventspace-app` is not a deployment target.** Nothing is promoted there, and its
    staleness is not a defect to be fixed by deploying to it.
 6. **Booking CRM is never a target of an EventCore deployment act.**
+
+---
+
+## Superseded — 10 September 2026, 23:05 UTC
+
+**The reconstruction above is a point-in-time record and is preserved unaltered.** Its
+accuracy as of its reconstruction date is itself evidence and is not rewritten. This
+section records what changed afterwards, on the same day.
+
+### § Current authoritative production surface is superseded
+
+The table under that heading described production **before** EventCore's first
+governed Rule 5 deployment. Four of its rows no longer describe the live surface:
+
+| Field | As reconstructed | **Current** |
+|---|---|---|
+| Live deployment | `dpl_3MSHUpGDYxaprzXWez3RRco4HG58` | **`dpl_Dgkt8RhoyFEGjtn39ZMGuWhrxxaT`** |
+| Live source commit | `e9cd8869f2e7…` | **`a95370b0d4ff8acd413fd60b25fbcc69a65a3669`** |
+| Live source branch | `eventcore-erp` | **`eventcore-production`** |
+| Reached production by | manual promotion, 2026-08-23 | **governed Rule 5 push, 2026-09-10 23:04:12 UTC** |
+
+Unchanged: the project is still `eventcore` (`prj_fi0ijYRimGMmDwJjGGzNmS3oCP6O`) and
+the authoritative URL is still `https://eventspacems.vercel.app`, which resolves to
+the new deployment by hostname resolution. The application source is byte-identical
+across the change — `e9cd886..a95370b` carries no application delta — so what
+production serves did not change; only which deployment serves it, and by what
+mechanism.
+
+`dpl_3MSHUpGDYxaprzXWez3RRco4HG58` remains in the deployment chronology as the
+hand-promoted deployment this record was written to explain. It is no longer live.
+
+### What changed between, in order
+
+| UTC | Event |
+|---|---|
+| 2026-09-10 ~20:30 | `eventcore-production` created locally at `e9cd886`, the then-live commit, so the new branch represented production exactly |
+| 2026-09-10 20:49 | `origin/eventcore-production` pushed — no Vercel build produced; the commit was already built |
+| 2026-09-10 20:55 | `origin/eventcore-erp` pushed to `a95370b` — three preview builds, no production movement |
+| 2026-09-10 21:12:14 | **Owner changed the Vercel Production Branch** from `main` to `eventcore-production`, by hand. Production did not move; the branch already held the live commit |
+| 2026-09-10 23:04:12 | `eventcore-production` fast-forwarded to `a95370b` and pushed — **the first governed Rule 5 deployment** |
+| 2026-09-10 23:05:11 | `dpl_Dgkt8RhoyFEGjtn39ZMGuWhrxxaT` READY, `target: production`, from ref `eventcore-production`, serving `eventspacems.vercel.app` |
+
+### Governance deviations — status changes
+
+Two entries in the table above have moved:
+
+- **#1, manual promotion of a preview** — remains HISTORICAL ONLY, and is now
+  discharged by SOP **Rule 5 · Deployment Topology** (banked at `a95370b`), whose
+  *Origin* section records it by name. Manual promotion is now emergency-only.
+- **#5, stale `main` as Production Branch** — no longer a CURRENT RISK for
+  `eventcore`: its Production Branch is `eventcore-production`. `main` remains
+  `eventspace-app`'s Production Branch, so a push to `main` would now reach the
+  legacy surface only, never `eventspacems.vercel.app`. `main` stays frozen, so this
+  is latent rather than active. Entries #6 (three projects building one repository)
+  and #9 (public repository) are **unchanged and still open**.
+
+### Unresolved question #6 — bounded, then closed as an accepted gap
+
+*"The date the v311 database migration was applied to production"* is now bounded
+rather than open-ended: **after 2026-08-20 20:51:38 UTC** (the v310.1 production
+grade records 111 objects with no v311 object present) **and at or before 2026-09-04
+21:09:41 UTC** (the v311 production grade records 151 present, 0 missing). The exact
+date is **UNKNOWN and likely permanently unrecoverable**, because migrations applied
+as flat files through the SQL Editor leave no row in
+`supabase_migrations.schema_migrations`, PostgreSQL stores no object-creation
+timestamps, and v311's new relations were deliberately left empty in production.
+
+Full reasoning, including the inference that is explicitly **not** promoted to fact,
+is in `docs/v311_CLOSURE_REPORT.md` § 11. Questions 1–5 and 7–9 remain open exactly
+as written.
+
+### Where v311's identity now lives
+
+`docs/v311_CLOSURE_REPORT.md` is the authoritative closure record for v311 — its
+Rule 2 seven-item discharge, its deployment identity, its live-check status and its
+migration-date finding. This record remains the authoritative history of *how the
+topology came to be*; it is not the place to look for what is currently deployed.
+
+**Nothing in Vercel, Git, Supabase or the application was altered by this addendum.**
+No project was deleted, renamed, redeployed or otherwise changed.
