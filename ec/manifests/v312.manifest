@@ -1,0 +1,71 @@
+# EventCore release manifest — v312 Event Workspace
+#                              (one Event across the company)
+#
+# The first product surface to render a whole Event rather than one execution
+# record. Events becomes an operational destination beside Bookings; Bookings
+# remains the commercial surface and is not touched.
+#
+# APPLICATION-ONLY (Forward Process SOP Rule 1, Class B). Application files and
+# nothing else: no migration, no new database object, no changed projection
+# contract, no envelope version bump. Rule 2 ordering therefore does not apply —
+# there is no intermediate production state, because the database contract does
+# not move. The structure below follows v296, the existing Class-B precedent.
+#
+# WHAT THE RELEASE ADDS. A Product Event route family at /events, keyed by the
+# engagement root, and a Function context that narrows within it. Every value it
+# renders comes from a read that already exists and is already certified:
+# engagement_occurrences for the Function list and its execution lineage,
+# occurrence_profile for Function names, projection_occurrence_brief for Function
+# facts, and event_workspace for each Function's operational truth.
+#
+# WHY THE CANONICAL EVENT ID IS A BOOKING ID. v292a1 (I-31′) re-pointed
+# public.event at the occurrence — event_one_per_occurrence, occurrence_ref NOT
+# NULL — so a public.event row is ONE Function's execution record and cannot
+# address the whole affair. The only object that is 1:N over the parts is
+# public.bookings. No identifier is renamed to say so; the mapping is declared in
+# src/lib/events/productEvent.ts and nowhere else.
+#
+# COMPOSITION, NEVER MERGE. The All Functions view places sibling Functions under
+# one Event header, each attributed, each keeping its own operational record. The
+# release deliberately produces no aggregate Event readiness, no Event progress
+# figure, no combined lifecycle and no cross-Function calculation — obligations
+# are Function-owned in production and are not pretended to be shared.
+#
+# WHAT IT DOES NOT CARRY. The V03 specimen's temporal resolver — latest safe
+# point, room-to-act, "drives this clock", time-pressure ordering, derived
+# fixed-point anchors — has no production truth and is not reproduced. Nor is the
+# account-owner field, which production does not record. Absent facts are omitted
+# rather than fabricated.
+#
+# v311 IS NOT REOPENED. The Kitchen proving slice is re-hosted exactly as it
+# stands: KitchenQuantities is reached through EventWorkspace, keyed by the
+# Function's own public.event id, with its authority model, quantity semantics
+# and requirement lineage untouched.
+#
+# SOP Rule 4: accept-events-workspace is a NEW browser acceptance suite (14
+# claims). It is a browser acceptance suite, not a newly frozen permanent SQL
+# proof, so no STANDING floor reconciliation is required — the architect has
+# ruled Rule 4 NOT REQUIRED, and gate 07 confirms the floor unchanged at 474
+# unique claims. v296 set the same precedent when it added accept-navigation.
+#
+# CERTIFICATION-TOOLING REPAIR CARRIED BY THIS RELEASE. gate_browser requires the
+# esbuild and playwright-core JS hosts in the repository's own node_modules —
+# ec/setup-tooling.sh supplies only platform-specific native binaries and says so:
+# "Pure-JS dependencies stay where they are." Both were present historically but
+# declared nowhere, so the v311 Windows `npm ci` — which rebuilds strictly from
+# the lockfile — removed them and every browser gate failed HOST_ABSENT. They are
+# now declared in devDependencies at the versions the certified tooling resolves
+# (esbuild 0.21.5, playwright-core 1.62.0, the latter matching the installed
+# chromium-1234). This is repository tooling custody, not EventCore persistence:
+# the release remains APPLICATION-ONLY and changes no database contract.
+# package.json and package-lock.json therefore join git_files, because a release
+# that cannot be certified without them must not be banked without them.
+version            v312
+standing_verify    yes
+permanent_regress  v311_permanent_proof v310_1_permanent_proof v310_permanent_proof v309_permanent_proof v308_permanent_proof v307b_permanent_proof v307a_permanent_proof v306_permanent_proof v305_permanent_proof v304_permanent_proof v303_permanent_proof v302_permanent_proof v300_permanent_proof v297_permanent_proof v295_permanent_proof v294_permanent_proof v293_permanent_proof
+race_regress       proofs/v307a_y3_race.sh proofs/v295_race.sh proofs/v292d_race.sh proofs/v293_race.sh
+browser            browser-tests/accept-events-workspace.mjs    expect 14
+browser_regress    browser-tests/accept-navigation.mjs browser-tests/accept-workspace.mjs browser-tests/accept-event-ops.mjs browser-tests/accept-kitchen-quantities.mjs browser-tests/accept-actions.mjs browser-tests/accept-staffing.mjs browser-tests/unit-projection.mjs browser-tests/accept-occurrence-prep.mjs browser-tests/accept-preparation-queue.mjs browser-tests/accept-release.mjs browser-tests/accept-day-sheet.mjs browser-tests/accept-department-queue.mjs browser-tests/accept-responsibility-detail.mjs browser-tests/accept-today.mjs
+app_marker         /events
+app_files          src/components/Sidebar.tsx src/app/events/page.tsx src/app/events/[id]/page.tsx src/components/events/EventWorkspaceShell.tsx
+git_files          src/lib/events/functionContext.ts src/lib/events/productEvent.ts src/components/events/EventWorkspaceShell.tsx src/app/events/page.tsx src/app/events/[id]/page.tsx src/components/Sidebar.tsx src/lib/__tests__/v312.functionContext.test.ts browser-tests/accept-events-workspace.mjs browser-tests/events-workspace.harness.tsx browser-tests/events-workspace.html browser-tests/events-mock-supabase.ts package.json package-lock.json ec/manifests/v312.manifest ec/deploy-manifests/v312.deploy

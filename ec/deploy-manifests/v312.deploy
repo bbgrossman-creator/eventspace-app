@@ -1,0 +1,39 @@
+# v312 — EVENT WORKSPACE (one Event across the company)
+#
+# APPLICATION-ONLY. This release deploys no database object: no migration, no
+# table, no column, no function, no policy, no trigger, no renamed identifier and
+# no changed projection contract. event_workspace() is consumed exactly as v309
+# and v310 left it, and its envelope version is not bumped.
+#
+# WHY THIS FILE EXISTS ANYWAY. Every release from v292a forward declares its
+# database prerequisites, so that certification asks "can the database we are
+# shipping against run this?" rather than assuming it. v312 declares none of its
+# own — it declares the level it requires beneath it, which is v311.
+#
+# WHAT v312 READS, ALL PRE-EXISTING AND ALREADY CERTIFIED AT v311 OR EARLIER:
+#   · engagement_occurrences(p_booking, p_now)   — the Function list, and each
+#     Function's execution lineage (event_ref, null where unreleased)
+#   · occurrence_profile                          — Function display identity
+#   · projection_occurrence_brief(p_occurrence)   — Function facts
+#   · event_workspace(p_event)                    — one Function's operational truth
+#   · kitchen_event_panel(p_event, p_as_of)       — the v311 Kitchen seam, re-hosted
+#
+# Each is already declared by the release that introduced it; repeating them here
+# would assert v312 as their origin, which it is not. min_release carries the
+# prerequisite instead, exactly as v296 — the existing application-only precedent —
+# does.
+#
+# NO PRODUCTION MUTATION IS AUTHORIZED BY THIS ARTIFACT, and no production
+# mutation is possible from it: there is nothing to apply.
+#
+# ROLLBACK. Application-only, so rollback is the application rollback governed by
+# SOP Rule 5 — Vercel Instant Rollback to a governed production deployment, or a
+# fast-forward of eventcore-production to a prior certified SHA. No database step
+# exists to reverse, and none should be invented.
+#
+# BOOKING CRM IS NOT CONTACTED. Shared Cross-Product Ledger v2, X-013: EventCore
+# only — no query, no migration, no synchronization, no comparison, no deployment.
+release          v312
+migration
+migration_source none
+min_release      v311

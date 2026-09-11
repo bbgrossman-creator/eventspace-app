@@ -18,6 +18,9 @@ const NAV: NavItem[] = [
   { href: "/", label: "Daily Ops", icon: "📋", perm: "ops.view" },
   { href: "/dashboard", label: "Dashboard", icon: "📊", perm: "dashboard.view" },
   { href: "/bookings", label: "Bookings", icon: "🗂️", perm: "bookings.view" },
+  // v312 · Events is the operational destination: one Event across the company.
+  // Bookings stays the commercial surface; the two are peers, not a hierarchy.
+  { href: "/events", label: "Events", icon: "🎪", perm: "ops.view" },
   { href: "/calendar", label: "Calendar", icon: "📅", perm: "calendar.view" },
   { href: "/bookings/new", label: "New Inquiry", icon: "📞", perm: "inquiries.create" },
   { href: "/drafts", label: "Inquiry Drafts", icon: "📝", perm: "inquiries.create" },
